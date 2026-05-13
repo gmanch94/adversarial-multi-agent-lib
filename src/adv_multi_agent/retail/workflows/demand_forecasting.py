@@ -1,9 +1,14 @@
 """
 Workflow — Demand Forecasting (Retail Teaching Example)
 
-Demonstrates the ARIS adversarial pattern for retail replenishment decisions.
-Executor synthesizes a demand forecast; reviewer challenges assumptions and
-flags any unsubstantiated adjustments under ASSUMPTION FLAGS.
+Demonstrates the ARIS adversarial pattern (Yang, Li, Li — SJTU + Shanghai
+Innovation Institute, arXiv:2605.03042, May 2026) for retail replenishment
+decisions. Executor synthesizes a demand forecast; reviewer (recommended:
+different model family per ARIS §2.1 principle 1) challenges assumptions
+and flags any unsubstantiated adjustments under ASSUMPTION FLAGS.
+
+If you use this workflow, cite the ARIS paper — see CITATION.cff in the
+repo root.
 
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:

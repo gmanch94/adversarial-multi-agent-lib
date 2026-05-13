@@ -269,7 +269,32 @@ class MyWorkflow(BaseWorkflow):
 ## Tests
 
 ```bash
-python -m pytest tests/          # 181 tests
+python -m pytest tests/          # 203 tests
 python -m mypy src/ tests/ --strict
 python -m ruff check src/ tests/
 ```
+
+---
+
+## Citation
+
+This library implements the adversarial multi-agent collaboration pattern from the ARIS paper. **If you use this work, please cite the underlying research:**
+
+> Yang, R., Li, Y., & Li, S. (2026). *ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration*. arXiv:2605.03042. https://arxiv.org/abs/2605.03042
+
+BibTeX:
+
+```bibtex
+@article{yang2026aris,
+  title   = {ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration},
+  author  = {Yang, Ruofeng and Li, Yongcan and Li, Shuai},
+  journal = {arXiv preprint arXiv:2605.03042},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2605.03042},
+  note    = {Shanghai Jiao Tong University; Shanghai Innovation Institute}
+}
+```
+
+Project page: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
+
+All workflows in this library — research (idea discovery, review loop, rebuttal, manuscript assurance), parole, retail (demand forecasting, labor scheduling) — are domain adaptations of the executor + cross-family-reviewer loop introduced in the ARIS paper. See `CITATION.cff` for machine-readable citation metadata.

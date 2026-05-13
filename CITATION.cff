@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+title: "adv-multi-agent: Reusable Adversarial Multi-Agent Library"
+message: >-
+  This library implements the adversarial multi-agent
+  collaboration pattern from the ARIS paper. If you use
+  this software, please also cite the underlying research.
+type: software
+authors:
+  - family-names: Manchaiah
+    given-names: Giri
+repository-code: "https://github.com/gmanch94/adv-multi-agent"
+license: MIT
+
+references:
+  - type: article
+    title: "ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration"
+    authors:
+      - family-names: Yang
+        given-names: Ruofeng
+        affiliation: Shanghai Jiao Tong University
+      - family-names: Li
+        given-names: Yongcan
+        affiliation: Shanghai Jiao Tong University
+      - family-names: Li
+        given-names: Shuai
+        affiliation: "Shanghai Jiao Tong University, Shanghai Innovation Institute"
+    year: 2026
+    month: 5
+    journal: arXiv
+    identifiers:
+      - type: other
+        value: "arXiv:2605.03042"
+        description: arXiv preprint identifier
+    url: "https://arxiv.org/abs/2605.03042"
+    notes: >-
+      The design pattern implemented by this library.
+      All workflows (research, parole, retail) are
+      domain adaptations of the executor + cross-family
+      reviewer loop introduced in this paper.

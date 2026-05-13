@@ -1,10 +1,15 @@
 """
 Workflow — Labor Scheduling (Retail Teaching Example)
 
-Demonstrates the ARIS adversarial pattern for retail labor scheduling.
-Executor drafts a weekly store schedule; reviewer challenges coverage,
-compliance with stated labor laws, cost efficiency, and fairness.
-Flags labor law violations under COMPLIANCE FLAGS.
+Demonstrates the ARIS adversarial pattern (Yang, Li, Li — SJTU + Shanghai
+Innovation Institute, arXiv:2605.03042, May 2026) for retail labor
+scheduling. Executor drafts a weekly store schedule; reviewer (recommended:
+different model family per ARIS §2.1 principle 1) challenges coverage,
+compliance with stated labor laws, cost efficiency, and fairness. Flags
+labor law violations under COMPLIANCE FLAGS.
+
+If you use this workflow, cite the ARIS paper — see CITATION.cff in the
+repo root.
 
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:

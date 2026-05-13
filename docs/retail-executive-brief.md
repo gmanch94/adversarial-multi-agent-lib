@@ -3,6 +3,7 @@
 **Date:** May 2026
 **Author:** Giri Manchaiah
 **Status:** Teaching / research demonstration · NOT FOR PRODUCTION DEPLOYMENT
+**Based on:** Yang, R., Li, Y., & Li, S. (2026). *ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration*. arXiv:2605.03042. [https://arxiv.org/abs/2605.03042](https://arxiv.org/abs/2605.03042) — Shanghai Jiao Tong University · Shanghai Innovation Institute
 
 ## What it is
 
