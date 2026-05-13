@@ -41,7 +41,7 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 | Scenario | Status | Notes |
 |---|---|---|
-| Promo / markdown optimization | candidate | Executor proposes promo depth + timing; reviewer challenges margin math, elasticity, competitor response |
+| Promo / markdown optimization | **built** | PromoMarkdownWorkflow — ELASTICITY + MARGIN + TIMING flags; cannibalization-aware margin math; synthetic Memorial Day example |
 | Supplier negotiation briefs | candidate | Executor drafts position + BATNA; reviewer stress-tests cost assumptions, alternatives |
 | Private label product decisions | candidate | Executor proposes new SKU; reviewer challenges cannibalization, brand perception risk |
 
