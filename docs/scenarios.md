@@ -32,7 +32,7 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 |---|---|---|
 | Demand forecasting | **built** | DemandForecastWorkflow — ASSUMPTION FLAGS convergence gate; synthetic Kroger example |
 | Labor scheduling | **built** | LaborSchedulingWorkflow — COMPLIANCE FLAGS convergence gate; synthetic Kroger example |
-| Inventory replenishment | candidate | Auto-order logic reviewed for supplier lead time assumptions |
+| Inventory replenishment | **built** | InventoryReplenishmentWorkflow — LEAD-TIME + STOCKOUT + CAPACITY flags; per-DC per-SKU PO schedule from demand forecast; synthetic Denver-DC dairy+shelf example |
 
 ---
 
