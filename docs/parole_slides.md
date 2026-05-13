@@ -1,48 +1,8 @@
 ---
 marp: true
-theme: default
+theme: adv-slides
 paginate: true
 ---
-
-<style>
-section {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #fafafa;
-  color: #1a1a1a;
-  font-size: 0.92em;
-}
-section.lead {
-  background: #0f172a;
-  color: #f8fafc;
-  text-align: center;
-  justify-content: center;
-}
-section.lead h1 { color: #38bdf8; font-size: 2.2em; margin-bottom: 0.2em; }
-section.lead h2 { color: #94a3b8; font-weight: 400; font-size: 1.1em; }
-section.lead p  { color: #64748b; font-size: 0.85em; }
-section.section {
-  background: #0f172a;
-  color: #f8fafc;
-  justify-content: center;
-}
-section.section h1 { color: #38bdf8; font-size: 1.8em; }
-section.section p  { color: #94a3b8; font-size: 1em; }
-h2 { color: #0369a1; border-bottom: 2px solid #bae6fd; padding-bottom: 4px; margin-bottom: 0.6em; }
-h3 { color: #0369a1; font-size: 0.95em; margin: 0.4em 0 0.2em 0; }
-code { background: #e2e8f0; padding: 1px 5px; border-radius: 3px; font-size: 0.82em; }
-pre { background: #1e293b; color: #e2e8f0; border-radius: 6px; padding: 12px 16px;
-      font-size: 0.72em; line-height: 1.45; }
-pre code { background: none; padding: 0; font-size: 1em; }
-table { font-size: 0.78em; width: 100%; border-collapse: collapse; }
-th { background: #e0f2fe; color: #0c4a6e; }
-td, th { padding: 4px 8px; border: 1px solid #cbd5e1; }
-blockquote { border-left: 3px solid #38bdf8; background: #f0f9ff;
-             padding: 6px 14px; border-radius: 0 4px 4px 0; color: #0c4a6e;
-             margin: 0.5em 0; font-size: 0.85em; }
-ul li, ol li { margin: 0.15em 0; }
-.warn { color: #dc2626; font-weight: 600; }
-.good { color: #16a34a; font-weight: 600; }
-</style>
 
 <!-- _class: lead -->
 
