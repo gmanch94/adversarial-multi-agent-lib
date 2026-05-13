@@ -57,6 +57,16 @@ class TestWikiAdd:
         eid2 = wiki.add(EntryKind.NOTE, title="new", body="v2", supersedes=eid1)
         assert wiki.get(eid2).supersedes == eid1
 
+    def test_h1_body_stripped_on_write(self, tmp_path: Path) -> None:
+        """H1: control chars must not survive into persisted wiki bodies."""
+        wiki = make_wiki(tmp_path)
+        eid = wiki.add(EntryKind.NOTE, title="t\x00x", body="hello\x00world\x07!")
+        entry = wiki.get(eid)
+        assert "\x00" not in entry.body
+        assert "\x07" not in entry.body
+        assert "\x00" not in entry.title
+        assert "helloworld!" in entry.body
+
 
 # ---------------------------------------------------------------------------
 # context_for_round — security invariants

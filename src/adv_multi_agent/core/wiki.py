@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from ._internal import atomic_write_text, sanitize_for_prompt
+from ._internal import atomic_write_text, is_safe_id, sanitize_for_prompt
 
 
 _DEFAULT_MAX_BODY_CHARS = 8000
@@ -57,6 +57,9 @@ class WikiEntry:
         """Resilient loader: ignores unknown keys, fills missing with defaults."""
         known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in d.items() if k in known}
+        # H5: refuse attacker-controlled ids; regenerate on invalid charset.
+        if "id" in filtered and not is_safe_id(filtered["id"]):
+            filtered["id"] = uuid.uuid4().hex[:12]
         if "kind" in filtered:
             try:
                 filtered["kind"] = EntryKind(filtered["kind"])
@@ -98,6 +101,12 @@ class ResearchWiki:
     ) -> str:
         title = self._bound(title, 500, "title")
         body = self._bound(body, self._max_body_chars, "body")
+        # H1: strip control chars on write so persisted bodies cannot smuggle
+        # them into any later read path (not just context_for_round). Caller
+        # is the chokepoint; downstream workflows that read wiki entries
+        # verbatim now see sanitized content.
+        title = sanitize_for_prompt(title, max_chars=500)
+        body = sanitize_for_prompt(body, max_chars=self._max_body_chars)
         if supersedes is not None and supersedes not in self._entries:
             raise ValueError(f"supersedes references unknown entry: {supersedes}")
         entry = WikiEntry(

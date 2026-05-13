@@ -1,0 +1,35 @@
+fix(security): pre-sprint hardening H1 H2 H5 H6
+
+Targets the four HIGH findings from docs/security-audits/2026-05-13.md
+that affect the core adversarial-loop invariants. Fixes applied at
+chokepoints (per advisor) so future workflow authors cannot reintroduce
+the same bug shape.
+
+H1 (idea_discovery indirect injection): sanitize_for_prompt now runs
+inside wiki.add() on title+body, plus survey directions sanitized
+before reviewer prompt. Persisted bodies cannot smuggle control chars
+into any downstream read path.
+
+H2 (convergence forgery via first-JSON-wins): ReviewerAgent.review()
+now requires len(critique.strip()) >= 20 in addition to score >=
+threshold for approved=True. REVIEW_SYSTEM prompt updated to ask the
+reviewer for substantive critique. Behavioral change: a reviewer
+returning {"score": 10} with no critique no longer triggers
+convergence (the adversarial loop must actually engage).
+
+H5 (forged ledger/wiki ids inject into reviewer prompts): added
+is_safe_id() validator (^[A-Za-z0-9_-]{1,64}$); Claim.from_dict and
+WikiEntry.from_dict regenerate a fresh uuid when a loaded id fails
+the charset check (preserves backward compat with pre-existing
+ledger/wiki files).
+
+H6 (parse_first_json O(N^2) on adversarial input): cap input length
+at 64KiB; legitimate reviewer responses never exceed this.
+
+Tests: +12 new unit tests covering all four; full suite 203 -> 215
+passing. No new lint/mypy errors (baseline preserved).
+
+Out of scope (in-sprint or backlog): H3/H4 MCP DoS, all MEDIUM/LOW
+findings. See docs/security-audits/2026-05-13.md.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

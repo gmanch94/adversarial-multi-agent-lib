@@ -25,6 +25,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _JSON_START = re.compile(r"[\{\[]")
+_PARSE_FIRST_JSON_MAX_CHARS = 65_536
 
 
 def parse_first_json(text: str) -> Any:
@@ -35,8 +36,14 @@ def parse_first_json(text: str) -> Any:
     earliest valid object over the longest brace-span, so attacker-controlled
     JSON appearing later in the response cannot dominate a greedy match.
 
-    Raises ValueError if no valid JSON value is found.
+    Raises ValueError if no valid JSON value is found, or if `text` exceeds
+    the safety cap (H6: bound worst-case O(N^2) raw_decode scan triggered by
+    adversarial opener-only inputs like `[[[[...`).
     """
+    if len(text) > _PARSE_FIRST_JSON_MAX_CHARS:
+        raise ValueError(
+            f"input length {len(text)} exceeds max {_PARSE_FIRST_JSON_MAX_CHARS} chars"
+        )
     decoder = json.JSONDecoder()
     pos = 0
     while pos < len(text):
@@ -153,6 +160,17 @@ def safe_resolve_path(path: str | Path, must_be_under: str | Path | None = None)
 # ---------------------------------------------------------------------------
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def is_safe_id(value: Any) -> bool:
+    """
+    Return True if `value` is a string matching the safe-id charset:
+    1-64 chars of [A-Za-z0-9_-]. Used by Claim/WikiEntry.from_dict (H5)
+    to refuse attacker-controlled ids loaded from disk before they reach
+    reviewer prompts (e.g. via `[{c.id}]` formatting in verifier).
+    """
+    return isinstance(value, str) and bool(_SAFE_ID_RE.match(value))
 
 
 def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:
