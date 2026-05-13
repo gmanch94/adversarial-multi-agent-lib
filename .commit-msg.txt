@@ -1,22 +1,34 @@
-fix(security): MCP DoS hardening H3 H4
+fix(security): MEDIUM hardening M2 M4 M5
 
-Bounds caller-supplied inputs to Skill.render at the class-method
-chokepoint so every consumer (MCP server, programmatic library
-caller, tests) inherits the same guarantees. Single-path-of-control
-per CLAUDE.md.
+Targets three MEDIUM findings from docs/security-audits/2026-05-13.md.
 
-H3 (unbounded skill input values via MCP): per-value length capped
-at 8192 chars; non-string values coerced via str().
+M2 (unbounded claim-line count -> ledger explosion): cap claims
+registered per round at 200 in AutoReviewLoop._extract_and_register_claims.
+Adversarial executor emitting 10k "## Claims" lines no longer fills
+the disk via per-add atomic save. Legitimate rounds emit < 50.
 
-H4 (MCP render_skill DoS + control-char passthrough): key count
-capped at 64; control chars (incl. ANSI ESC 0x1b, BOM 0x7f, CSI
-0x9b) stripped from every value before format_map substitution.
-Prevents terminal-injection on downstream consumers and bounds
-worst-case prompt size.
+M4 (silent corrupt-file load erases audit trail): ClaimLedger._load
+and ResearchWiki._load now emit UserWarning before starting fresh.
+Operator can see corruption/tampering instead of audit trail vanishing
+silently. Workflow still continues to avoid hard-failing the run.
 
-Tests: +3 unit tests covering oversized value, key flood, and
-control-char strip. 215 -> 218 passing.
+M5 (no type guard on Anthropic block.text): _extract_anthropic_text
+defensively coerces non-string text values via str() in case of
+future SDK changes. Prevents latent TypeError on SDK upgrade.
 
-Stacks on fix/security-hardening-pre-sprint (PR #5).
+Skipped from this batch:
+- M1 (wiki approve_improvement caller-identity gate): architectural,
+  needs design discussion. Python class-method protection is
+  convention-only; meaningful enforcement requires a session token
+  or capability pattern.
+- M3 (async lock on _save): false positive. _save is sync, so
+  Python's GIL/coroutine semantics already serialize. No race.
+- M9 (EffortLevel for OpenAI reviewer): OpenAI chat.completions has
+  no direct effort knob; documentation fix more than code fix.
+
+Tests: +2 unit tests (M2 claim cap, M4 ledger warning). 218 -> 220
+passing. No new lint/mypy errors vs baseline.
+
+Stacks on fix/security-hardening-mcp-dos (PR #6).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

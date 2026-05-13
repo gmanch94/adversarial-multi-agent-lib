@@ -191,6 +191,19 @@ class TestClaimExtraction:
 
         assert ledger.all() == []
 
+    async def test_m2_claim_count_capped_per_round(self, tmp_path: Path) -> None:
+        """M2: adversarial executor emitting 10k claim lines must be capped."""
+        cfg = make_config(tmp_path, max_review_rounds=1, score_threshold=9.0)
+        many = "\n".join(f"- claim {i}" for i in range(10_000))
+        output = f"Text.\n\n## Claims\n{many}"
+        executor = FakeExecutor([output])
+        reviewer = FakeReviewer([make_result(5.0, approved=False)])
+        ledger = ClaimLedger(str(tmp_path / "ledger.json"))
+        loop = make_loop(cfg, tmp_path, executor, reviewer, ledger=ledger)
+        await loop.run(task="Write.")
+        # _MAX_CLAIMS_PER_ROUND = 200
+        assert len(ledger.all()) == 200
+
     async def test_oversized_claim_truncated_not_skipped(self, tmp_path: Path) -> None:
         cfg = make_config(tmp_path, max_review_rounds=1, score_threshold=9.0,
                           max_claim_text_chars=50)

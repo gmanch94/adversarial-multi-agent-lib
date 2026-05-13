@@ -141,6 +141,11 @@ class AutoReviewLoop(BaseWorkflow):
             },
         )
 
+    # M2: cap claims registered per round. Adversarial executor emitting
+    # millions of "## Claims" lines would otherwise fill the disk via the
+    # ledger's per-add atomic save. Legitimate rounds emit < 50.
+    _MAX_CLAIMS_PER_ROUND = 200
+
     def _extract_and_register_claims(
         self,
         output: str,
@@ -152,7 +157,10 @@ class AutoReviewLoop(BaseWorkflow):
             return
         claims_section = output.split("## Claims", 1)[1]
         existing = {c.text for c in self.ledger.all()}
+        added_this_round = 0
         for raw_line in claims_section.splitlines():
+            if added_this_round >= self._MAX_CLAIMS_PER_ROUND:
+                break
             line = raw_line.strip().lstrip("-").strip()
             if not line:
                 continue
@@ -164,6 +172,7 @@ class AutoReviewLoop(BaseWorkflow):
             try:
                 self.ledger.add(line, round_num=round_num)
                 existing.add(line)
+                added_this_round += 1
             except ValueError:
                 # Bounded text rejected by ledger — skip silently
                 continue
