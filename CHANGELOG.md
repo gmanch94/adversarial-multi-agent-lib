@@ -12,11 +12,48 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - `adv_multi_agent.skills.mcp_server` — FastMCP server exposing `SkillRegistry` as MCP tools
-  (`list_skills`, `describe_skills`, `get_skill`, `render_skill`); stdio transport; `[mcp]` optional dep
-- `examples/gemini_executor.py` — cross-provider demo: Gemini 2.5 Pro executor + GPT-4o reviewer,
+  (`list_skills`, `describe_skills`, `get_skill`, `render_skill`); stdio transport; `[mcp]` optional dep;
+  `SKILLS_DOMAIN` env var allowlist (`research` / `parole` / `retail`)
+- `examples/research/gemini_executor.py` — cross-provider demo: Gemini 2.5 Pro executor + GPT-4o reviewer,
   including streaming output and full `AutoReviewLoop` run
 - `[project.scripts]` entry point: `adv-multi-agent-skills` CLI shortcut for the MCP server
 - `[mcp]` optional dependency group: `mcp>=1.0,<2.0`
+- **Parole domain** (`adv_multi_agent.parole`) — `ParoleAssessmentWorkflow` + `ParoleCase`;
+  6 skill templates; example at `examples/parole/parole_assessment.py`
+- **Retail domain** (`adv_multi_agent.retail`) — `DemandForecastWorkflow` (`ForecastRequest`) and
+  `LaborSchedulingWorkflow` (`SchedulingRequest`); 9 skill templates (5 `demand_*` + 4 `labor_*`);
+  examples at `examples/retail/{demand_forecasting,labor_scheduling}.py`
+- `ResearchWiki.approve_improvement` / `reject_improvement` now record an audit trail entry
+  (`human_reviewer_id`, timestamp, action) on every decision
+- `scripts/check_no_secrets.py` — pre-commit / CI guard for accidentally committed API keys
+  (Anthropic, OpenAI, OpenAI project, Google, GitHub PAT)
+- GitHub Actions CI (`.github/workflows/ci.yml`) — secrets scan + ruff + mypy + pytest on
+  Python 3.11 / 3.12 / 3.13
+- `CITATION.cff` in repo root (ARIS paper attribution)
+
+### Changed
+
+- **BREAKING:** `ResearchWiki.approve_improvement(improvement_id)` and
+  `ResearchWiki.reject_improvement(improvement_id)` now require a `human_reviewer_id: str`
+  keyword argument. External callers must pass the reviewer identifier; calls without it
+  raise `TypeError`. Rationale: M1 audit-trail requirement — every human-in-the-loop decision
+  must be attributable.
+
+### Removed
+
+- `aiofiles` and `rich` dropped from runtime dependencies — neither was used; wheel is smaller.
+
+### Security
+
+- Pre-sprint hardening (PR #5, HIGH): wiki body sanitize-on-write; convergence requires non-empty
+  critique; id charset validation with regen-on-invalid; `parse_first_json` 64 KiB cap
+- MCP DoS hardening (PR #7, HIGH + MEDIUM): `Skill.render` input bounding + control-char strip;
+  claims-per-round cap; corrupt-load `UserWarning`; Anthropic block-text type guard
+- Audit closeout (PR #9, MEDIUM + LOW): `wiki.approve_improvement` audit trail; YAML duplicate-key
+  + balanced-quote checks; ISO timestamp validation; `SKILLS_DOMAIN` allowlist; `redact_secret`
+  set/unset-leak fix; editor notes sanitize; MCP docstring warning
+- Full audit + remediation matrix: `docs/security-audits/2026-05-13.md` and
+  `docs/security-audits/2026-05-13-remediation.md`
 
 ---
 

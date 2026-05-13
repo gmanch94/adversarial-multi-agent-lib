@@ -14,7 +14,7 @@ Run (stdio, for use with Claude Code):
 Custom skills directory:
     SKILLS_DIR=/path/to/skills python -m adv_multi_agent.core.skills.mcp_server
 
-Custom domain (research or parole):
+Custom domain (research, parole, or retail):
     SKILLS_DOMAIN=parole python -m adv_multi_agent.core.skills.mcp_server
 
 Register with Claude Code:
