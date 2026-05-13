@@ -18,7 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
-from ._internal import atomic_write_text
+from ._internal import atomic_write_text, is_safe_id
 
 
 _DEFAULT_MAX_CLAIM_CHARS = 2000
@@ -59,6 +59,10 @@ class Claim:
         """Resilient loader: ignores unknown keys, fills missing with defaults."""
         known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in d.items() if k in known}
+        # H5: refuse attacker-controlled ids; regenerate on invalid charset
+        # (preserves backward compat with pre-existing ledger files).
+        if "id" in filtered and not is_safe_id(filtered["id"]):
+            filtered["id"] = uuid.uuid4().hex[:12]
         # Coerce status string back to enum
         if "status" in filtered:
             try:

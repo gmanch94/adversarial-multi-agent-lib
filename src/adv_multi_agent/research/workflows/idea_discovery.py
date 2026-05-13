@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...core._internal import sanitize_for_prompt
 from ...core.wiki import EntryKind
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
@@ -91,6 +92,10 @@ class IdeaDiscovery(BaseWorkflow):
         self.wiki.add(EntryKind.LITERATURE, f"Survey: {topic}", survey, tags=["survey"])
 
         directions = self._extract_section(survey, "## Candidate Directions")
+        # H1: survey is unsanitized executor output. Strip control chars and
+        # cap length before embedding into reviewer prompt to limit indirect
+        # prompt injection (e.g. survey emits "IGNORE PRIOR INSTRUCTIONS...").
+        directions = sanitize_for_prompt(directions, max_chars=8000)
 
         # Phase 2: novelty check (reviewer acts as adversarial evaluator)
         novelty_prompt = NOVELTY_CHECK_PROMPT.format(topic=topic, directions=directions)

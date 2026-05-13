@@ -36,6 +36,12 @@ class ReviewResult:
     approved: bool
 
 
+# H2: minimum critique length for `approved=True`. A reviewer that emits
+# `{"score": 10}` with no critique field cannot trigger convergence —
+# the adversarial loop is meaningless without a real critique.
+_MIN_CRITIQUE_CHARS = 20
+
+
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
@@ -210,7 +216,8 @@ REVIEW_SYSTEM = """\
 You are a rigorous scientific reviewer. Evaluate the provided content on a
 scale of 0–10. Return a JSON object with keys:
   score       (float 0-10)
-  critique    (string — main weaknesses)
+  critique    (string — main weaknesses; MUST contain at least 20 chars of
+               substantive review; convergence is gated on this field)
   suggestions (list of strings — specific, actionable improvements)
 
 Be adversarial: surface logical gaps, unsupported claims, weak methodology,
@@ -271,11 +278,18 @@ class ReviewerAgent(BaseAgent):
             suggestions_raw = []
         suggestions = [str(s) for s in suggestions_raw]
 
+        # H2: approved requires a real review, not just a high score field.
+        # A reviewer emitting `{"score": 10}` with no critique cannot flip
+        # convergence — the adversarial loop must actually engage.
+        approved = (
+            score >= self.config.score_threshold
+            and len(critique.strip()) >= _MIN_CRITIQUE_CHARS
+        )
         return ReviewResult(
             score=score,
             critique=critique,
             suggestions=suggestions,
-            approved=score >= self.config.score_threshold,
+            approved=approved,
         )
 
 
