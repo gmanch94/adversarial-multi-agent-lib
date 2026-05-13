@@ -34,6 +34,9 @@ htmlcov/
 # Claude Code local settings
 .claude/
 
+# Local-only drafts (not for repo)
+docs/linkedin-announcement.md
+
 # OS
 .DS_Store
 Thumbs.db
