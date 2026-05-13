@@ -63,7 +63,7 @@ class _ExecutorBackend(BaseAgent):
     """All executor backends must expose both run() and stream()."""
 
     @abstractmethod
-    async def stream(self, prompt: str, context: str = "") -> AsyncIterator[str]: ...
+    def stream(self, prompt: str, context: str = "") -> AsyncIterator[str]: ...
 
 
 # ---------------------------------------------------------------------------
