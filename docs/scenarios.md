@@ -42,7 +42,7 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 | Scenario | Status | Notes |
 |---|---|---|
 | Promo / markdown optimization | **built** | PromoMarkdownWorkflow — ELASTICITY + MARGIN + TIMING flags; cannibalization-aware margin math; synthetic Memorial Day example |
-| Supplier negotiation briefs | candidate | Executor drafts position + BATNA; reviewer stress-tests cost assumptions, alternatives |
+| Supplier negotiation briefs | **built** | SupplierBriefWorkflow — BATNA + COST + RELATIONSHIP flags; cost-floor anchored in input-cost drivers; synthetic corrugated-packaging example |
 | Private label product decisions | candidate | Executor proposes new SKU; reviewer challenges cannibalization, brand perception risk |
 
 ---
