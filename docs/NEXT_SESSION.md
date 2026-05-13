@@ -1,6 +1,6 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (end of session — Gemini example + MCP server + doc updates)
+Last updated: 2026-05-13 (end of session — parole domain + doc refresh + GitHub + slides fix)
 
 ---
 
@@ -8,13 +8,16 @@ Last updated: 2026-05-13 (end of session — Gemini example + MCP server + doc u
 
 **All phases complete.** Library is production-ready and pip-installable.
 
+GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
+Local: `master` branch, clean. 181 tests. 21 skill templates (15 research + 6 parole).
+
 ### What shipped this session
 
-- **`examples/gemini_executor.py`** — cross-provider demo: Gemini 2.5 Pro executor + GPT-4o reviewer, streaming demo + full AutoReviewLoop run.
-- **`src/adv_multi_agent/skills/mcp_server.py`** — FastMCP server, 4 tools (`list_skills`, `describe_skills`, `get_skill`, `render_skill`), stdio transport, `SKILLS_DIR` env override. Entry point: `adv-multi-agent-skills`.
-- **`tests/unit/test_mcp_server.py`** — 12 smoke tests (all pass). Total: 160 tests.
-- **`pyproject.toml`** — added `[mcp]` optional dep (`mcp>=1.0,<2.0`) + `[project.scripts]` entry point.
-- **Docs:** `docs/slides.md` updated (160 tests, Phase 7 ✅, MCP install cmd, Gemini example). `docs/research-executive-brief.md` updated (Mermaid visual, MCP server section, updated status table).
+- **`src/adv_multi_agent/parole/`** — `ParoleAssessmentWorkflow`, `ParoleCase`, bias-gate convergence, 6 skill templates, `examples/parole/parole_assessment.py`
+- **Docs refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md`, `docs/deployment-architecture.md`
+- **New docs** — `docs/parole_slides.md`, `docs/parole-executive-brief.md`; renamed `docs/research_slides.md`, `docs/research-executive-brief.md`
+- **Slides CSS fix** — extracted to `docs/themes/adv-slides.css`; `theme: adv-slides` in both slide files; `.marprc.yml` + `.vscode/settings.json` added
+- **GitHub** — repo created, all content on `main`, default branch set, stale `feat/restructure-by-usecase` deleted
 
 ---
 
@@ -23,31 +26,26 @@ Last updated: 2026-05-13 (end of session — Gemini example + MCP server + doc u
 ```
 src/adv_multi_agent/
   core/
-    agents.py       ExecutorAgent (facade) → _AnthropicExecutor | _GeminiExecutor
-                    ReviewerAgent (facade) → _OpenAIReviewer | _AnthropicReviewer
-                    _ExecutorBackend (ABC: run + stream)
-    config.py       Config, EffortLevel, ReviewerProvider, ExecutorProvider
-    ledger.py       ClaimLedger (append-only JSON, atomic writes)
-    wiki.py         ResearchWiki (4 entry kinds, improvement approval gate)
-    _internal.py    parse_first_json_or, coerce_score, sanitize_for_prompt,
-                    atomic_write_text, safe_resolve_path, redact_secret
-  workflows/
-    base.py         BaseWorkflow, WorkflowResult
-    review_loop.py  AutoReviewLoop (ARIS §4.2)
-    idea_discovery.py
-    rebuttal.py
-    manuscript_assurance.py
-  assurance/
-    verifier.py     ClaimVerifier (3-stage)
-    editor.py       ScientificEditor (5-pass)
-  skills/
-    registry.py     SkillRegistry (_PartialFormat passthrough)
-    mcp_server.py   FastMCP server (4 tools, stdio, SKILLS_DIR env override)
-    templates/      15 × *.md (bundled as package_data)
+    agents.py           ExecutorAgent → _AnthropicExecutor | _GeminiExecutor
+                        ReviewerAgent → _OpenAIReviewer | _AnthropicReviewer
+    config.py           Config, EffortLevel, ReviewerProvider, ExecutorProvider
+    ledger.py           ClaimLedger (append-only JSON, atomic writes)
+    wiki.py             ResearchWiki (4 entry kinds, improvement approval gate)
+    workflow.py         BaseWorkflow, WorkflowResult
+    _internal.py        parse_first_json, sanitize_for_prompt, atomic_write, redact_secret
+    skills/
+      registry.py       SkillRegistry (bundled_skills_path(domain=...))
+      mcp_server.py     FastMCP (4 tools, stdio, SKILLS_DOMAIN env)
+  research/
+    workflows/          AutoReviewLoop, IdeaDiscovery, RebuttalWorkflow, ManuscriptAssurance
+    assurance/          ClaimVerifier (3-stage), ScientificEditor (5-pass)
+    skills/templates/   15 × *.md
+  parole/
+    workflows/parole.py ParoleAssessmentWorkflow, ParoleCase
+    skills/templates/   6 × *.md
 examples/
-    basic_review_loop.py
-    gemini_executor.py    ← NEW: Gemini executor + streaming demo
-    manuscript_assurance.py
+  research/             basic_review_loop.py, gemini_executor.py, manuscript_assurance.py
+  parole/               parole_assessment.py
 ```
 
 ---
@@ -62,9 +60,8 @@ examples/
 
 ## What still needs doing
 
-1. **PyPI publish** — `twine upload dist/*`. Wheel and sdist built, `twine check` PASSED. Blocked on PyPI credentials only. **Need to rebuild dist/* first** — pyproject.toml changed (new `[mcp]` dep + `[project.scripts]`).
+1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
 2. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
-3. **`adv-multi-agent-skills` sub-package** — separate versioning; decision required.
 
 ---
 
@@ -86,7 +83,7 @@ examples/
 2. Read `docs/LESSONS_LEARNED.md`.
 3. Read `CLAUDE.md` (repo root).
 4. `git status` + `git log --oneline -5`.
-5. Ask user what to work on. Only remaining actionable item: PyPI publish (rebuild dist first).
+5. Ask user what to work on.
 
 ---
 
