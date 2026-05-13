@@ -1,0 +1,238 @@
+"""Unit tests for src/skills/registry.py — no API calls."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from adv_multi_agent.skills.registry import SkillRegistry
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def write_skill(
+    skills_dir: Path,
+    filename: str,
+    name: str = "my_skill",
+    description: str = "A test skill",
+    inputs: str = "[topic]",
+    body: str = "Tell me about {topic}.",
+) -> Path:
+    """Write a minimal valid skill .md file."""
+    content = f"---\nname: {name}\ndescription: {description}\ninputs: {inputs}\n---\n{body}"
+    path = skills_dir / filename
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Valid skill loading
+# ---------------------------------------------------------------------------
+
+
+class TestSkillLoading:
+    def test_valid_skill_loads(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "review.md", name="review")
+        registry = SkillRegistry(str(tmp_path))
+        assert "review" in registry.list()
+
+    def test_skill_name_from_frontmatter(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "something.md", name="custom_name")
+        registry = SkillRegistry(str(tmp_path))
+        assert "custom_name" in registry.list()
+
+    def test_skill_description_stored(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "s.md", name="skill_a", description="Does X")
+        registry = SkillRegistry(str(tmp_path))
+        assert registry.get("skill_a").description == "Does X"
+
+    def test_skill_inputs_stored(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "s.md", name="skill_b", inputs="[topic, style]")
+        registry = SkillRegistry(str(tmp_path))
+        assert registry.get("skill_b").inputs == ["topic", "style"]
+
+    def test_empty_dir_loads_empty(self, tmp_path: Path) -> None:
+        registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+    def test_nonexistent_dir_loads_empty(self, tmp_path: Path) -> None:
+        registry = SkillRegistry(str(tmp_path / "no_such_dir"))
+        assert registry.list() == []
+
+    def test_reload_picks_up_new_file(self, tmp_path: Path) -> None:
+        registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+        write_skill(tmp_path, "new.md", name="new_skill")
+        registry.reload()
+        assert "new_skill" in registry.list()
+
+
+# ---------------------------------------------------------------------------
+# Invalid skill names
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidSkillNames:
+    def test_uppercase_name_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.md").write_text(
+            "---\nname: BadName\ndescription: x\ninputs: []\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning, match="invalid skill name"):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+    def test_name_with_slash_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.md").write_text(
+            "---\nname: with/slash\ndescription: x\ninputs: []\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+    def test_name_with_space_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.md").write_text(
+            "---\nname: has space\ndescription: x\ninputs: []\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+    def test_empty_name_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.md").write_text(
+            "---\nname: \ndescription: x\ninputs: []\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+
+# ---------------------------------------------------------------------------
+# Invalid inputs
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidInputs:
+    def test_hyphenated_input_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "s.md").write_text(
+            "---\nname: skill_c\ndescription: x\ninputs: [foo-bar]\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning, match="invalid input name"):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+    def test_numeric_start_input_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "s.md").write_text(
+            "---\nname: skill_d\ndescription: x\ninputs: [1foo]\n---\nbody",
+            encoding="utf-8",
+        )
+        with pytest.warns(UserWarning):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+
+# ---------------------------------------------------------------------------
+# Duplicate names
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicateNames:
+    def test_duplicate_name_raises(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "a.md", name="dupe")
+        write_skill(tmp_path, "b.md", name="dupe")
+        with pytest.raises(ValueError, match="duplicate skill name"):
+            SkillRegistry(str(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# _split_frontmatter — line-anchored (LOW-2 regression guard)
+# ---------------------------------------------------------------------------
+
+
+class TestSplitFrontmatter:
+    def test_dashes_in_value_do_not_terminate(self, tmp_path: Path) -> None:
+        """A value containing '---' mid-line must NOT split the frontmatter."""
+        content = (
+            "---\n"
+            "name: tricky\n"
+            "description: value with --- inside it\n"
+            "inputs: []\n"
+            "---\n"
+            "body text"
+        )
+        (tmp_path / "tricky.md").write_text(content, encoding="utf-8")
+        registry = SkillRegistry(str(tmp_path))
+        skill = registry.get("tricky")
+        assert skill.description == "value with --- inside it"
+        assert skill.template == "body text"
+
+    def test_no_frontmatter_warns_and_skips(self, tmp_path: Path) -> None:
+        (tmp_path / "nofm.md").write_text("just body text, no frontmatter", encoding="utf-8")
+        with pytest.warns(UserWarning, match="missing or malformed frontmatter"):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []
+
+
+# ---------------------------------------------------------------------------
+# Non-recursive loading
+# ---------------------------------------------------------------------------
+
+
+class TestNonRecursiveLoading:
+    def test_subdir_md_not_loaded(self, tmp_path: Path) -> None:
+        sub = tmp_path / "subdir"
+        sub.mkdir()
+        write_skill(sub, "nested.md", name="nested_skill")
+        registry = SkillRegistry(str(tmp_path))
+        assert "nested_skill" not in registry.list()
+
+
+# ---------------------------------------------------------------------------
+# Skill.render — passthrough + missing input
+# ---------------------------------------------------------------------------
+
+
+class TestSkillRender:
+    def test_render_substitutes_declared(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "s.md", name="sk", inputs="[topic]", body="About {topic}.")
+        skill = SkillRegistry(str(tmp_path)).get("sk")
+        assert skill.render(topic="Python") == "About Python."
+
+    def test_render_missing_declared_input_raises(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "s.md", name="sk2", inputs="[topic]", body="About {topic}.")
+        skill = SkillRegistry(str(tmp_path)).get("sk2")
+        with pytest.raises(ValueError, match="missing inputs"):
+            skill.render()
+
+    def test_render_passthrough_unknown_tokens(self, tmp_path: Path) -> None:
+        """Unknown {tokens} in template must be left verbatim — CRIT-1 regression guard."""
+        write_skill(
+            tmp_path,
+            "s.md",
+            name="sk3",
+            inputs="[declared]",
+            body="{declared} and {undeclared}",
+        )
+        skill = SkillRegistry(str(tmp_path)).get("sk3")
+        result = skill.render(declared="X")
+        assert result == "X and {undeclared}"
+
+    def test_render_json_braces_preserved(self, tmp_path: Path) -> None:
+        """Literal doubled braces in template must survive round-trip."""
+        write_skill(
+            tmp_path,
+            "s.md",
+            name="sk4",
+            inputs="[topic]",
+            body='Example JSON: {{"key": "value"}} for {topic}.',
+        )
+        skill = SkillRegistry(str(tmp_path)).get("sk4")
+        result = skill.render(topic="test")
+        assert result == 'Example JSON: {"key": "value"} for test.'
