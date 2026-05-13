@@ -7,7 +7,7 @@ paginate: true
 <!-- _class: lead -->
 
 # Retail Decision Support
-## Adversarial Multi-Agent for Demand & Labor
+## Adversarial Multi-Agent across 8 Retail Workflows
 
 Technical · Design · Safety Reference
 
@@ -26,21 +26,26 @@ Technical · Design · Safety Reference
 
 # 1. Problem Context
 
-*Why adversarial multi-agent for retail operations?*
+*Why adversarial multi-agent for retail decisions?*
 
 ---
 
 ## The Scale Problem
 
-Retail operations decisions repeat at scale:
+Retail decisions at store-day-SKU resolution repeat at scale:
 
 | Decision | Frequency | Per-instance stake |
 |---|---|---|
 | Replenishment (per SKU × store × week) | ~40k SKUs × weekly | $10s–$100s spoilage / lost sales |
 | Labor schedule (per store × week) | Weekly | $1k–$10k payroll + compliance risk |
 | Promo / markdown | Weekly–monthly | $1k–$1M margin swing |
+| Loyalty offer | Weekly | $10k–$10M fairness + margin risk |
+| Supplier negotiation | Per renewal | $100k–$100M margin |
+| Inventory replenishment (per DC) | Weekly | $10k–$1M working capital |
+| Private-label launch | Per SKU | $100k–$100M category margin |
+| Recall scope | Per incident | Lives + brand + regulatory |
 
-A confident-but-wrong LLM at this scale silently compounds errors — spoilage in fresh, stockouts in dry, OT violations in labor, peak coverage gaps in service.
+A confident-but-wrong LLM at this scale silently compounds errors — spoilage, OT violations, segment-proxy fairness gaps, eroded supplier relationships, irreversible launches, under-scoped recalls.
 
 > Human review of every recommendation does not scale. Auditing the *recommendation engine* does.
 
@@ -51,97 +56,175 @@ A confident-but-wrong LLM at this scale silently compounds errors — spoilage i
 Two models from different families propose and challenge the same recommendation. Failures correlated within a model family are caught by the other:
 
 ```
-ForecastRequest / SchedulingRequest
+retail.*Request   (8 workflow variants)
   │
   ▼
 Executor (Claude Opus 4.7, adaptive thinking)
   │  produces evidence-grounded advisory brief
   ▼
-Reviewer (GPT-4o — different family, dual mandate)
-  │  1. Quality audit             (score 0–10)
-  │  2. Domain audit              (ASSUMPTION FLAGS / COMPLIANCE FLAGS)
+Reviewer (GPT-4o — different family, multi-mandate)
+  │  1. Quality audit                   (score 0–10)
+  │  2. Domain audit                    (1–3 flag classes per workflow)
+  │  3. Reviewer veto                   (recall only — irreversible-decision gate)
   ▼
-score ≥ threshold AND zero domain flags?
+score ≥ threshold AND zero domain flags AND no veto?
   YES → converged, return output
   NO  → executor revises (critique + flags injected)
          repeat until convergence or MAX_REVIEW_ROUNDS
 ```
 
-**Convergence criterion is dual:** quality gate *and* domain-specific gate — both must clear.
+**Convergence is a conjunction** — quality gate *and* every domain-flag class clear *and* no veto.
 
 ---
 
 <!-- _class: section -->
 
-# 2. Two Workflows, One Pattern
+# 2. Eight Workflows, One Pattern
 
-*Same recipe, different domain audit*
+*Same recipe, different domain audits*
 
 ---
 
 ## Pattern Parity
 
-Both retail workflows extend `BaseWorkflow` and mirror the parole pattern:
+```
+adv_multi_agent.retail.workflows/
+├── demand_forecasting.py         DemandForecastWorkflow + ForecastRequest
+├── labor_scheduling.py           LaborSchedulingWorkflow + SchedulingRequest
+├── recall_scope.py               RecallScopeWorkflow + RecallRequest
+├── loyalty_offer.py              LoyaltyOfferWorkflow + LoyaltyOfferRequest
+├── promo_markdown.py             PromoMarkdownWorkflow + PromoRequest
+├── supplier_brief.py             SupplierBriefWorkflow + SupplierBriefRequest
+├── inventory_replenishment.py    InventoryReplenishmentWorkflow + InventoryReplenishmentRequest
+└── private_label.py              PrivateLabelWorkflow + PrivateLabelRequest
+```
 
-| Aspect | DemandForecastWorkflow | LaborSchedulingWorkflow |
+Every workflow:
+- Extends `BaseWorkflow` from `core/`; inherits `_register_claims(output, round_num)`
+- Uses `extract_flags(critique, header)` from `core._internal` for sibling-header-safe parsing
+- Sanitises every free-text field via `sanitize_for_prompt(..., max_chars=6000)`
+- Appends a programmatic `_DISCLAIMER` advisory-only banner
+- Carries a `PRODUCTION_GAPS` docstring naming exactly what production deployment would require
+- Has 4–5 bundled skill templates and one synthetic-data example
+
+---
+
+## Workflow Inventory
+
+| Workflow | Gate Type | Convergence requires zero flags in |
 |---|---|---|
-| Input dataclass | `ForecastRequest` (10 fields) | `SchedulingRequest` (8 fields) |
-| Quality reviewer | Forecast grounding, risk balance, completeness, actionability | Coverage, cost efficiency, fairness, actionability |
-| Domain audit gate | `ASSUMPTION FLAGS` | `COMPLIANCE FLAGS` |
-| Failure mode caught | Confident but ungrounded seasonality / event adjustments | Labor-law violations hidden under good cost numbers |
-| Human checklist | Buyer checklist | Manager checklist |
-| Disclaimer (code-injected) | Not a purchase order | Not a published schedule |
+| `DemandForecastWorkflow` | Single | `ASSUMPTION FLAGS` |
+| `LaborSchedulingWorkflow` | Single | `COMPLIANCE FLAGS` |
+| `RecallScopeWorkflow` | Dual + veto | `SCOPE` + `EVIDENCE` + reviewer veto |
+| `LoyaltyOfferWorkflow` | Triple | `FAIRNESS` + `MARGIN` + `GAMING` |
+| `PromoMarkdownWorkflow` | Triple | `ELASTICITY` + `MARGIN` + `TIMING` |
+| `SupplierBriefWorkflow` | Triple | `BATNA` + `COST` + `RELATIONSHIP` |
+| `InventoryReplenishmentWorkflow` | Triple | `LEAD-TIME` + `STOCKOUT` + `CAPACITY` |
+| `PrivateLabelWorkflow` | Triple | `CANNIBALIZATION` + `BRAND` + `SUPPLY` |
 
-The pattern is identical. The audit gate is the domain-specific variable.
-
----
-
-## Workflow 1: Demand Forecasting
-
-```
-ForecastRequest
-  │  store_id, sku, product_category,
-  │  historical_sales (8 wk), current_inventory,
-  │  lead_time_days, upcoming_events,
-  │  seasonality_notes, weather_forecast,
-  │  unemployment_rate
-  ▼
-Executor: structured forecast brief
-  │  • Demand Signal Analysis
-  │  • 4-week unit Forecast (each adjustment justified)
-  │  • Replenishment Recommendation (qty + date + supplier)
-  │  • Key Assumptions, Evidence Gaps, Claims
-  ▼
-Reviewer: quality + ASSUMPTION FLAGS
-  │  Any seasonality / event / weather adjustment not
-  │  grounded in input data is flagged.
-  ▼
-Converge → output + buyer checklist + disclaimer
-```
+Five of eight workflows use the **triple-flag** gate pattern. Recall is the only workflow with a **reviewer-veto** channel for irreversible decisions.
 
 ---
 
-## Workflow 2: Labor Scheduling
+## Workflow 1 — Demand Forecasting
 
-```
-SchedulingRequest
-  │  store_id, week_start, projected_traffic,
-  │  staff_roster, labor_budget, local_events,
-  │  state_labor_law_notes, unemployment_rate
-  ▼
-Executor: structured schedule
-  │  • Day-by-day Schedule (named, role, start, end)
-  │  • Coverage Analysis (per peak window)
-  │  • Labor Cost Estimate (vs. budget)
-  │  • Compliance Notes, Fairness Notes
-  │  • Evidence Gaps, Claims
-  ▼
-Reviewer: quality + COMPLIANCE FLAGS
-  │  Every shift checked against stated labor-law rules:
-  │  OT threshold, break requirements, availability constraints.
-  ▼
-Converge → output + manager checklist + disclaimer
-```
+**`ForecastRequest`** consumes a sales-history narrative, a category context, weather/event signals, and a buyer's working hypothesis.
+
+**`ASSUMPTION FLAGS`** fire when the executor imports a seasonality / weather / event adjustment not grounded in the input data — the most common confident-but-wrong failure mode for LLM-assisted forecasting.
+
+**Output:** 4-week unit forecast with each adjustment named, justified, and traced to an input field; replenishment recommendation (order qty + order-by + delivery + supplier); evidence-gap callout; buyer checklist.
+
+---
+
+## Workflow 2 — Labor Scheduling
+
+**`SchedulingRequest`** consumes roster + availability + labor-law rules + traffic pattern + budget.
+
+**`COMPLIANCE FLAGS`** fire when any shift violates a stated rule — OT, breaks, minor-labor, predictive-scheduling, availability. The revision prompt tells the executor explicitly: *fix the violation, do not merely note it.*
+
+**Output:** day-by-day schedule with named assignments; coverage analysis by role; labor cost vs budget; per-rule pass/fail; fairness notes (hour distribution + availability honored); manager checklist.
+
+---
+
+## Workflow 3 — Food-Recall Scope
+
+**`RecallRequest`** consumes contamination signal, supplier lot, affected SKUs, distribution window, stores in scope, consumer exposure, regulatory context, and competing evidence.
+
+Three gates, all must clear:
+- **`SCOPE FLAGS`** — recall too narrow (missed lots/stores/dates) OR too broad (unjustified expansion)
+- **`EVIDENCE FLAGS`** — recall scoped without primary evidence (lab confirm, regulatory directive, traceable lot match)
+- **`REVIEWER VETO:`** — reviewer halts the loop on a life-safety condition (e.g. signal but no regulatory contact). Audit-trail writes happen *before* the veto break.
+
+**Output:** recall scope (lots, stores, dates); consumer-exposure assessment; regulatory-notification draft per 21 CFR Part 7; safety-officer checklist. On veto: draft + banner + `metadata["veto_reason"]` for safety-officer review.
+
+---
+
+## Workflow 4 — Loyalty / Personalization Offer
+
+**`LoyaltyOfferRequest`** consumes segment definition, offer proposal, historical response, margin floor, explicit `allowed_attributes` and `disallowed_attributes` lists, competing offers, and known gaming risk.
+
+Triple gate:
+- **`FAIRNESS FLAGS`** — segment criteria derived from a disallowed attribute or known proxy (ZIP→race, language preference→ethnicity)
+- **`MARGIN FLAGS`** — projected contribution margin below floor including cannibalization
+- **`GAMING FLAGS`** — exploit path with no mitigation
+
+`allowed_attributes` / `disallowed_attributes` are `list[str]` capped at 64 entries × 200 chars and routed through per-element `sanitize_for_prompt`.
+
+**Output:** segment definition, offer mechanic, margin math, gaming-path mitigations, success metric + kill criteria, CMO checklist.
+
+---
+
+## Workflow 5 — Promo / Markdown Optimization
+
+**`PromoRequest`** consumes SKU, category, current price, inventory, weeks-of-supply, competitor pricing, elasticity estimate with source, margin floor, promo window, and cannibalization risk.
+
+Triple gate:
+- **`ELASTICITY FLAGS`** — promo depth assumes elasticity not supported by the input (or extrapolates beyond the source's range)
+- **`MARGIN FLAGS`** — adverse-case net margin below floor including cannibalization
+- **`TIMING FLAGS`** — window collides with a concurrent campaign or major demand event without mitigation
+
+**Output:** elasticity assumption with source, promo mechanic, central + adverse-case margin math, timing-risk mitigations, success metric + kill criteria, category-manager + finance checklist.
+
+---
+
+## Workflow 6 — Supplier Negotiation Brief
+
+**`SupplierBriefRequest`** consumes supplier, category, current terms, target terms, volume history, alternatives, cost drivers, relationship context, and negotiation constraints.
+
+Triple gate:
+- **`BATNA FLAGS`** — no defensible alternative supplier identified, or alternatives hand-waved
+- **`COST FLAGS`** — buyer ask below defensible cost floor implied by `cost_drivers`
+- **`RELATIONSHIP FLAGS`** — proposed tactic damages a strategic supplier without explicit acknowledgement
+
+**Output:** BATNA assessment; cost-floor defence anchored in input-cost drivers; opening / landing / walk-away terms; concession order with paired asks; talking points keyed to anticipated supplier objections; buyer + finance + legal checklist.
+
+---
+
+## Workflow 7 — Inventory Replenishment
+
+**`InventoryReplenishmentRequest`** consumes DC ID, SKU list (on-hand + on-order), demand forecast, lead times (quoted + p90), safety-stock policy, DC capacity, truck economics, and supplier constraints.
+
+Distinct from `DemandForecastWorkflow`: turns a unit forecast into a per-DC per-SKU PO schedule across SKUs.
+
+Triple gate:
+- **`LEAD-TIME FLAGS`** — order ignores stated lead time or assumes future improvement
+- **`STOCKOUT FLAGS`** — projected on-hand drops below safety stock in planning window
+- **`CAPACITY FLAGS`** — order pattern exceeds DC capacity or supplier MOQ / case-pack / ship-day
+
+**Output:** per-SKU PO schedule, stockout projection (central + adverse), capacity check, truck economics, supply-planning + DC ops + sourcing checklist.
+
+---
+
+## Workflow 8 — Private-Label Decision
+
+**`PrivateLabelRequest`** consumes proposed SKU, target price, target cost, national-brand baseline, category margin, cannibalization estimate, brand positioning, QA protocol, and co-manufacturer audit + capacity.
+
+Triple gate:
+- **`CANNIBALIZATION FLAGS`** — total category margin drops despite higher per-unit private-label margin
+- **`BRAND FLAGS`** — positioning conflicts with house-brand identity or QA gap
+- **`SUPPLY FLAGS`** — co-manufacturer audit stale or capacity unproven
+
+**Output:** total-category-margin math (central + adverse), brand-fit assessment, supply-readiness verification, pricing stack, launch plan, category-management + brand + QA + sourcing checklist.
 
 ---
 
@@ -149,114 +232,126 @@ Converge → output + manager checklist + disclaimer
 
 # 3. Input Structure
 
-*Free-text, structured fields*
+*Free-text, structured fields, defensive caps*
 
 ---
 
-## ForecastRequest
+## *Request Dataclass Pattern
+
+Every workflow defines a per-workflow `*Request` dataclass:
 
 ```python
 @dataclass
-class ForecastRequest:
-    store_id:           str   # e.g. "KRO-OH-0042"
-    sku:                str
-    product_category:   str   # dairy, produce, beverages, ...
-    historical_sales:   str   # "Wk1:320 Wk2:310 ... Wk8:330"
-    current_inventory:  str   # on-hand + in-transit
-    lead_time_days:     str
-    upcoming_events:    str   # local events, holidays, promos
-    seasonality_notes:  str   # known patterns
-    weather_forecast:   str   # 2-week outlook
-    unemployment_rate:  str   # local rate + trend
+class PromoRequest:
+    sku: str
+    category: str
+    current_price: str
+    inventory_on_hand: str
+    weeks_of_supply: str
+    competitor_pricing: str
+    elasticity_estimate: str       # explicit source required
+    margin_floor: str
+    promo_window: str
+    cannibalization_risk: str
+
+    def to_prompt_text(self) -> str: ...
 ```
 
-**Free-text by design.** Caller integrates with POS, ERP, weather API, etc. and provides a synthesis. The workflow does not parse structured time-series — it reasons over the narrative.
+**Free-text by design.** Caller integrates with POS, ERP, pricing-science feeds, etc. and provides a synthesis. The workflow reasons over the narrative; it does not parse structured time series.
 
 ---
 
-## SchedulingRequest
+## Defence-in-Depth on Inputs
 
-```python
-@dataclass
-class SchedulingRequest:
-    store_id:                 str
-    week_start:               str   # ISO date (Monday)
-    projected_traffic:        str   # per-day + peak windows
-    staff_roster:             str   # names, roles, FT/PT, availability
-    labor_budget:             str   # weekly $ budget
-    local_events:             str   # foot-traffic shocks
-    state_labor_law_notes:    str   # OT, break, minor-labor rules
-    unemployment_rate:        str   # labor pool + wage pressure
-```
-
-**Caller responsibility:** translate HCM, traffic counter, and labor-law sources into the per-field narrative. The workflow consumes the narrative and reasons over constraints.
-
----
-
-## Input Quality Example
-
-| Raw operational data | Workflow input (good narrative) |
+| Layer | Mechanism |
 |---|---|
-| 8 rows of POS time-series | `"Wk1:320 Wk2:310 Wk3:335 Wk4:340 Wk5:315 Wk6:328 Wk7:342 Wk8:330"` |
-| 5 employee records + availability matrix | `"Alice Chen — cashier, FT, available all 7 days; Bob Torres — cashier, PT, unavailable Fri; ..."` |
-| State labor-law lookup table | `"Ohio: OT 1.5x >40h; 30-min break for shifts >6h; no minor restrictions (all staff 18+)"` |
-| NWS API response | `"Warm and dry next 14 days; highs 78–84°F; no precipitation forecast."` |
+| Per-field free-text cap | `sanitize_for_prompt(..., max_chars=6000)` on `request.to_prompt_text()` |
+| List-of-string fields | Capped at 64 entries × 200 chars each (loyalty `allowed_attributes` / `disallowed_attributes`) |
+| Revision-prompt context cap | `previous` output capped at 10k chars; critique at 4k; per-suggestion at 500 chars |
+| Veto-text containment (recall) | `REVIEWER VETO:` directive stripped of control chars, capped at `Config.max_wiki_body_chars`, stored in metadata only — never replayed into a later prompt |
+| Wiki context cap | `wiki.context_for_round` enforces total-char budget with fences |
+| Claim text cap | `ClaimLedger` raises `ValueError` past `Config.max_claim_text_chars` |
 
-> Free-text inputs make the workflow easy to wire up — and easy to misuse. Input quality is item #1 in the production-readiness checklist.
+Caller-supplied free-text is the primary injection surface; every boundary has a cap.
 
 ---
 
 <!-- _class: section -->
 
-# 4. The Two Audit Gates
+# 4. The Three Gate Patterns
 
-*What makes adversarial in retail*
-
----
-
-## ASSUMPTION FLAGS (Demand)
-
-The executor must ground every forecast adjustment in input data. The reviewer flags any unsupported adjustment:
-
-| Adjustment | Grounded? | Flag? |
-|---|---|---|
-| "Memorial Day lifts dairy ~15% based on historical holiday patterns" | Generic claim, not in `seasonality_notes` | ⚠️ FLAG |
-| "Memorial Day lifts dairy ~8% per seasonality_notes which state 6–10% May–Aug" | Cites input field | ✓ Pass |
-| "Promo reduces unit volume ~5%" | No explicit promo elasticity in input | ⚠️ FLAG |
-| "Weather has negligible impact — dairy demand is weather-insensitive" | Generic; not justified from input | ⚠️ FLAG |
-| "Weather warm and dry per weather_forecast; dairy demand is in-line with baseline" | Cites input field | ✓ Pass |
-
-**Convergence requires zero flags.** Executor must either remove the adjustment or replace it with input-grounded evidence.
+*Single-flag, triple-flag, reviewer-veto*
 
 ---
 
-## COMPLIANCE FLAGS (Labor)
+## Pattern A — Single-Flag Gate (demand, labor)
 
-The executor must satisfy every stated labor-law rule. The reviewer flags any violation:
+```
+score ≥ threshold AND zero ASSUMPTION FLAGS    # demand
+score ≥ threshold AND zero COMPLIANCE FLAGS    # labor
+```
 
-| Schedule line | State law (stated) | Flag? |
-|---|---|---|
-| `Alice 9-6 (cash)` (9 hrs) | "30-min break for shifts >6h" | ⚠️ FLAG (no break noted) |
-| `Alice 9-6 with 30-min break 1-1:30` | Same rule | ✓ Pass |
-| `Bob 11-7 Fri (cash)` | Roster: "Bob unavailable Friday" | ⚠️ FLAG |
-| `Alice total: 42h` | "OT 1.5x >40h" — over threshold | ⚠️ FLAG |
-| `Alice total: 40h` exact | Same rule | ✓ Pass |
+Used by the two pre-sweep workflows. The flag class is a single domain audit folded into the same reviewer that scores quality.
 
-**Convergence requires zero flags.** The revision prompt explicitly tells the executor: *fix the violation, do not merely note it.*
+**When it's enough:** one domain failure mode dominates the risk; quality + that one audit clear the bar.
 
 ---
 
-## Why "Fix, Not Note"
+## Pattern B — Triple-Flag Gate (loyalty, promo, supplier, inventory, private-label)
 
-A common LLM failure mode: when challenged, the model adds a caveat instead of changing the recommendation:
+```
+score ≥ threshold
+  AND zero FLAGS-class-1
+  AND zero FLAGS-class-2
+  AND zero FLAGS-class-3
+```
 
-| Reviewer flag | Bad executor revision | Good executor revision |
-|---|---|---|
-| "Bob scheduled on stated unavailable day" | "Note: Bob is unavailable Fri — manager should verify" | Remove Bob from Fri; add Alice or Eve |
-| "Alice scheduled 42h (exceeds 40h OT threshold)" | "Note: Alice schedule includes 2h overtime" | Reduce Alice to 40h; redistribute 2h to PT staff |
-| "Seasonality lift unsubstantiated" | "Note: seasonality factor is an estimate" | Remove the lift; reforecast at baseline |
+Used by five workflows. Independent flag classes capture distinct failure modes:
+- **Loyalty:** fairness × margin × gaming
+- **Promo:** elasticity × margin × timing
+- **Supplier:** BATNA × cost × relationship
+- **Inventory:** lead-time × stockout × capacity
+- **Private-label:** cannibalization × brand × supply
 
-The revision prompts are written to force action, not commentary. Tests verify both the revision behavior and the flag-extraction logic.
+**Convergence is the conjunction.** A high-scoring brief with one flag class unresolved does not converge — the executor must remove or ground every flagged item.
+
+---
+
+## Pattern C — Reviewer Veto (recall only)
+
+```
+After flag extraction:
+  audit-trail writes (wiki.add_feedback, claim ledger) happen FIRST
+  if REVIEWER VETO: present → halt loop, converged=False
+  else if approved AND zero flags → converged=True
+  else → revise
+```
+
+Used by `RecallScopeWorkflow`. The veto channel lets the reviewer halt regardless of score on a life-safety condition.
+
+**Why audit-trail-before-veto:** the safety officer must see what was vetoed and why. A rollback would lose the draft. The output keeps the draft + banner + `metadata["veto_reason"]`; the loop exits with `converged=False`.
+
+**Tests cover:** veto with high score (score 9 + veto → not converged); veto with flags (both captured); no veto (normal path unchanged).
+
+---
+
+## Shared Helpers (D-RETAIL-2 checkpoint)
+
+After three triple-flag workflows shipped, helpers were lifted into shared modules:
+
+```python
+# core/_internal.py
+def extract_flags(critique: str, header: str) -> list[str]:
+    """Sibling-header-safe parser. Stops at Overall / Key issues /
+    inline UPPERCASE header / markdown #. Recognises None / None
+    detected / n/a as empty markers."""
+
+# core/workflow.py — BaseWorkflow
+def _register_claims(self, output: str, round_num: int) -> None:
+    """Parses ## Claims section, dedupes, registers into self.ledger."""
+```
+
+**No shared base class.** D-RETAIL-2 keeps each workflow's banner text, metadata keys, and checklist items inline — divergence per scenario is large enough that a base class would require config-dict injection that costs more than it saves.
 
 ---
 
@@ -264,30 +359,28 @@ The revision prompts are written to force action, not commentary. Tests verify b
 
 # 5. Skill Templates
 
-*The catalogue of named reasoning patterns*
+*25 bundled retail skills*
 
 ---
 
-## 9 Bundled Retail Skills
+## Skill Inventory
 
 ```
 src/adv_multi_agent/retail/skills/templates/
-
-  Demand (5):
-    demand_signal.md             — baseline + trend + variance
-    demand_seasonality_audit.md  — challenge seasonality assumptions
-    demand_stockout_risk.md      — stockout vs. overstock tradeoff
-    demand_weather_impact.md     — weather-driven demand adjustment
-    demand_unemployment_rate.md  — consumer spending signal
-
-  Labor (4):
-    labor_schedule_draft.md      — draft schedule from roster + traffic
-    labor_compliance_check.md    — verify against stated labor law
-    labor_coverage_audit.md      — peak-hour coverage audit
-    labor_unemployment_rate.md   — staffing pool + wage pressure
+├── demand_*               (5)  signal, seasonality, weather, unemployment, stockout-risk
+├── labor_*                (4)  coverage, compliance, draft, unemployment
+├── recall_*               (5)  scope, lot-traceability, consumer-exposure,
+│                               regulatory, communications-draft
+├── loyalty_*              (4)  segment-audit, fairness, margin, gaming
+├── promo_*                (4)  elasticity, margin-math, cannibalization, timing
+├── supplier_*             (4)  batna, cost-floor, relationship, brief-draft
+├── replenishment_*        (4)  lead-time, stockout, capacity, truck-economics
+└── private_label_*        (4)  cannibalization, brand-fit, qa-check, pricing
 ```
 
-Loadable via the same MCP server as research/parole. Each is a `.md` with YAML frontmatter, validated by `SkillRegistry`.
+**25 retail skill templates total**, prefixed with the scenario noun (D-RETAIL-3).
+
+**Bundled inside the wheel** — `SkillRegistry.bundled_skills_path(domain='retail')` works for pip-installed users. (Latent regression caught in PR #13: retail templates were missing from `package-data`; fixed.)
 
 ---
 
@@ -295,25 +388,26 @@ Loadable via the same MCP server as research/parole. Each is a `.md` with YAML f
 
 ```markdown
 ---
-name: demand_signal
-description: Analyse historical sales signal and compute baseline weekly run rate
-inputs: [historical_sales, product_category, store_id]
+name: promo_elasticity_audit
+description: Audit a proposed elasticity assumption against the
+  supplied evidence; flag any default-elasticity import not
+  present in inputs
+inputs: [sku, category, current_price, elasticity_estimate]
 ---
-You are a demand analyst. Analyse the historical sales data below and
-produce a baseline demand signal.
+You are a pricing analyst auditing an elasticity claim ...
 
-Store: {store_id}
-Category: {product_category}
-Historical sales (8 weeks): {historical_sales}
+1. **Source check** — ...
+2. **Range check** — ...
+3. **Extrapolation check** — ...
+4. **Category-fit check** — ...
 
-Compute:
-1. Average weekly run rate
-2. Trend (rising/flat/falling)
-3. Coefficient of variation
-4. Anomalies (>20% deviation)
+Output format:
+- Source verdict: [Primary / Borrowed / Unsupported]
+- ELASTICITY FLAGS to surface to reviewer: [bullet list, or "None"]
+- Required validation before launch: [...]
 ```
 
-**Same registry, same loader, same MCP server.** New domains add `.md` files; no code changes to the registry.
+Each skill is a named reasoning pattern with input slots, structured analysis steps, and a structured output format that maps to a flag class.
 
 ---
 
@@ -321,19 +415,16 @@ Compute:
 
 ```bash
 # Register retail skill catalog with Claude Code
-SKILLS_DOMAIN=retail claude mcp add adv-multi-agent-retail \
-    -- python -m adv_multi_agent.core.skills.mcp_server
+claude mcp add adv-multi-agent-skills -- \
+  python -m adv_multi_agent.core.skills.mcp_server
 
 # Same binary supports research, parole, retail via SKILLS_DOMAIN env
+SKILLS_DOMAIN=retail python -m adv_multi_agent.core.skills.mcp_server
 ```
 
-Available tools after registration:
-- `list_skills` — names of all bundled skills
-- `describe_skills` — names + descriptions
-- `get_skill` — render the template
-- `render_skill` — fill `{tokens}` with caller inputs
+**4 MCP tools** exposed: `list_skills`, `describe_skills`, `get_skill`, `render_skill`. stdio transport.
 
-Skills are inert text until rendered — no execution surface.
+**Same registry, same loader, same MCP server** for all three domains. New domains add `.md` files; no code changes.
 
 ---
 
@@ -341,47 +432,46 @@ Skills are inert text until rendered — no execution surface.
 
 # 6. Output Surface
 
-*What the buyer / manager receives*
+*What the decision-maker receives*
 
 ---
 
-## Demand: Buyer Checklist
+## Approver Checklist Pattern (every workflow)
 
-After convergence, the workflow returns `result.metadata["buyer_checklist"]`:
+Every workflow returns `metadata["approver_checklist"]` — a list of human-action items the decision-maker must complete before acting:
 
 ```
-[ ] Verify historical sales data for SKU-88210-MILK2PCT in store KRO-OH-0042
-[ ] Confirm upcoming events and promotion dates are current
-[ ] Cross-check weather forecast against latest NWS data
-[ ] Validate lead time with supplier before placing order
-[ ] Review forecast against category manager's weekly guidance
-[ ] Approve replenishment order — AI output must not trigger auto-ordering
+[ ] ⚠️  CANNIBALIZATION FLAGS DETECTED (2) — category management
+    must re-validate total-category-margin against the household-
+    basket substitution model before any launch commitment
+[ ] Category-management review of cannibalization math for SKU-PL-COFFEE-12oz
+[ ] Brand leadership sign-off: positioning coheres with house-brand identity
+[ ] QA sign-off: testing protocol + recall readiness + regulatory compliance
+[ ] Sourcing sign-off: co-manufacturer audit current AND capacity proven
+[ ] No co-manufacturer commitment or shelf-set update without human review
 ```
 
-If any `ASSUMPTION FLAGS` were raised during iteration (even if resolved), a prepended warning row prompts re-verification of the resolution.
+Per-flag-class callouts appear conditionally (only when that flag class has accumulated entries). Baseline review items always appear.
 
 ---
 
-## Labor: Manager Checklist
+## Metadata Surface
 
-After convergence, the workflow returns `result.metadata["manager_checklist"]`:
-
-```
-[ ] Verify staff availability for week of 2026-05-18
-[ ] Confirm all shifts comply with state labor law requirements
-[ ] Check total hours per employee against OT threshold
-[ ] Verify budget: total estimated cost vs. approved labor budget
-[ ] Review peak coverage for projected high-traffic periods
-[ ] Publish schedule — AI output must not go directly to employees
-```
-
-If any `COMPLIANCE FLAGS` were raised during iteration, a prepended warning row prompts re-verification of every flagged rule.
+| Key | Type | Source |
+|---|---|---|
+| `<workflow-specific id>` (e.g. `sku`, `supplier_name`, `dc_id`, `proposed_sku`) | `str` | Request field — for caller correlation |
+| `<flag_class>_flags` (e.g. `elasticity_flags`, `batna_flags`, `cannibalization_flags`) | `list[str]` | Accumulated across rounds, deduplicated |
+| `approver_checklist` | `list[str]` | Built per-workflow including conditional flag callouts |
+| `disclaimer` | `str` | The injected advisory-only banner text |
+| `ledger_summary` | `dict` | `ClaimLedger.summary()` — `total` + per-status counts |
+| `veto_reason` (recall only) | `str` | Verbatim reviewer-veto directive, sanitised + capped |
+| `vetoed` (recall only) | `bool` | True only when reviewer veto triggered |
 
 ---
 
 ## Programmatic Disclaimer
 
-Both workflows append a disclaimer in **code**, not in a prompt template:
+Every workflow appends `_DISCLAIMER` to `output` in code, not in a prompt template:
 
 ```python
 return WorkflowResult(
@@ -390,13 +480,9 @@ return WorkflowResult(
 )
 ```
 
-```
-⚠️  ADVISORY ONLY — This AI-generated forecast is not a purchase order.
-A human buyer must review all assumptions independently and approve any
-replenishment action. AI output must never trigger automated ordering.
-```
+The disclaimer text varies by domain (recall mentions safety officer + 21 CFR Part 7; loyalty mentions CMO + fairness; supplier mentions buyer + finance + legal; etc.) but the **injection mechanism is identical** — the model cannot omit, edit, or suppress it via prompt content.
 
-The disclaimer cannot be removed by prompt injection or model output. It is added after the model call.
+The same pattern is used for the recall veto banner: `⚠️  REVIEWER VETO — see metadata["veto_reason"]` is injected on the veto code path, never rendered by the model.
 
 ---
 
@@ -410,33 +496,31 @@ The disclaimer cannot be removed by prompt injection or model output. It is adde
 
 ## Inherited Safety Properties
 
-`DemandForecastWorkflow` and `LaborSchedulingWorkflow` inherit from `BaseWorkflow`. All `core/` security properties apply unchanged:
+All eight retail workflows extend `BaseWorkflow`. Every security property from `core/` carries over unchanged:
 
-| Property | Source | Behavior |
-|---|---|---|
-| API key redaction | `Config` `__repr__` / `safe_dict()` | Keys never appear in logs or repr |
-| Path sandboxing | `safe_resolve_path` | All workspace files under `workspace_dir/` |
-| Atomic persistence | `_internal.atomic_write` | Ledger + wiki writes are temp+fsync+rename |
-| Prompt sanitization | `sanitize_for_prompt` | All caller-supplied text fenced before injection |
-| Same-family warning | `Config.__post_init__` | UserWarning if executor + reviewer are same provider |
-| Skill name validation | `SkillRegistry` | Regex + size cap, symlink rejection |
-
-> Adding a domain does not expand the security surface. The domain inherits everything the core already guarantees.
+| Property | Mechanism |
+|---|---|
+| API keys redacted from `repr` / logs | `Config.__repr__`, `safe_dict()` |
+| Path traversal blocked | `safe_resolve_path` asserts every persistence path under `workspace_dir` |
+| Atomic writes | `atomic_write_text` (mkstemp + fsync + replace) |
+| Score-injection blocked | `parse_first_json_or` (raw_decode from first `{`/`[`); `coerce_score` clamps to `[0, 10]` |
+| Self-improvement auto-adoption blocked | Caller must call `wiki.approve_improvement(id, human_reviewer_id=...)` explicitly (M1 API break) |
+| Wiki replay injection blocked | `context_for_round` excludes IMPROVEMENT kind, wraps entries in fences, sanitises, enforces budget |
+| Claim text unbounded | `ClaimLedger._bound()` raises past `Config.max_claim_text_chars`; deduplicates |
+| Long-running API calls | All clients constructed with `timeout=Config.request_timeout_seconds` |
 
 ---
 
 ## Domain-Specific Properties
 
-| Property | Demand | Labor |
-|---|---|---|
-| Domain flag extractor | `_extract_assumption_flags` | `_extract_compliance_flags` |
-| Convergence gate | `score ≥ threshold AND not assumption_flags` | `score ≥ threshold AND not compliance_flags` |
-| Revision verb | "remove or ground" | "fix, do not note" |
-| Disclaimer text | "Not a purchase order" | "Not a published schedule" |
-| Checklist key | `metadata["buyer_checklist"]` | `metadata["manager_checklist"]` |
-| Metadata flag key | `metadata["assumption_flags"]` | `metadata["compliance_flags"]` |
-
-The pattern parity is intentional — adding a third retail workflow (markdown optimization, supplier negotiation) follows the same recipe.
+| Property | Where |
+|---|---|
+| `*Request.to_prompt_text()` sanitised at boundary | Every retail workflow, `sanitize_for_prompt(..., max_chars=6000)` |
+| `list[str]` fields capped | `LoyaltyOfferRequest.allowed_attributes` / `disallowed_attributes` — 64 × 200 |
+| Reviewer-veto containment | `RecallScopeWorkflow._extract_veto` strips control chars, caps at `max_wiki_body_chars`, metadata-only |
+| Triple-flag dict tracking | `current` / `accumulated` dicts keyed by flag header — no flag-class collision |
+| Audit-trail-before-veto | `wiki.add_feedback` + `_register_claims` run BEFORE veto check (recall) |
+| Conditional checklist callouts | Per-flag-class callouts only when that flag class has entries; baseline items always present |
 
 ---
 
@@ -448,33 +532,20 @@ The pattern parity is intentional — adding a third retail workflow (markdown o
 
 ---
 
-## Demand — PRODUCTION_GAPS
+## Gaps by Class (rolled up across 8 workflows)
 
-| Gap | Why it matters |
-|---|---|
-| Live POS data integration | `historical_sales` is free-text; production requires store transaction system feed |
-| Actuarial demand baseline | ML model (Prophet, LightGBM) should anchor the forecast; LLM adjusts the residual, not the baseline |
-| Supplier API integration | `lead_time_days` should come from EDI / supplier API in real time |
-| Cost model | Stockout and overstock costs from actual margin + spoilage data, not qualitative assessment |
-| Buyer approval gate enforced in code | Replenishment must not be placed automatically |
-| Dedicated third-model assumption auditor | Single-stage reviewer folds quality + assumption audit; ARIS §3.1 specifies a three-stage cascade. Production needs a separately configured auditor (different family from BOTH executor and reviewer) |
-
-Listed verbatim in `demand_forecasting.py` module docstring. The library does not pretend to be a replenishment system; it is a reasoning scaffold.
-
----
-
-## Labor — PRODUCTION_GAPS
-
-| Gap | Why it matters |
-|---|---|
-| HCM integration | `staff_roster` is free-text; production requires HR / scheduling system feed for real availability |
-| Automated labor-law lookup by jurisdiction | `state_labor_law_notes` is caller-supplied; production needs a rules database |
-| Shift-swap and time-off handling | Not modeled here — production schedulers handle approvals and pickup |
-| Payroll system write-back | Schedule must not auto-publish; downstream payroll integration is out of scope |
-| Manager approval gate enforced in code | Schedule must not go directly to employees |
-| Dedicated third-model compliance auditor | Legal interpretation of statutes by a single LLM is not defensible. ARIS §3.1 specifies a three-stage cascade; production needs a separately configured compliance auditor model |
-
-Listed verbatim in `labor_scheduling.py` module docstring. The library is a teaching example — not a workforce-management product.
+| Gap class | Affects | What's needed |
+|---|---|---|
+| Live data feeds | All 8 | POS / HCM / WMS / ERP / supplier portals; weather / unemployment / commodity / freight / FX indices |
+| Structured forecast | Demand, inventory | Prophet / LightGBM baseline; LLM adjusts the residual, not the baseline |
+| Jurisdictional rule library | Labor, recall | Per-jurisdiction labor law (OT, breaks, minor-labor, predictive-scheduling), recall protocols (21 CFR Part 7, USDA, state) |
+| Cost-driver feed | Supplier | Commodity indices, freight benchmarks, FX where relevant |
+| Alternative-supplier registry | Supplier | Vetted backup-supplier registry with capacity, audit status, quoted unit cost |
+| Co-manufacturer audit registry | Private-label | Last-audit-date + capacity + recall-readiness per vendor |
+| Household-basket model | Loyalty, promo, private-label | Substitution matrix per SKU-pair — replaces narrated cannibalization rates |
+| Brand-equity instrument | Private-label | Consumer panel or syndicated brand-equity feed for positioning fit |
+| Third-model auditor cascade | All 8 (ARIS §3.1) | Separately configured auditor per high-stakes flag class |
+| Human approval gate in code | All 8 | Orders / schedules / POs / proposals / launches must NOT auto-publish |
 
 ---
 
@@ -490,25 +561,29 @@ Listed verbatim in `labor_scheduling.py` module docstring. The library is a teac
 
 | Property | Status |
 |---|---|
-| `DemandForecastWorkflow` + tests | ✅ Complete (11 unit tests) |
-| `LaborSchedulingWorkflow` + tests | ✅ Complete (11 unit tests) |
-| 9 retail skill templates | ✅ Complete |
-| Examples with synthetic Kroger data | ✅ Complete |
-| Spec + plan in repo | ✅ Complete |
-| Live operational integration | ❌ PRODUCTION_GAP |
-| Pilot study | ❌ Not started |
-
-Test suite total: 203 tests (160 research + 21 parole + 22 retail). All green. mypy strict. ruff clean.
+| 8 retail workflows | ✅ Complete (demand, labor, recall, loyalty, promo, supplier, inventory, private-label) |
+| 25 retail skill templates (5 + 4 + 5 + 4 + 4 + 4 + 4 + 4) | ✅ Complete |
+| Single-flag, triple-flag, and reviewer-veto patterns | ✅ Complete |
+| Shared helpers (`extract_flags`, `_register_claims`) | ✅ Complete (D-RETAIL-2 checkpoint, PR #16) |
+| 8 retail examples (`examples/retail/*.py`) | ✅ Complete |
+| 300 unit + integration tests | ✅ All passing |
+| Design doc + locked decisions (D-RETAIL-1..6) | ✅ Complete |
+| Live data integration adapters | ❌ PRODUCTION_GAP |
+| Actuarial baselines (forecast, cannibalization, elasticity) | ❌ PRODUCTION_GAP |
+| Jurisdictional rule library | ❌ PRODUCTION_GAP |
+| Third-model auditor cascade (ARIS §3.1) | ❌ PRODUCTION_GAP |
+| Human approval gate enforced in code | ❌ PRODUCTION_GAP |
+| Append-only audit store | ❌ PRODUCTION_GAP |
 
 ---
 
 ## Who It Is For
 
-**Retail data and operations teams** evaluating LLM augmentation for replenishment and scheduling. The convergence gates and ledger provide a structured audit trail.
+**Retail data, operations, commercial, and safety teams** evaluating LLM augmentation across the decision surface. Each workflow's `PRODUCTION_GAPS` checklist names exactly what integration work is required before a pilot.
 
-**Engineering teams** adding a new domain. The retail domain is the second reference implementation after parole — together they show the recipe for any high-stakes, data-rich domain.
+**Engineering teams** adding a new domain. Retail is the second reference implementation after parole; together they show the recipe for any high-stakes, data-rich domain. With the helper-extraction checkpoint in tree, the recipe is even cleaner for the third domain.
 
-**Researchers** studying cross-model adversarial pairs in operational decisions where ground truth is observable post-hoc (forecast accuracy, compliance violations).
+**Researchers** studying cross-model adversarial pairs in operational decisions where ground truth is observable post-hoc (forecast accuracy, compliance violations, post-promo lift, recall completeness, supplier-negotiation outcome, launch-period total-category-margin delta).
 
 ---
 
@@ -516,12 +591,13 @@ Test suite total: 203 tests (160 research + 21 parole + 22 retail). All green. m
 
 | Action | Owner | Notes |
 |---|---|---|
-| POS / HCM integration adapters | Engineering | Replace free-text inputs with system feeds |
-| Actuarial demand baseline | Data Science | LLM provides residual adjustments |
-| Labor-law rule library | Legal + Engineering | Per-jurisdiction OT, break, minor-labor, predictive-scheduling |
-| External signal feeds | Engineering | NWS weather, BLS unemployment, holiday calendar |
-| Order / schedule approval gate | Engineering | Code-enforced human sign-off |
-| Pilot study | Operations | Single store, single category, 4-week shadow run before production |
+| Integration adapters (POS / HCM / WMS / ERP / supplier portals) | Engineering | Replace free-text inputs with live feeds |
+| Actuarial baselines + cannibalization model | Data Science | LLM provides residual adjustments, not the baseline |
+| Jurisdictional rule library | Legal + Engineering | Per-jurisdiction labor + ESG + compliance + recall rules |
+| Co-manufacturer + supplier audit registry | Sourcing + QA + Engineering | Structured last-audit + capacity + recall-readiness per vendor |
+| External signal feeds | Engineering | Weather, unemployment, commodity / freight / FX indices |
+| Human approval gate in code | Engineering | Block auto-publish on orders / schedules / POs / launches |
+| Pilot studies | Operations + Commercial | Single category, single DC, single store — 4-week shadow run per workflow before production |
 
 ---
 
@@ -533,25 +609,15 @@ Test suite total: 203 tests (160 research + 21 parole + 22 retail). All green. m
 
 ## Citation
 
-The design pattern this library implements:
+If you use this work, please cite the underlying research:
 
-> Yang, R., Li, Y., & Li, S. (2026). *ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration*. arXiv:2605.03042. Shanghai Jiao Tong University; Shanghai Innovation Institute.
-> [https://arxiv.org/abs/2605.03042](https://arxiv.org/abs/2605.03042)
+> Yang, R., Li, Y., & Li, S. (2026). *ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration*. arXiv:2605.03042. Shanghai Jiao Tong University · Shanghai Innovation Institute.
 
-```bibtex
-@article{yang2026aris,
-  title   = {ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration},
-  author  = {Yang, Ruofeng and Li, Yongcan and Li, Shuai},
-  journal = {arXiv preprint arXiv:2605.03042},
-  year    = {2026}
-}
-```
+The eight retail workflows are domain adaptations of the ARIS executor + cross-family-reviewer loop. Veto, triple-flag-gate, and helper-extraction patterns are project-specific extensions over the ARIS baseline; see `docs/decisions.md` D-RETAIL-1..6.
 
-**All workflows in this library are domain adaptations of the ARIS executor + cross-family-reviewer loop. If you use this work, please cite the underlying research.**
-
-ARIS project page: [github.com/wanshuiyin/Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)
-
-See `CITATION.cff` in the repo root for machine-readable citation metadata.
+**Design doc:** `docs/retail-sweep-design.md` (APPROVED — advisor 2026-05-13)
+**Decisions:** `docs/decisions.md`
+**Examples:** `examples/retail/{demand_forecasting,labor_scheduling,recall_scope,loyalty_offer,promo_markdown,supplier_brief,inventory_replenishment,private_label}.py`
 
 ---
 
@@ -559,11 +625,12 @@ See `CITATION.cff` in the repo root for machine-readable citation metadata.
 
 # Thank you
 
-Questions?
+&nbsp;
+
+**Install:** `pip install adv-multi-agent`
+
+**MCP server (retail skills):** `SKILLS_DOMAIN=retail claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.mcp_server`
 
 &nbsp;
 
-Repo: github.com/gmanch94/adv-multi-agent
-Brief: docs/retail-executive-brief.md
-Spec: docs/superpowers/specs/2026-05-13-retail-domain-design.md
-Citation: CITATION.cff
+*All workflows are advisory-only. A qualified human retains full decision-making authority over every output.*
