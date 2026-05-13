@@ -1,26 +1,25 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (end of session — retail domain shipped via PR #2 + #3 merged; three-domain library complete)
+Last updated: 2026-05-13 (end of session — security audit closeout shipped via PRs #5 + #7 + #9; #8 closed as superseded)
 
 ---
 
 ## Current state
 
-**All phases complete + three-domain library shipped.** Production-ready and pip-installable.
+**All phases complete + three-domain library shipped + 2026-05-13 security audit closed.** Production-ready and pip-installable.
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: clean on `main` (or about to be — see below). 203 tests. 30 skill templates (15 research + 6 parole + 9 retail). 3 domains. `CITATION.cff` in repo root.
+Local: clean on `main`. **222 tests** (was 203 pre-audit; +19 from hardening). 30 skill templates. 3 domains. `CITATION.cff` in repo root.
 
-### What shipped this session
+### What shipped this session (security audit closeout)
 
-- **`src/adv_multi_agent/retail/`** — `DemandForecastWorkflow` (ASSUMPTION FLAGS gate), `LaborSchedulingWorkflow` (COMPLIANCE FLAGS gate); 9 skill templates; `examples/retail/demand_forecasting.py` + `examples/retail/labor_scheduling.py`
-- **Spec + plan** — `docs/superpowers/specs/2026-05-13-retail-domain-design.md`, `docs/superpowers/plans/2026-05-13-retail-domain.md`
-- **Domain artifacts** — `docs/retail-executive-brief.md`, `docs/retail_slides.md` (Marp, uses `adv-slides` theme), `docs/scenarios.md` (domain-grouped scenario tracker)
-- **Doc refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md`, `docs/deployment-architecture.md`, `docs/decisions.md` (D9 added), `docs/NEXT_SESSION.md`
-- **ARIS attribution** — `CITATION.cff` (machine-readable, GitHub renders "Cite this repository" button); README citation section with BibTeX; retail module docstrings cite Yang/Li/Li + arXiv:2605.03042; slides have dedicated References slide
-- **Cascade-gap disclosure** — both retail modules document the single-stage-reviewer simplification of ARIS §3.1 three-stage cascade in PRODUCTION_GAPS (production should use a separately configured third-model auditor)
-- **Hygiene** — `.claude/` gitignored (local Claude Code permissions cache)
-- **Merged PRs** — #2 (retail domain + initial docs), #3 (cascade-gap doc + ARIS attribution + `.claude/` gitignore)
+- **Audit + remediation matrix** — `docs/security-audits/2026-05-13.md` (full audit report); `docs/security-audits/2026-05-13-remediation.md` (status of every finding)
+- **PR #5** — HIGH H1/H2/H5/H6 (pre-sprint): wiki body sanitize-on-write, convergence requires non-empty critique, id charset validation with regen-on-invalid, `parse_first_json` 64 KiB cap
+- **PR #7** — HIGH H3/H4 + MED M2/M4/M5: `Skill.render` input bounding + ctrl-char strip (MCP DoS), claims-per-round cap, corrupt-load `UserWarning`, Anthropic block-text type guard
+- **PR #9** — MED M1/M6/M7/M8/M10 + LOW L2/L5/L6/L7/L8/L10: `wiki.approve_improvement` audit trail (`human_reviewer_id` required), `~` warning, YAML duplicate-key + balanced-quote, deps prune (`aiofiles`, `rich` removed), ISO timestamp validation, `SKILLS_DOMAIN` allowlist, `redact_secret` set/unset-leak fix, `scripts/check_no_secrets.py`, editor notes sanitize, MCP docstring warning
+- **PR #8** — closed as superseded (duplicate of #5/#7 from leftover branch)
+- **Not actionable / accepted** — M3 (false positive: `_save` is sync), M9 (OpenAI has no effort knob), L1 (`"Understood. Ready."` is standard pattern), L3 (intentional editor/orchestrator split), L9 (audit misread `in (tuple)` as substring)
+- **Cleanup** — stray `.commit-msg.txt` from PR #5 commit-message file removed
 
 ### Out-of-repo artifacts (local only)
 
@@ -72,10 +71,12 @@ examples/
 
 ## What still needs doing
 
-1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
-2. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
-3. **Production gap closure for retail** — see PRODUCTION_GAPS in `demand_forecasting.py` / `labor_scheduling.py` if anyone wants to pilot: live POS / HCM integration, actuarial baseline, third-model auditor (ARIS §3.1 cascade), approval gates, append-only audit store.
-4. **Future domains** — `docs/scenarios.md` lists candidates: retail commercial (promo, supplier, private label), retail customer (loyalty), retail safety (recall), healthcare, finance, legal, HR.
+1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only. Note: `aiofiles` + `rich` removed from deps in PR #9 — wheel is smaller.
+2. **Wire `scripts/check_no_secrets.py` into CI** — currently local-only. Add to GitHub Actions or pre-commit.
+3. **API break to document in CHANGELOG** — `wiki.approve_improvement(id)` / `reject_improvement(id)` now require `human_reviewer_id` kwarg (M1). Any external caller must update.
+4. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
+5. **Production gap closure for retail** — see PRODUCTION_GAPS in `demand_forecasting.py` / `labor_scheduling.py` if anyone wants to pilot: live POS / HCM integration, actuarial baseline, third-model auditor (ARIS §3.1 cascade), approval gates, append-only audit store.
+6. **Future domains** — `docs/scenarios.md` lists candidates: retail commercial (promo, supplier, private label), retail customer (loyalty), retail safety (recall), healthcare, finance, legal, HR.
 
 ---
 
