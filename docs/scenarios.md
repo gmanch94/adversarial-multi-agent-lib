@@ -61,7 +61,7 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 | Scenario | Status | Notes |
 |---|---|---|
-| Food safety / recall scope | candidate | Executor assesses contamination risk + recall boundaries; reviewer challenges scope. Reviewer veto highest-stakes use case |
+| Food safety / recall scope | **built** | RecallScopeWorkflow — reviewer-veto gate (D-RETAIL-1); SCOPE + EVIDENCE flags; synthetic Listeria example |
 
 ---
 

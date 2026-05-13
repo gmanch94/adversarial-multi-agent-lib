@@ -11,6 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **Retail: food-recall scope workflow** (`adv_multi_agent.retail.RecallScopeWorkflow` + `RecallRequest`) — introduces the **reviewer-veto** pattern (D-RETAIL-1): reviewer may emit `REVIEWER VETO:` to halt the loop regardless of score. Dual flag gate: `SCOPE FLAGS` + `EVIDENCE FLAGS`. Five skill templates (`recall_scope_audit`, `recall_lot_traceability`, `recall_consumer_exposure`, `recall_regulatory_check`, `recall_communications_draft`). Example at `examples/retail/recall_scope.py`.
+- Six decision-log entries `D-RETAIL-1..6` documenting the retail sweep conventions (veto pattern, no shared base class, skill-prefix scheme, examples policy, synthetic-data-only, test convention).
 - `adv_multi_agent.skills.mcp_server` — FastMCP server exposing `SkillRegistry` as MCP tools
   (`list_skills`, `describe_skills`, `get_skill`, `render_skill`); stdio transport; `[mcp]` optional dep;
   `SKILLS_DOMAIN` env var allowlist (`research` / `parole` / `retail`)
@@ -43,8 +45,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `aiofiles` and `rich` dropped from runtime dependencies — neither was used; wheel is smaller.
 
+### Fixed
+
+- `pyproject.toml` — `adv_multi_agent.retail.skills` now declared in `[tool.setuptools.package-data]`. Previously retail skill templates were excluded from the built wheel, so `SkillRegistry.bundled_skills_path("retail")` worked from source tree but broke pip-installed users.
+
 ### Security
 
+- `RecallScopeWorkflow._extract_veto` strips control chars and caps the veto directive at `Config.max_wiki_body_chars`. Veto stored in `metadata['veto_reason']` only — never replayed into a later prompt.
+- All retail `*Request` dataclasses route free-text fields through `sanitize_for_prompt(..., max_chars=6000)`.
 - Pre-sprint hardening (PR #5, HIGH): wiki body sanitize-on-write; convergence requires non-empty
   critique; id charset validation with regen-on-invalid; `parse_first_json` 64 KiB cap
 - MCP DoS hardening (PR #7, HIGH + MEDIUM): `Skill.render` input bounding + control-char strip;
