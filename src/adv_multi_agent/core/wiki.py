@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import warnings
 from dataclasses import dataclass, field, asdict, fields
 from datetime import datetime, timezone
 from enum import Enum
@@ -244,7 +245,14 @@ class ResearchWiki:
             if not raw_text.strip():
                 return
             data = json.loads(raw_text)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            # M4: warn instead of silent-skip so corruption/tampering is visible.
+            warnings.warn(
+                f"ResearchWiki load failed for {self._path}: {exc!r}; "
+                f"starting fresh",
+                UserWarning,
+                stacklevel=2,
+            )
             return
         entries_dict = data.get("entries", {}) if isinstance(data, dict) else {}
         if not isinstance(entries_dict, dict):

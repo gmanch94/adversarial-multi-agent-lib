@@ -206,6 +206,16 @@ class TestLedgerLoad:
         ledger = ClaimLedger(str(path))
         assert ledger.all() == []
 
+    def test_m4_corrupt_json_emits_warning(self, tmp_path: Path) -> None:
+        """M4: silent corrupt-load erased audit trail without trace."""
+        import warnings
+        path = tmp_path / "ledger.json"
+        path.write_text("not valid json", encoding="utf-8")
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ClaimLedger(str(path))
+            assert any("load failed" in str(rec.message) for rec in w)
+
     def test_valid_json_wrong_shape_starts_empty(self, tmp_path: Path) -> None:
         path = tmp_path / "ledger.json"
         path.write_text(json.dumps([1, 2, 3]), encoding="utf-8")

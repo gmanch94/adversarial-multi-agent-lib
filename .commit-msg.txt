@@ -1,35 +1,34 @@
-fix(security): pre-sprint hardening H1 H2 H5 H6
+fix(security): MEDIUM hardening M2 M4 M5
 
-Targets the four HIGH findings from docs/security-audits/2026-05-13.md
-that affect the core adversarial-loop invariants. Fixes applied at
-chokepoints (per advisor) so future workflow authors cannot reintroduce
-the same bug shape.
+Targets three MEDIUM findings from docs/security-audits/2026-05-13.md.
 
-H1 (idea_discovery indirect injection): sanitize_for_prompt now runs
-inside wiki.add() on title+body, plus survey directions sanitized
-before reviewer prompt. Persisted bodies cannot smuggle control chars
-into any downstream read path.
+M2 (unbounded claim-line count -> ledger explosion): cap claims
+registered per round at 200 in AutoReviewLoop._extract_and_register_claims.
+Adversarial executor emitting 10k "## Claims" lines no longer fills
+the disk via per-add atomic save. Legitimate rounds emit < 50.
 
-H2 (convergence forgery via first-JSON-wins): ReviewerAgent.review()
-now requires len(critique.strip()) >= 20 in addition to score >=
-threshold for approved=True. REVIEW_SYSTEM prompt updated to ask the
-reviewer for substantive critique. Behavioral change: a reviewer
-returning {"score": 10} with no critique no longer triggers
-convergence (the adversarial loop must actually engage).
+M4 (silent corrupt-file load erases audit trail): ClaimLedger._load
+and ResearchWiki._load now emit UserWarning before starting fresh.
+Operator can see corruption/tampering instead of audit trail vanishing
+silently. Workflow still continues to avoid hard-failing the run.
 
-H5 (forged ledger/wiki ids inject into reviewer prompts): added
-is_safe_id() validator (^[A-Za-z0-9_-]{1,64}$); Claim.from_dict and
-WikiEntry.from_dict regenerate a fresh uuid when a loaded id fails
-the charset check (preserves backward compat with pre-existing
-ledger/wiki files).
+M5 (no type guard on Anthropic block.text): _extract_anthropic_text
+defensively coerces non-string text values via str() in case of
+future SDK changes. Prevents latent TypeError on SDK upgrade.
 
-H6 (parse_first_json O(N^2) on adversarial input): cap input length
-at 64KiB; legitimate reviewer responses never exceed this.
+Skipped from this batch:
+- M1 (wiki approve_improvement caller-identity gate): architectural,
+  needs design discussion. Python class-method protection is
+  convention-only; meaningful enforcement requires a session token
+  or capability pattern.
+- M3 (async lock on _save): false positive. _save is sync, so
+  Python's GIL/coroutine semantics already serialize. No race.
+- M9 (EffortLevel for OpenAI reviewer): OpenAI chat.completions has
+  no direct effort knob; documentation fix more than code fix.
 
-Tests: +12 new unit tests covering all four; full suite 203 -> 215
-passing. No new lint/mypy errors (baseline preserved).
+Tests: +2 unit tests (M2 claim cap, M4 ledger warning). 218 -> 220
+passing. No new lint/mypy errors vs baseline.
 
-Out of scope (in-sprint or backlog): H3/H4 MCP DoS, all MEDIUM/LOW
-findings. See docs/security-audits/2026-05-13.md.
+Stacks on fix/security-hardening-mcp-dos (PR #6).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>

@@ -74,7 +74,12 @@ def _extract_anthropic_text(message: anthropic.types.Message) -> str:
     parts: list[str] = []
     for block in message.content:
         if block.type == "text":
-            parts.append(block.text)
+            # M5: guard against future SDK changes returning non-string `.text`.
+            text = getattr(block, "text", "")
+            if isinstance(text, str):
+                parts.append(text)
+            else:
+                parts.append(str(text))
     return "\n".join(parts)
 
 

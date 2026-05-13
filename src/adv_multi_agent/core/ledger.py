@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import warnings
 from dataclasses import dataclass, field, asdict, fields
 from datetime import datetime, timezone
 from enum import Enum
@@ -201,8 +202,16 @@ class ClaimLedger:
             if not raw_text.strip():
                 return
             data = json.loads(raw_text)
-        except (OSError, json.JSONDecodeError):
-            # Corrupt or unreadable file — start fresh; do not crash the workflow.
+        except (OSError, json.JSONDecodeError) as exc:
+            # M4: do not silently erase the audit trail. Warn so a corrupted
+            # or tampered ledger is visible to the operator. Workflow still
+            # continues with a fresh state to avoid hard-failing the run.
+            warnings.warn(
+                f"ClaimLedger load failed for {self._path}: {exc!r}; "
+                f"starting fresh (audit trail may be incomplete)",
+                UserWarning,
+                stacklevel=2,
+            )
             return
         claims_dict = data.get("claims", {}) if isinstance(data, dict) else {}
         if not isinstance(claims_dict, dict):
