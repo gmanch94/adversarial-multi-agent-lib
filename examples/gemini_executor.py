@@ -25,7 +25,7 @@ import asyncio
 
 from adv_multi_agent.core.config import Config, EffortLevel, ExecutorProvider, ReviewerProvider
 from adv_multi_agent.core.agents import ExecutorAgent
-from adv_multi_agent.workflows.review_loop import AutoReviewLoop
+from adv_multi_agent.research.workflows.review_loop import AutoReviewLoop
 
 TASK = """\
 Write a 300-word abstract for a research paper on the following topic:

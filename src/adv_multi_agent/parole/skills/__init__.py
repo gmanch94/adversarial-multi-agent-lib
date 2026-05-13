@@ -1,0 +1,1 @@
+"""Parole skill templates package."""

@@ -14,9 +14,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..core._internal import parse_first_json_or
-from ..core.agents import ExecutorAgent, ReviewerAgent
-from ..core.config import Config
+from ...core._internal import parse_first_json_or
+from ...core.agents import ExecutorAgent, ReviewerAgent
+from ...core.config import Config
 
 # Rough upper bound to keep pass prompts inside the 1M-token context window
 # with comfortable headroom. ~4 chars/token → 200K chars ≈ 50K tokens per pass.

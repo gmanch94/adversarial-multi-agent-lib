@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..core.wiki import EntryKind
-from .base import BaseWorkflow, WorkflowResult
+from ...core.wiki import EntryKind
+from ...core.workflow import BaseWorkflow, WorkflowResult
 
 SURVEY_PROMPT = """\
 You are conducting a focused literature survey on the following topic.

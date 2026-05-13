@@ -9,13 +9,16 @@ get_skill        — full details: description, required inputs, raw template
 render_skill     — fill a skill template with caller-supplied inputs
 
 Run (stdio, for use with Claude Code):
-    python -m adv_multi_agent.skills.mcp_server
+    python -m adv_multi_agent.core.skills.mcp_server
 
 Custom skills directory:
-    SKILLS_DIR=/path/to/skills python -m adv_multi_agent.skills.mcp_server
+    SKILLS_DIR=/path/to/skills python -m adv_multi_agent.core.skills.mcp_server
+
+Custom domain (research or parole):
+    SKILLS_DOMAIN=parole python -m adv_multi_agent.core.skills.mcp_server
 
 Register with Claude Code:
-    claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.skills.mcp_server
+    claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.mcp_server
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ except ImportError as exc:
         "Install with: pip install 'adv-multi-agent[mcp]'"
     ) from exc
 
-from adv_multi_agent.skills.registry import SkillRegistry
+from adv_multi_agent.core.skills.registry import SkillRegistry
 
 # ---------------------------------------------------------------------------
 # Registry (lazy singleton — loaded on first tool call)
@@ -46,7 +49,8 @@ def _get_registry() -> SkillRegistry:
         if skills_dir:
             _registry = SkillRegistry(skills_dir)
         else:
-            _registry = SkillRegistry(str(SkillRegistry.bundled_skills_path()))
+            domain = os.getenv("SKILLS_DOMAIN", "research")
+            _registry = SkillRegistry(str(SkillRegistry.bundled_skills_path(domain)))
     return _registry
 
 

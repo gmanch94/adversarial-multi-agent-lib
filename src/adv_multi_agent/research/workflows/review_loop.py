@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..core._internal import sanitize_for_prompt
-from .base import BaseWorkflow, WorkflowResult
+from ...core._internal import sanitize_for_prompt
+from ...core.workflow import BaseWorkflow, WorkflowResult
 
 
 REVISION_PROMPT = """\

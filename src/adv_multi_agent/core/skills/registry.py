@@ -222,8 +222,12 @@ class SkillRegistry:
         self._load()
 
     @staticmethod
-    def bundled_skills_path() -> Path:
-        """Return the path to the bundled skill templates installed with this package."""
-        # importlib.resources.files() returns a real path for both editable and wheel
-        # installs (setuptools extracts package_data to site-packages on wheel install).
-        return Path(str(importlib.resources.files("adv_multi_agent.skills").joinpath("templates")))
+    def bundled_skills_path(domain: str = "research") -> Path:
+        """Return the path to the bundled skill templates for the given domain.
+
+        Args:
+            domain: Use-case domain — ``"research"`` (default) or ``"parole"``.
+                    Maps to ``adv_multi_agent.<domain>.skills.templates``.
+        """
+        pkg = f"adv_multi_agent.{domain}.skills"
+        return Path(str(importlib.resources.files(pkg).joinpath("templates")))

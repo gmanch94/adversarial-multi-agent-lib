@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 
 from adv_multi_agent.core.config import Config, EffortLevel
-from adv_multi_agent.workflows.review_loop import AutoReviewLoop
+from adv_multi_agent.research.workflows.review_loop import AutoReviewLoop
 
 
 TASK = """\

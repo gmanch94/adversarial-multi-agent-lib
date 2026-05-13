@@ -9,7 +9,7 @@ from adv_multi_agent.core.agents import ReviewResult
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
 from adv_multi_agent.core.wiki import ResearchWiki
-from adv_multi_agent.workflows.review_loop import AutoReviewLoop
+from adv_multi_agent.research.workflows.review_loop import AutoReviewLoop
 
 from .fakes import FakeExecutor, FakeReviewer
 

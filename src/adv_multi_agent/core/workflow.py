@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..core.agents import ExecutorAgent, ReviewerAgent
-from ..core.config import Config
-from ..core.ledger import ClaimLedger
-from ..core.wiki import ResearchWiki
+from .agents import ExecutorAgent, ReviewerAgent
+from .config import Config
+from .ledger import ClaimLedger
+from .wiki import ResearchWiki
 
 
 @dataclass

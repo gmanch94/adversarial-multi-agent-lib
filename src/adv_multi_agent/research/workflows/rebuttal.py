@@ -19,9 +19,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..core._internal import parse_first_json_or, sanitize_for_prompt
-from ..core.wiki import EntryKind
-from .base import BaseWorkflow, WorkflowResult
+from ...core._internal import parse_first_json_or, sanitize_for_prompt
+from ...core.wiki import EntryKind
+from ...core.workflow import BaseWorkflow, WorkflowResult
 
 
 TRIAGE_PROMPT = """\

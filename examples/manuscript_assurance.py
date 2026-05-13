@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 
 from adv_multi_agent.core.config import Config, EffortLevel
-from adv_multi_agent.workflows.manuscript_assurance import ManuscriptAssurance
+from adv_multi_agent.research.workflows.manuscript_assurance import ManuscriptAssurance
 
 
 TASK = """\

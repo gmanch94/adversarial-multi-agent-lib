@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from adv_multi_agent.skills.registry import SkillRegistry
+from adv_multi_agent.core.skills.registry import SkillRegistry
 
 
 # ---------------------------------------------------------------------------

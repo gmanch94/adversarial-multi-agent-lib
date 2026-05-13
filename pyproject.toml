@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-adv-multi-agent-skills = "adv_multi_agent.skills.mcp_server:main"
+adv-multi-agent-skills = "adv_multi_agent.core.skills.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/gmanchaiah/adv-multi-agent-products"
@@ -61,7 +61,8 @@ Issues = "https://github.com/gmanchaiah/adv-multi-agent-products/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"adv_multi_agent.skills" = ["templates/*.md"]
+"adv_multi_agent.research.skills" = ["templates/*.md"]
+"adv_multi_agent.parole.skills" = ["templates/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

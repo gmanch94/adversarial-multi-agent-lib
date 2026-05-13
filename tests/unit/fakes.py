@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from adv_multi_agent.assurance.editor import EditingReport, ScientificEditor
-from adv_multi_agent.assurance.verifier import ClaimVerifier, VerificationReport
 from adv_multi_agent.core.agents import ExecutorAgent, ReviewerAgent, ReviewResult
-from adv_multi_agent.workflows.base import WorkflowResult
-from adv_multi_agent.workflows.review_loop import AutoReviewLoop
+from adv_multi_agent.core.workflow import WorkflowResult
+from adv_multi_agent.research.assurance.editor import EditingReport, ScientificEditor
+from adv_multi_agent.research.assurance.verifier import ClaimVerifier, VerificationReport
+from adv_multi_agent.research.workflows.review_loop import AutoReviewLoop
 
 
 class FakeExecutor(ExecutorAgent):

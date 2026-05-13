@@ -6,13 +6,13 @@ from typing import Any
 
 from pytest import approx as pytest_approx
 
-from adv_multi_agent.assurance.editor import EditingReport
-from adv_multi_agent.assurance.verifier import VerificationReport
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
 from adv_multi_agent.core.wiki import ResearchWiki
-from adv_multi_agent.workflows.base import WorkflowResult
-from adv_multi_agent.workflows.manuscript_assurance import ManuscriptAssurance, _EDITOR_MAX_CHARS
+from adv_multi_agent.core.workflow import WorkflowResult
+from adv_multi_agent.research.assurance.editor import EditingReport
+from adv_multi_agent.research.assurance.verifier import VerificationReport
+from adv_multi_agent.research.workflows.manuscript_assurance import ManuscriptAssurance, _EDITOR_MAX_CHARS
 
 from .fakes import FakeEditor, FakeLoop, FakeVerifier
 

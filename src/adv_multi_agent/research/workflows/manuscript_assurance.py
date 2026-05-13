@@ -22,13 +22,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...core.agents import ExecutorAgent, ReviewerAgent
+from ...core.config import Config
+from ...core.ledger import ClaimLedger
+from ...core.wiki import ResearchWiki
+from ...core.workflow import BaseWorkflow, WorkflowResult
 from ..assurance.editor import ScientificEditor
 from ..assurance.verifier import ClaimVerifier, VerificationReport
-from ..core.config import Config
-from ..core.agents import ExecutorAgent, ReviewerAgent
-from ..core.ledger import ClaimLedger
-from ..core.wiki import ResearchWiki
-from .base import BaseWorkflow, WorkflowResult
 from .review_loop import AutoReviewLoop
 
 # Must match ScientificEditor._MAX_INPUT_CHARS — kept local so callers can

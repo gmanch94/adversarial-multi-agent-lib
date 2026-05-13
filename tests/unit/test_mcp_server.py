@@ -1,5 +1,5 @@
 """
-Smoke tests for adv_multi_agent.skills.mcp_server.
+Smoke tests for adv_multi_agent.core.skills.mcp_server.
 
 Skips automatically when the `mcp` package is not installed.
 All tests are synchronous — they call the tool functions directly,
@@ -12,7 +12,7 @@ import json
 import pytest
 
 mcp_mod = pytest.importorskip(
-    "adv_multi_agent.skills.mcp_server",
+    "adv_multi_agent.core.skills.mcp_server",
     reason="mcp package not installed; skipping MCP server tests",
 )
 

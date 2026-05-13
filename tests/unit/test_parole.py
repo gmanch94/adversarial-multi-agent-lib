@@ -15,7 +15,7 @@ from adv_multi_agent.core.agents import ReviewResult
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
 from adv_multi_agent.core.wiki import ResearchWiki
-from adv_multi_agent.workflows.parole import (
+from adv_multi_agent.parole.workflows.parole import (
     ParoleAssessmentWorkflow,
     ParoleCase,
     _DISCLAIMER,

@@ -33,7 +33,7 @@ import asyncio
 import textwrap
 
 from adv_multi_agent.core.config import Config, EffortLevel, ExecutorProvider, ReviewerProvider
-from adv_multi_agent.workflows.parole import ParoleAssessmentWorkflow, ParoleCase
+from adv_multi_agent.parole.workflows.parole import ParoleAssessmentWorkflow, ParoleCase
 
 # ---------------------------------------------------------------------------
 # Synthetic case — fictional, for illustration only
