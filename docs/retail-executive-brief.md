@@ -94,6 +94,7 @@ Neither workflow places an order, publishes a schedule, integrates with POS / HC
 | Automated labor-law lookup by jurisdiction | ❌ PRODUCTION_GAP — rules are caller-supplied |
 | Buyer / manager approval gate enforced in code | ❌ PRODUCTION_GAP — orders / schedules must not auto-publish |
 | Append-only audit store | ❌ PRODUCTION_GAP — session-local JSON only |
+| Dedicated third-model assumption / compliance auditor | ❌ PRODUCTION_GAP — single-stage reviewer folds quality + domain audit; ARIS §3.1 specifies three-stage cascade; production needs a separately configured auditor model |
 
 ## Who It Is For
 

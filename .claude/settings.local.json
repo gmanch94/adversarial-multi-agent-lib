@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__lean-ctx__ctx_tree",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_search"
+    ]
+  }
+}

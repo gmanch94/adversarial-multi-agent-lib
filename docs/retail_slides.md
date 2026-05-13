@@ -453,6 +453,7 @@ The pattern parity is intentional — adding a third retail workflow (markdown o
 | Supplier API integration | `lead_time_days` should come from EDI / supplier API in real time |
 | Cost model | Stockout and overstock costs from actual margin + spoilage data, not qualitative assessment |
 | Buyer approval gate enforced in code | Replenishment must not be placed automatically |
+| Dedicated third-model assumption auditor | Single-stage reviewer folds quality + assumption audit; ARIS §3.1 specifies a three-stage cascade. Production needs a separately configured auditor (different family from BOTH executor and reviewer) |
 
 Listed verbatim in `demand_forecasting.py` module docstring. The library does not pretend to be a replenishment system; it is a reasoning scaffold.
 
@@ -467,6 +468,7 @@ Listed verbatim in `demand_forecasting.py` module docstring. The library does no
 | Shift-swap and time-off handling | Not modeled here — production schedulers handle approvals and pickup |
 | Payroll system write-back | Schedule must not auto-publish; downstream payroll integration is out of scope |
 | Manager approval gate enforced in code | Schedule must not go directly to employees |
+| Dedicated third-model compliance auditor | Legal interpretation of statutes by a single LLM is not defensible. ARIS §3.1 specifies a three-stage cascade; production needs a separately configured compliance auditor model |
 
 Listed verbatim in `labor_scheduling.py` module docstring. The library is a teaching example — not a workforce-management product.
 

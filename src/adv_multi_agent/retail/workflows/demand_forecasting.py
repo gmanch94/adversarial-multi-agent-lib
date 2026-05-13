@@ -17,6 +17,13 @@ PRODUCTION_GAPS:
        actual margin and spoilage data, not qualitative assessment.
     5. Buyer approval gate — the replenishment order must not be placed
        automatically. A human buyer must review and confirm.
+    6. Dedicated third-model assumption auditor — this workflow folds the
+       assumption audit into the same reviewer that scores quality (single-
+       stage), which differs from the ARIS three-stage assurance cascade
+       (experiment-audit → result-to-claim → paper-claim-audit). A
+       production system should use a separately configured model (different
+       family from BOTH executor and reviewer) whose only job is to flag
+       unsubstantiated assumptions. See ARIS §3.1.
 """
 from __future__ import annotations
 
