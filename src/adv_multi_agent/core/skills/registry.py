@@ -204,8 +204,21 @@ class SkillRegistry:
         return fm, body
 
     @staticmethod
+    def _strip_balanced_quotes(value: str) -> str:
+        """M8: strip a single matched pair of surrounding quotes, not arbitrary
+        leading/trailing quote chars. `'a"b'` -> `a"b`. `"hi"` -> `hi`. `a"b`
+        stays `a"b` (no balanced wrapper)."""
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            return value[1:-1]
+        return value
+
+    @staticmethod
     def _parse_simple_yaml(text: str) -> dict[str, Any]:
-        """Minimal YAML: string scalars and inline lists. Single-line values only."""
+        """Minimal YAML: string scalars and inline lists. Single-line values only.
+
+        M7: duplicate keys raise instead of silently overwriting.
+        M8: quote stripping is balanced (matched pair only).
+        """
         result: dict[str, Any] = {}
         for line in text.splitlines():
             line = line.rstrip()
@@ -219,11 +232,17 @@ class SkillRegistry:
             value = value.strip()
             if not key:
                 continue
+            if key in result:
+                raise ValueError(f"duplicate key in skill frontmatter: {key!r}")
             if value.startswith("[") and value.endswith("]"):
-                items = [v.strip().strip("'\"") for v in value[1:-1].split(",") if v.strip()]
+                items = [
+                    SkillRegistry._strip_balanced_quotes(v.strip())
+                    for v in value[1:-1].split(",")
+                    if v.strip()
+                ]
                 result[key] = items
             else:
-                result[key] = value.strip("'\"")
+                result[key] = SkillRegistry._strip_balanced_quotes(value)
         return result
 
     # ------------------------------------------------------------------

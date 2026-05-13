@@ -131,26 +131,26 @@ class TestImprovementApproval:
     def test_approve_sets_approved_true(self, tmp_path: Path) -> None:
         wiki = make_wiki(tmp_path)
         eid = wiki.add_improvement("do something", round_num=1)
-        wiki.approve_improvement(eid)
+        wiki.approve_improvement(eid, human_reviewer_id="test-human")
         assert wiki.get(eid).approved is True
 
     def test_reject_sets_approved_false(self, tmp_path: Path) -> None:
         wiki = make_wiki(tmp_path)
         eid = wiki.add_improvement("do something", round_num=1)
-        wiki.reject_improvement(eid)
+        wiki.reject_improvement(eid, human_reviewer_id="test-human")
         assert wiki.get(eid).approved is False
 
     def test_approve_non_improvement_raises(self, tmp_path: Path) -> None:
         wiki = make_wiki(tmp_path)
         eid = wiki.add(EntryKind.NOTE, title="note", body="body")
         with pytest.raises(ValueError, match="not an improvement"):
-            wiki.approve_improvement(eid)
+            wiki.approve_improvement(eid, human_reviewer_id="test-human")
 
     def test_pending_improvements_only_unset(self, tmp_path: Path) -> None:
         wiki = make_wiki(tmp_path)
         eid1 = wiki.add_improvement("prop A", round_num=1)
         eid2 = wiki.add_improvement("prop B", round_num=1)
-        wiki.approve_improvement(eid1)
+        wiki.approve_improvement(eid1, human_reviewer_id="test-human")
 
         pending = wiki.pending_improvements()
         assert len(pending) == 1
@@ -159,10 +159,30 @@ class TestImprovementApproval:
     def test_approved_improvements_list(self, tmp_path: Path) -> None:
         wiki = make_wiki(tmp_path)
         eid = wiki.add_improvement("prop", round_num=1)
-        wiki.approve_improvement(eid)
+        wiki.approve_improvement(eid, human_reviewer_id="test-human")
         approved = wiki.approved_improvements()
         assert len(approved) == 1
         assert approved[0].id == eid
+
+    def test_m1_empty_reviewer_id_raises(self, tmp_path: Path) -> None:
+        wiki = make_wiki(tmp_path)
+        eid = wiki.add_improvement("prop", round_num=1)
+        with pytest.raises(ValueError, match="human_reviewer_id"):
+            wiki.approve_improvement(eid, human_reviewer_id="")
+        with pytest.raises(ValueError, match="human_reviewer_id"):
+            wiki.approve_improvement(eid, human_reviewer_id="   ")
+        with pytest.raises(ValueError, match="human_reviewer_id"):
+            wiki.reject_improvement(eid, human_reviewer_id="")
+
+    def test_m1_audit_trail_persisted(self, tmp_path: Path) -> None:
+        wiki = make_wiki(tmp_path)
+        eid = wiki.add_improvement("prop", round_num=1)
+        wiki.approve_improvement(eid, human_reviewer_id="alice@example.com")
+        entry = wiki.get(eid)
+        assert entry.approved is True
+        assert entry.approved_by == "alice@example.com"
+        assert entry.approved_at is not None
+        assert "T" in entry.approved_at  # ISO format
 
 
 # ---------------------------------------------------------------------------

@@ -238,7 +238,7 @@ SKILLS_DOMAIN=retail claude mcp add adv-multi-agent-retail -- python -m adv_mult
 - **Executor** — `claude-opus-4-7` with `thinking: {type: "adaptive"}` and configurable `effort`. Gemini 2.5 Pro supported via `[gemini]` extra. Uses `.messages.stream()` context manager throughout.
 - **Reviewer** — GPT-4o by default. Set `REVIEWER_PROVIDER=anthropic` for a same-family pairing (less adversarial, no OpenAI key required). Same-family raises a `UserWarning` at construction.
 - **Claim ledger** — append-only JSON, persisted after each mutation. 3-stage verifier resolves `PENDING → SUPPORTED / DISPUTED / RETRACTED`.
-- **Wiki** — shared knowledge store across workflow runs. Self-improvement proposals require explicit human approval: `wiki.approve_improvement(id)`.
+- **Wiki** — shared knowledge store across workflow runs. Self-improvement proposals require explicit human approval: `wiki.approve_improvement(id, human_reviewer_id="alice")` (M1: name persisted as audit trail).
 - **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). 30 bundled templates (15 research + 6 parole + 9 retail). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
 
 ---

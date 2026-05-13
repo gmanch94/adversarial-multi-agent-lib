@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ...core._internal import parse_first_json_or
+from ...core._internal import parse_first_json_or, sanitize_for_prompt
 from ...core.agents import ExecutorAgent, ReviewerAgent
 from ...core.config import Config
 
@@ -183,11 +183,13 @@ class ScientificEditor:
     def _parse_spot_check(raw: str) -> dict[str, Any]:
         data = parse_first_json_or(raw, default={})
         if not isinstance(data, dict):
+            # L8: reviewer output is potentially attacker-influenced — strip
+            # control chars before persisting into the report metadata.
             return {
                 "introduced_errors": [],
                 "flags_needing_attention": [],
                 "readability_improved": True,
-                "notes": raw[:200],
+                "notes": sanitize_for_prompt(raw, max_chars=200),
             }
         return data
 

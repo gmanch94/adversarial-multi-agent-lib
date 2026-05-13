@@ -109,10 +109,9 @@ def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None
 def redact_secret(value: str) -> str:
     """
     Return a fixed-shape redaction of a secret. Never returns any portion
-    of the original — full opacity. Empty/unset secrets are reported as such.
+    of the original — full opacity. L6: empty/unset secrets return the
+    same token as set ones to avoid leaking presence/absence via logs.
     """
-    if not value:
-        return "<unset>"
     return "<redacted>"
 
 

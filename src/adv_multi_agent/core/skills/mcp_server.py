@@ -19,6 +19,14 @@ Custom domain (research or parole):
 
 Register with Claude Code:
     claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.mcp_server
+
+Security note (L10)
+-------------------
+This entry point launches an unauthenticated stdio MCP server. It is intended
+to be spawned by a trusted parent process (Claude Code, an IDE plugin, a
+local script). Do NOT register the global console script in shared shells
+where an untrusted process could invoke it and read `.md` files from an
+attacker-controlled `SKILLS_DIR` / CWD.
 """
 from __future__ import annotations
 
@@ -42,6 +50,12 @@ from adv_multi_agent.core.skills.registry import SkillRegistry
 _registry: SkillRegistry | None = None
 
 
+# L5: explicit allowlist of bundled-skill domains. An arbitrary SKILLS_DOMAIN
+# string is fed to importlib.resources; bounding to known domains avoids
+# surprises if a future caller types an unexpected value.
+_ALLOWED_DOMAINS = frozenset({"research", "parole", "retail"})
+
+
 def _get_registry() -> SkillRegistry:
     global _registry
     if _registry is None:
@@ -50,6 +64,11 @@ def _get_registry() -> SkillRegistry:
             _registry = SkillRegistry(skills_dir)
         else:
             domain = os.getenv("SKILLS_DOMAIN", "research")
+            if domain not in _ALLOWED_DOMAINS:
+                raise ValueError(
+                    f"SKILLS_DOMAIN={domain!r} not in allowlist "
+                    f"{sorted(_ALLOWED_DOMAINS)}"
+                )
             _registry = SkillRegistry(str(SkillRegistry.bundled_skills_path(domain)))
     return _registry
 
