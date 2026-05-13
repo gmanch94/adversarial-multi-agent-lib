@@ -179,6 +179,19 @@ class Config:
                 f"score_threshold={self.score_threshold} out of range [0.0, 10.0]"
             )
 
+        # M6: warn if workspace_dir contains ~ expansions — common footgun when
+        # callers accept paths from untrusted config. safe_resolve_path will
+        # honor the expansion; the warning surfaces it to the operator.
+        if isinstance(self.workspace_dir, str) and "~" in self.workspace_dir:
+            import warnings as _warnings
+            _warnings.warn(
+                f"workspace_dir={self.workspace_dir!r} contains '~' — "
+                f"path will be expanded relative to the running user's home. "
+                f"Set an absolute path if you didn't intend this.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         # Resolve all paths relative to workspace_dir; sandbox them under it
         workspace = safe_resolve_path(self.workspace_dir)
         workspace.mkdir(parents=True, exist_ok=True)

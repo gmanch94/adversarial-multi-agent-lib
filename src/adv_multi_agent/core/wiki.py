@@ -47,6 +47,8 @@ class WikiEntry:
     supersedes: Optional[str] = None
     approved: Optional[bool] = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    approved_by: Optional[str] = None      # M1: audit trail for human approval
+    approved_at: Optional[str] = None      # M1: ISO timestamp of approval
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -61,6 +63,18 @@ class WikiEntry:
         # H5: refuse attacker-controlled ids; regenerate on invalid charset.
         if "id" in filtered and not is_safe_id(filtered["id"]):
             filtered["id"] = uuid.uuid4().hex[:12]
+        # L2: refuse non-ISO timestamps from disk. An attacker with write
+        # access cannot forge audit timestamps that pass downstream parsers.
+        for ts_field in ("created_at", "approved_at"):
+            if ts_field in filtered and filtered[ts_field] is not None:
+                try:
+                    datetime.fromisoformat(str(filtered[ts_field]))
+                except (TypeError, ValueError):
+                    filtered[ts_field] = (
+                        datetime.now(timezone.utc).isoformat()
+                        if ts_field == "created_at"
+                        else None
+                    )
         if "kind" in filtered:
             try:
                 filtered["kind"] = EntryKind(filtered["kind"])
@@ -140,18 +154,38 @@ class ResearchWiki:
             round_num=round_num,
         )
 
-    def approve_improvement(self, entry_id: str) -> None:
+    def approve_improvement(self, entry_id: str, human_reviewer_id: str) -> None:
+        """
+        Approve a self-improvement proposal. CRIT-2 / M1: requires a
+        non-empty human_reviewer_id which is persisted as audit trail.
+        Workflow code that calls this is the caller-of-record. The class
+        does not enforce a token or capability — the audit field is the
+        forensic trail that lets you grep history for who approved what.
+        """
+        if not isinstance(human_reviewer_id, str) or not human_reviewer_id.strip():
+            raise ValueError(
+                "approve_improvement requires a non-empty human_reviewer_id "
+                "(this is an audit-trail field — name the human approving the change)"
+            )
         entry = self._must_get(entry_id)
         if entry.kind != EntryKind.IMPROVEMENT:
             raise ValueError(f"Entry {entry_id} is not an improvement proposal")
         entry.approved = True
+        entry.approved_by = human_reviewer_id.strip()
+        entry.approved_at = datetime.now(timezone.utc).isoformat()
         self._save()
 
-    def reject_improvement(self, entry_id: str) -> None:
+    def reject_improvement(self, entry_id: str, human_reviewer_id: str) -> None:
+        if not isinstance(human_reviewer_id, str) or not human_reviewer_id.strip():
+            raise ValueError(
+                "reject_improvement requires a non-empty human_reviewer_id"
+            )
         entry = self._must_get(entry_id)
         if entry.kind != EntryKind.IMPROVEMENT:
             raise ValueError(f"Entry {entry_id} is not an improvement proposal")
         entry.approved = False
+        entry.approved_by = human_reviewer_id.strip()
+        entry.approved_at = datetime.now(timezone.utc).isoformat()
         self._save()
 
     # ------------------------------------------------------------------

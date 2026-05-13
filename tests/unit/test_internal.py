@@ -199,8 +199,9 @@ class TestSafeIdRegen:
 
 
 class TestRedactSecret:
-    def test_empty_returns_unset(self) -> None:
-        assert redact_secret("") == "<unset>"
+    def test_empty_returns_redacted(self) -> None:
+        # L6: same token as set values to avoid presence/absence leak
+        assert redact_secret("") == "<redacted>"
 
     def test_non_empty_returns_redacted(self) -> None:
         assert redact_secret("sk-ant-abc123") == "<redacted>"
