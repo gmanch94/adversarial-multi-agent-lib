@@ -1,35 +1,22 @@
-fix(security): pre-sprint hardening H1 H2 H5 H6
+fix(security): MCP DoS hardening H3 H4
 
-Targets the four HIGH findings from docs/security-audits/2026-05-13.md
-that affect the core adversarial-loop invariants. Fixes applied at
-chokepoints (per advisor) so future workflow authors cannot reintroduce
-the same bug shape.
+Bounds caller-supplied inputs to Skill.render at the class-method
+chokepoint so every consumer (MCP server, programmatic library
+caller, tests) inherits the same guarantees. Single-path-of-control
+per CLAUDE.md.
 
-H1 (idea_discovery indirect injection): sanitize_for_prompt now runs
-inside wiki.add() on title+body, plus survey directions sanitized
-before reviewer prompt. Persisted bodies cannot smuggle control chars
-into any downstream read path.
+H3 (unbounded skill input values via MCP): per-value length capped
+at 8192 chars; non-string values coerced via str().
 
-H2 (convergence forgery via first-JSON-wins): ReviewerAgent.review()
-now requires len(critique.strip()) >= 20 in addition to score >=
-threshold for approved=True. REVIEW_SYSTEM prompt updated to ask the
-reviewer for substantive critique. Behavioral change: a reviewer
-returning {"score": 10} with no critique no longer triggers
-convergence (the adversarial loop must actually engage).
+H4 (MCP render_skill DoS + control-char passthrough): key count
+capped at 64; control chars (incl. ANSI ESC 0x1b, BOM 0x7f, CSI
+0x9b) stripped from every value before format_map substitution.
+Prevents terminal-injection on downstream consumers and bounds
+worst-case prompt size.
 
-H5 (forged ledger/wiki ids inject into reviewer prompts): added
-is_safe_id() validator (^[A-Za-z0-9_-]{1,64}$); Claim.from_dict and
-WikiEntry.from_dict regenerate a fresh uuid when a loaded id fails
-the charset check (preserves backward compat with pre-existing
-ledger/wiki files).
+Tests: +3 unit tests covering oversized value, key flood, and
+control-char strip. 215 -> 218 passing.
 
-H6 (parse_first_json O(N^2) on adversarial input): cap input length
-at 64KiB; legitimate reviewer responses never exceed this.
-
-Tests: +12 new unit tests covering all four; full suite 203 -> 215
-passing. No new lint/mypy errors (baseline preserved).
-
-Out of scope (in-sprint or backlog): H3/H4 MCP DoS, all MEDIUM/LOW
-findings. See docs/security-audits/2026-05-13.md.
+Stacks on fix/security-hardening-pre-sprint (PR #5).
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
