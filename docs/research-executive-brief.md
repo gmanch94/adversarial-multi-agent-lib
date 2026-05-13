@@ -83,7 +83,7 @@ Five production-grade research workflows, a persistent knowledge layer, an exten
 | Multi-provider | Anthropic + Gemini executor, full test coverage | ✅ Complete |
 | MCP server | SkillRegistry as Claude Code tools, 12 smoke tests | ✅ Complete |
 | Gemini example | Cross-provider demo with streaming | ✅ Complete |
-| Domain subpackages | `core/`, `research/`, `parole/`; parole use case + 6 skills | ✅ Complete |
+| Domain subpackages | `core/`, `research/`, `parole/`, `retail/`; parole use case + 6 skills; 8 retail workflows + 25 skills | ✅ Complete |
 | PyPI publish | `twine upload` | **Pending credentials** |
 
 The library is production-grade: fully typed (mypy strict), async throughout, atomic persistence, API keys redacted from all logs, and prompt injection mitigated at every boundary.

@@ -79,19 +79,20 @@ Task ──► Executor (Claude Opus 4.7, adaptive thinking)
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  adv_multi_agent                                                        │
 │                                                                         │
-│  core/                    research/                  parole/            │
-│  ├─ agents.py             ├─ workflows/              ├─ workflows/      │
-│  │   ExecutorAgent        │   ├─ review_loop.py      │   parole.py      │
-│  │   ReviewerAgent        │   ├─ idea_discovery.py   │   ParoleAssessment│
-│  ├─ config.py Config      │   ├─ rebuttal.py         ├─ skills/         │
-│  ├─ ledger.py ClaimLedger │   └─ manuscript_assurance│   templates/     │
-│  ├─ wiki.py   ResearchWiki├─ assurance/              │   6 × *.md       │
-│  ├─ workflow.py           │   ├─ verifier.py         └─ __init__.py     │
-│  │   BaseWorkflow         │   └─ editor.py                              │
-│  ├─ _internal.py          └─ skills/                                    │
-│  └─ skills/                   templates/  15 × *.md                     │
-│     ├─ registry.py                                                      │
-│     └─ mcp_server.py (FastMCP, 4 tools)                                 │
+│  core/                    research/         parole/        retail/      │
+│  ├─ agents.py             ├─ workflows/     ├─ workflows/  ├─ workflows/│
+│  │   ExecutorAgent        │   ├─ review_loop│   parole.py  │ 8 × *.py   │
+│  │   ReviewerAgent        │   ├─ idea_disc. │   ParoleAssm.│ demand,    │
+│  ├─ config.py Config      │   ├─ rebuttal   ├─ skills/     │ labor,     │
+│  ├─ ledger.py ClaimLedger │   └─ manuscript │  6 × *.md    │ recall,    │
+│  ├─ wiki.py   ResearchWiki├─ assurance/     └─ __init__.py │ loyalty,   │
+│  ├─ workflow.py           │   ├─ verifier.py                │ promo,    │
+│  │   BaseWorkflow + claims│   └─ editor.py                  │ supplier, │
+│  ├─ _internal.py +        └─ skills/                        │ inventory,│
+│  │   extract_flags()          templates/  15 × *.md         │ private_  │
+│  └─ skills/                                                 │   label   │
+│     ├─ registry.py                                          └─ skills/  │
+│     └─ mcp_server.py (FastMCP, 4 tools)                     25 × *.md   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -645,7 +646,7 @@ cp .env.example .env
 python examples/basic_review_loop.py
 ```
 
-**Package data:** 21 skill templates bundled inside the wheel (15 research + 6 parole). Access via `SkillRegistry.bundled_skills_path(domain='research')` or `domain='parole'` — no extra install step.
+**Package data:** 46 skill templates bundled inside the wheel (15 research + 6 parole + 25 retail). Access via `SkillRegistry.bundled_skills_path(domain='research' | 'parole' | 'retail')` — no extra install step.
 
 **Python:** 3.11+. All async. No `asyncio.run()` inside library code — callers control the event loop.
 
@@ -812,7 +813,7 @@ python -m build                            # verify wheel builds
 | 5 | PyPI packaging (wheel + sdist, namespace, bundled skills) | ✅ Complete — upload pending credentials |
 | 6 | Multi-provider executor (Anthropic + Gemini) | ✅ Complete |
 | 7 | MCP server wrapper + Gemini example | ✅ Complete |
-| 8 | Domain subpackages (`core/`, `research/`, `parole/`) + parole use case | ✅ Complete |
+| 8 | Domain subpackages (`core/`, `research/`, `parole/`, `retail/`) + parole use case + 8-workflow retail sweep (demand, labor, recall, loyalty, promo, supplier, inventory, private-label) | ✅ Complete |
 
 **Near-term:**
 
@@ -848,7 +849,7 @@ python -m build                            # verify wheel builds
 
 **Docs:** `docs/build-plan.md` · `docs/decisions.md` · `CLAUDE.md`
 
-**Examples:** `examples/research/basic_review_loop.py` · `examples/research/gemini_executor.py` · `examples/parole/parole_assessment.py`
+**Examples:** `examples/research/basic_review_loop.py` · `examples/research/gemini_executor.py` · `examples/parole/parole_assessment.py` · `examples/retail/{demand_forecasting,labor_scheduling,recall_scope,loyalty_offer,promo_markdown,supplier_brief,inventory_replenishment,private_label}.py`
 
 &nbsp;
 
