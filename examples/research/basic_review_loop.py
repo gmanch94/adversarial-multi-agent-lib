@@ -5,7 +5,7 @@ Run from the repo root (no sys.path hack needed since src/ is a regular package)
 
     cp .env.example .env          # fill in ANTHROPIC_API_KEY + OPENAI_API_KEY
     pip install -e .
-    python -m examples.basic_review_loop
+    python -m examples.research.basic_review_loop
 
 This walks an executor + cross-model reviewer through the convergence loop,
 then prints the final output, ledger summary, and any pending self-improvement

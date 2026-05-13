@@ -17,7 +17,7 @@ Prerequisites:
     # ANTHROPIC_API_KEY is not required for this configuration.
 
 Run:
-    python -m examples.gemini_executor
+    python -m examples.research.gemini_executor
 """
 from __future__ import annotations
 

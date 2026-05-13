@@ -5,7 +5,7 @@ Run from the repo root:
 
     cp .env.example .env          # fill in ANTHROPIC_API_KEY + OPENAI_API_KEY
     pip install -e .
-    python -m examples.manuscript_assurance
+    python -m examples.research.manuscript_assurance
 
 Chains three stages:
   1. AutoReviewLoop     — adversarial generate/review (up to 3 rounds)

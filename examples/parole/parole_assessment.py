@@ -21,7 +21,7 @@ Required environment variables:
 
 Usage:
   pip install 'adv-multi-agent[gemini]'
-  GEMINI_API_KEY=... OPENAI_API_KEY=... python examples/parole_assessment.py
+  GEMINI_API_KEY=... OPENAI_API_KEY=... python -m examples.parole.parole_assessment
 
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
     See parole.py module docstring for the PRODUCTION_GAPS checklist.
