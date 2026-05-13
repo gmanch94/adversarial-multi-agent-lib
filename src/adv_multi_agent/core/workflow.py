@@ -37,3 +37,36 @@ class BaseWorkflow(ABC):
 
     @abstractmethod
     async def run(self, **kwargs: Any) -> WorkflowResult: ...
+
+    def _register_claims(self, output: str, round_num: int) -> None:
+        """
+        Extract `## Claims` bullets from `output` and add each to `self.ledger`.
+
+        Skips: empty lines, duplicates (against current ledger snapshot),
+        and any claim that fails `ClaimLedger.add` validation (length cap,
+        etc. — `ValueError` is swallowed by design: malformed claims do
+        not halt the workflow). Per-claim text is truncated at
+        `Config.max_claim_text_chars` (default 1000).
+
+        Shared by retail workflows (demand_forecasting, labor_scheduling,
+        recall_scope, loyalty_offer, promo_markdown). Subclasses can
+        override if they need a different parse rule.
+        """
+        if "## Claims" not in output:
+            return
+        max_chars = getattr(self.config, "max_claim_text_chars", 1000)
+        claims_section = output.split("## Claims", 1)[1]
+        existing = {c.text for c in self.ledger.all()}
+        for raw_line in claims_section.splitlines():
+            line = raw_line.strip().lstrip("-•").strip()
+            if not line:
+                continue
+            if len(line) > max_chars:
+                line = line[:max_chars]
+            if line in existing:
+                continue
+            try:
+                self.ledger.add(line, round_num=round_num)
+                existing.add(line)
+            except ValueError:
+                continue

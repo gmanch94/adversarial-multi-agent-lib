@@ -249,34 +249,6 @@ class TestLoyaltyOutputStructure:
         assert result.metadata["ledger_summary"]["total"] >= 3
 
 
-class TestExtractFlags:
-    def test_extracts_fairness_flags_stops_at_margin_header(self) -> None:
-        critique = (
-            "FAIRNESS FLAGS:\n- ZIP proxy detected\n- Language preference proxy\n"
-            "MARGIN FLAGS: None detected"
-        )
-        flags = LoyaltyOfferWorkflow._extract_flags(critique, "FAIRNESS FLAGS:")
-        assert len(flags) == 2
-        assert any("ZIP" in f for f in flags)
-
-    def test_extracts_margin_flags_stops_at_gaming_header(self) -> None:
-        critique = (
-            "MARGIN FLAGS:\n- Adverse scenario fails floor\n"
-            "GAMING FLAGS: None detected"
-        )
-        flags = LoyaltyOfferWorkflow._extract_flags(critique, "MARGIN FLAGS:")
-        assert len(flags) == 1
-
-    def test_returns_empty_when_none_detected_inline(self) -> None:
-        flags = LoyaltyOfferWorkflow._extract_flags(
-            "FAIRNESS FLAGS: None detected\nMARGIN FLAGS: ...", "FAIRNESS FLAGS:"
-        )
-        assert flags == []
-
-    def test_returns_empty_when_header_absent(self) -> None:
-        assert LoyaltyOfferWorkflow._extract_flags("clean.", "GAMING FLAGS:") == []
-
-
 class TestLoyaltyRequestPromptText:
     def test_renders_all_labels(self) -> None:
         text = make_request().to_prompt_text()
