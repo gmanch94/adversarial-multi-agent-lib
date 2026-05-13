@@ -6,6 +6,7 @@ use-case subpackages directly:
 
     research:  adv_multi_agent.research.workflows.*
     parole:    adv_multi_agent.parole.workflows.*
+    retail:    adv_multi_agent.retail.workflows.*
     core:      adv_multi_agent.core.*
 """
 __version__ = "0.1.0"
@@ -30,6 +31,10 @@ from .research.assurance.verifier import ClaimVerifier, VerificationReport
 
 # Parole workflows
 from .parole.workflows.parole import ParoleAssessmentWorkflow, ParoleCase
+
+# Retail workflows
+from .retail.workflows.demand_forecasting import DemandForecastWorkflow, ForecastRequest
+from .retail.workflows.labor_scheduling import LaborSchedulingWorkflow, SchedulingRequest
 
 __all__ = [
     # core
@@ -59,4 +64,9 @@ __all__ = [
     # parole
     "ParoleAssessmentWorkflow",
     "ParoleCase",
+    # retail
+    "DemandForecastWorkflow",
+    "ForecastRequest",
+    "LaborSchedulingWorkflow",
+    "SchedulingRequest",
 ]
