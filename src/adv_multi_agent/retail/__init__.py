@@ -6,6 +6,7 @@ from .workflows.labor_scheduling import LaborSchedulingWorkflow, SchedulingReque
 from .workflows.loyalty_offer import LoyaltyOfferRequest, LoyaltyOfferWorkflow
 from .workflows.promo_markdown import PromoMarkdownWorkflow, PromoRequest
 from .workflows.recall_scope import RecallRequest, RecallScopeWorkflow
+from .workflows.supplier_brief import SupplierBriefRequest, SupplierBriefWorkflow
 
 __all__ = [
     "DemandForecastWorkflow",
@@ -18,4 +19,6 @@ __all__ = [
     "RecallRequest",
     "RecallScopeWorkflow",
     "SchedulingRequest",
+    "SupplierBriefRequest",
+    "SupplierBriefWorkflow",
 ]
