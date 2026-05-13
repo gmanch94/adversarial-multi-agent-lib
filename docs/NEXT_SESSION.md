@@ -14,7 +14,7 @@ Last updated: 2026-05-13 (end of session — Gemini example + MCP server + doc u
 - **`src/adv_multi_agent/skills/mcp_server.py`** — FastMCP server, 4 tools (`list_skills`, `describe_skills`, `get_skill`, `render_skill`), stdio transport, `SKILLS_DIR` env override. Entry point: `adv-multi-agent-skills`.
 - **`tests/unit/test_mcp_server.py`** — 12 smoke tests (all pass). Total: 160 tests.
 - **`pyproject.toml`** — added `[mcp]` optional dep (`mcp>=1.0,<2.0`) + `[project.scripts]` entry point.
-- **Docs:** `docs/slides.md` updated (160 tests, Phase 7 ✅, MCP install cmd, Gemini example). `docs/executive-brief.md` updated (Mermaid visual, MCP server section, updated status table).
+- **Docs:** `docs/slides.md` updated (160 tests, Phase 7 ✅, MCP install cmd, Gemini example). `docs/research-executive-brief.md` updated (Mermaid visual, MCP server section, updated status table).
 
 ---
 

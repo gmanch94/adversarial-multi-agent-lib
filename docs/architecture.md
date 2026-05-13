@@ -22,7 +22,7 @@ The library has two activation modes. Every section below applies to both unless
 | Process model | Caller's Python process | Multi-tenant server with per-session sandboxes |
 | Persistence | Local JSON (`ledger.json`, `wiki.json`) via atomic writes | Postgres / SQLite per workspace |
 | Concurrency | Single-process; document the limit | File-locked or DB-backed; multi-process safe |
-| Skills | Local `*.md` files under `skills_dir` | Versioned, signed, distributed via the registry |
+| Skills | 21 bundled templates (15 research + 6 parole) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
 | Executor surface | Anthropic API direct | Anthropic + Bedrock + Vertex (per decision matrix in [decisions.md](decisions.md)) |
 | Observability | Caller wires their own logging | Built-in audit log + OpenTelemetry exporter |
 | Self-improvement adoption | Pending-only; caller approves out of band | Same, but approval is an authenticated UI action |
@@ -39,33 +39,46 @@ flowchart LR
     Caller([Caller code — pipeline / notebook / CLI])
 
     subgraph Lib["adv-multi-agent library — caller's Python process"]
-        Workflows[Workflows<br/>review_loop · idea_discovery · rebuttal]
-        Assurance[Assurance<br/>verifier · editor]
-        Agents[Agents<br/>ExecutorAgent · ReviewerAgent]
-        Stores[Stores<br/>ClaimLedger · ResearchWiki · SkillRegistry]
+        subgraph Core["core/"]
+            Agents[Agents<br/>ExecutorAgent · ReviewerAgent<br/>Anthropic + Gemini backends]
+            Stores[Stores<br/>ClaimLedger · ResearchWiki]
+            SkillsMcp[SkillRegistry · MCP server]
+        end
+        subgraph Research["research/"]
+            Workflows[Workflows<br/>review_loop · idea_discovery · rebuttal]
+            Assurance[Assurance<br/>verifier · editor]
+        end
+        subgraph ParoleDomain["parole/"]
+            ParoleWf[ParoleAssessmentWorkflow]
+        end
         Workflows --> Agents
         Workflows --> Stores
         Assurance --> Agents
         Assurance --> Stores
+        ParoleWf --> Agents
+        ParoleWf --> Stores
     end
 
     subgraph Third["Third-party APIs"]
         Anthropic[Anthropic Messages API<br/>claude-opus-4-7]
+        Gemini[Google Gemini API<br/>gemini-2.5-pro]
         OpenAI[OpenAI Chat Completions<br/>gpt-4o]
     end
 
     subgraph FS["Local filesystem"]
         Ledger[(ledger.json)]
         Wiki[(wiki.json)]
-        Skills[(skills/*.md)]
+        Skills[(bundled templates<br/>+ local skills_dir)]
     end
 
     Researcher --> Caller --> Workflows
+    Researcher --> Caller --> ParoleWf
     Agents --> Anthropic
+    Agents --> Gemini
     Agents --> OpenAI
     Stores --> Ledger
     Stores --> Wiki
-    Stores --> Skills
+    SkillsMcp --> Skills
 ```
 
 The library is a thin Python package over two external APIs and the local filesystem. No microservices, no queue, no caching, no daemon. The caller's process is the deployment boundary.
@@ -76,18 +89,21 @@ The library is a thin Python package over two external APIs and the local filesy
 
 | Component | Responsibility | Boundary |
 |---|---|---|
-| **`ExecutorAgent`** | Driving work forward — generates, revises, executes sub-tasks via Claude Opus 4.7 with adaptive thinking. Sole owner of Anthropic client config. | [`src/core/agents.py`](../src/core/agents.py) |
-| **`ReviewerAgent`** | Cross-model adversarial review (GPT-4o default; secondary Anthropic model fallback). Returns structured `ReviewResult` with score-clamped output. | [`src/core/agents.py`](../src/core/agents.py) |
-| **`ClaimLedger`** | Append-only claim store with 3-state lifecycle (PENDING → SUPPORTED/DISPUTED/RETRACTED). Atomic persistence. | [`src/core/ledger.py`](../src/core/ledger.py) |
-| **`ResearchWiki`** | Persistent shared knowledge across runs. Fence-wrapped prompt injection prevention. Self-improvement proposals stored pending-only. | [`src/core/wiki.py`](../src/core/wiki.py) |
-| **`SkillRegistry`** | Discovers and loads `*.md` skill templates with frontmatter validation, name regex, size caps. | [`src/skills/registry.py`](../src/skills/registry.py) |
-| **`AutoReviewLoop`** | Adversarial executor↔reviewer loop with dual convergence (score threshold OR max rounds). | [`src/workflows/review_loop.py`](../src/workflows/review_loop.py) |
-| **`IdeaDiscovery`** | Three-phase: literature survey → novelty check → proposal. | [`src/workflows/idea_discovery.py`](../src/workflows/idea_discovery.py) |
-| **`RebuttalWorkflow`** | Four-stage rebuttal: triage → draft → adversarial check → finalise. | [`src/workflows/rebuttal.py`](../src/workflows/rebuttal.py) |
-| **`ClaimVerifier`** | 3-stage assurance: integrity → result-mapping → adversarial audit. All stages use the reviewer (cross-model). | [`src/assurance/verifier.py`](../src/assurance/verifier.py) |
-| **`ScientificEditor`** | 5-pass editing pipeline + reviewer spot-check. Input size guarded. | [`src/assurance/editor.py`](../src/assurance/editor.py) |
-| **`Config`** | Single source of truth for model IDs, API keys, paths, bounds. Validates + sandboxes at construction; redacts secrets in repr. | [`src/core/config.py`](../src/core/config.py) |
-| **`_internal`** | Shared utilities: JSON parser, atomic write, redaction, score coercion, path sandboxing, prompt sanitization. | [`src/core/_internal.py`](../src/core/_internal.py) |
+| **`ExecutorAgent`** | Thin facade over `_AnthropicExecutor` / `_GeminiExecutor`. Drives work forward — generates, revises. Sole owner of Anthropic/Gemini client config. | [`core/agents.py`](../src/adv_multi_agent/core/agents.py) |
+| **`ReviewerAgent`** | Cross-model adversarial review (GPT-4o default; secondary Anthropic fallback). Returns structured `ReviewResult` with score-clamped output. | [`core/agents.py`](../src/adv_multi_agent/core/agents.py) |
+| **`_GeminiExecutor`** | Gemini 2.5 Pro backend; `thinking_budget` mapped from `EffortLevel`. Lazy-imported — requires `[gemini]` extra. | [`core/agents.py`](../src/adv_multi_agent/core/agents.py) |
+| **`ClaimLedger`** | Append-only claim store with 3-state lifecycle (PENDING → SUPPORTED/DISPUTED/RETRACTED). Atomic persistence. | [`core/ledger.py`](../src/adv_multi_agent/core/ledger.py) |
+| **`ResearchWiki`** | Persistent shared knowledge across runs. Fence-wrapped prompt injection prevention. Self-improvement proposals stored pending-only. | [`core/wiki.py`](../src/adv_multi_agent/core/wiki.py) |
+| **`SkillRegistry`** | Discovers and loads `*.md` skill templates with frontmatter validation, name regex, size caps. `bundled_skills_path(domain=)` resolves packaged templates. | [`core/skills/registry.py`](../src/adv_multi_agent/core/skills/registry.py) |
+| **`MCP server`** | FastMCP server exposing 4 tools (`list_skills`, `describe_skills`, `get_skill`, `render_skill`). `SKILLS_DOMAIN` env selects domain. | [`core/skills/mcp_server.py`](../src/adv_multi_agent/core/skills/mcp_server.py) |
+| **`AutoReviewLoop`** | Adversarial executor↔reviewer loop with dual convergence (score threshold OR max rounds). | [`research/workflows/review_loop.py`](../src/adv_multi_agent/research/workflows/review_loop.py) |
+| **`IdeaDiscovery`** | Three-phase: literature survey → novelty check → proposal. | [`research/workflows/idea_discovery.py`](../src/adv_multi_agent/research/workflows/idea_discovery.py) |
+| **`RebuttalWorkflow`** | Four-stage rebuttal: triage → draft → adversarial check → finalise. | [`research/workflows/rebuttal.py`](../src/adv_multi_agent/research/workflows/rebuttal.py) |
+| **`ClaimVerifier`** | 3-stage assurance: integrity → result-mapping → adversarial audit. All stages use the reviewer (cross-model). | [`research/assurance/verifier.py`](../src/adv_multi_agent/research/assurance/verifier.py) |
+| **`ScientificEditor`** | 5-pass editing pipeline + reviewer spot-check. Input size guarded. | [`research/assurance/editor.py`](../src/adv_multi_agent/research/assurance/editor.py) |
+| **`ParoleAssessmentWorkflow`** | Parole decision-support workflow; dual-mandate reviewer (quality + bias gate); advisory brief with mandatory disclaimer. | [`parole/workflows/parole.py`](../src/adv_multi_agent/parole/workflows/parole.py) |
+| **`Config`** | Single source of truth for model IDs, API keys, paths, bounds. Validates + sandboxes at construction; redacts secrets in repr. | [`core/config.py`](../src/adv_multi_agent/core/config.py) |
+| **`_internal`** | Shared utilities: JSON parser, atomic write, redaction, score coercion, path sandboxing, prompt sanitization. | [`core/_internal.py`](../src/adv_multi_agent/core/_internal.py) |
 
 The boundary between us and the model providers is the most consequential: **the model providers hold the IP that makes the library useful** (cross-model adversarial pairing only works if we can call two different families). We never hold model weights or do any inference ourselves. See [decisions.md](decisions.md) #1 and #2.
 
@@ -298,7 +314,7 @@ These are **targets**, not SLAs to anyone. Re-evaluate after the first 100 calle
 
 ## 7. Scaling levers (per dimension)
 
-Pre-stable (Phase 2 tests, Phase 3 Workflow 5), none of these need pulling. They exist because not painting into a corner is the architectural ask.
+These levers exist because not painting into a corner is the architectural ask. None need pulling at current V0 scale.
 
 | Dimension | Current capacity | First lever (when X is true) | Later lever |
 |---|---|---|---|
@@ -335,16 +351,16 @@ Tracked here so they don't slip. Each one has either a planned mitigation or an 
 | A4 | Prompt injection via task / context / comments is mitigated (sanitize_for_prompt, fenced wiki entries) but not eliminated. An attacker who fully controls task text can still attempt manipulation. | **Mitigated, not eliminated** | Audit finding from a corporate user with adversarial-input requirements |
 | A5 | Skills directory is trusted — any `.md` file there becomes a prompt template. If `skills_dir` is writable by an untrusted party, full prompt control. | Documented gap | Multi-user / hosted deployment (= V1 trigger) |
 | A6 | `from_dict` silently drops unknown keys. A user adds a field via manual JSON edit; later code version doesn't see it. | Accepted-by-design | Forward compatibility outweighs strict schema check at this scale |
-| A7 | Workflow 5 (Manuscript) is not yet implemented — chaining `AutoReviewLoop → ClaimVerifier → ScientificEditor` is caller's responsibility. | **Required for stable release** | Phase 3 of build-plan |
+| A7 | ~~Workflow 5 (Manuscript) not yet implemented.~~ `ManuscriptAssurance` ships in `research/workflows/manuscript_assurance.py`. | ✅ Resolved — Phase 3 complete | — |
 | A8 | Adaptive thinking is non-deterministic. The same task with the same Config produces different outputs run-to-run. Reproducibility is not a guaranteed property. | Accepted | Any user requiring deterministic outputs (deterministic seed support is upstream model work) |
 | A9 | No structured audit log of model inputs/outputs. Caller running in a regulated context cannot prove what was sent to a third-party API. | Accepted-for-V0 | First user in healthcare / finance / legal domain |
 | A10 | Bedrock / Vertex AI executor support absent. Decision #1 locks 1P-only for V0. | Accepted-for-V0 | First user blocked by an enterprise procurement requiring Bedrock |
-| A11 | No test coverage yet (Phase 2 of build-plan). Behavioural changes can ship undetected. | **Required for stable release** | Any non-trivial behavioural change PR before Phase 2 lands |
+| A11 | ~~No test coverage yet.~~ 181 tests passing (pytest + pytest-asyncio); mypy strict; ruff clean. | ✅ Resolved — Phase 2 complete | — |
 | A12 | The self-improvement-approval gate is _outside_ the loop, but there is no UI / CLI for caller to approve. Approval requires `wiki.approve_improvement(id)` in code. | Accepted-for-V0 | First user complaint that pending list is unreviewable |
 
-**Required for stable release** = block first PyPI publish (A7, A11). All others are documented and acceptable for the current library scope.
+**A7 and A11 resolved.** No current hard blockers to PyPI publish — only `twine upload` pending credentials. All other risks are documented and accepted for V0 scope.
 
-The full launch-blocker list is **[`build-plan.md`](build-plan.md) Phase 2 + Phase 3**, which is the canonical pre-stable gate.
+The full phase status is in **[`build-plan.md`](build-plan.md)**; Phases 1–8 complete.
 
 ---
 

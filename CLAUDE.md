@@ -6,9 +6,11 @@ Auto-loaded each session. Repo posture for Claude Code. Keep lean — append onl
 
 ## What this repo is
 
-**adv-multi-agent-products** — reusable Python template implementing the adversarial multi-agent collaboration pattern from the ARIS paper (Yang, Li, Li — SJTU, April 2026). Executor agent (Claude Opus 4.7, adaptive thinking) paired with a cross-model reviewer (GPT-4o by default) to prevent echo chambers. Covers five workflows: Idea Discovery, Auto Review Loop, Rebuttal, Claim Verification (3-stage), and 5-pass Scientific Editing.
+**adv-multi-agent-products** — reusable Python library implementing the adversarial multi-agent collaboration pattern from the ARIS paper (Yang, Li, Li — SJTU, May 2026). Executor agent (Claude Opus 4.7, adaptive thinking) paired with a cross-model reviewer (GPT-4o by default) to prevent echo chambers.
 
-Solo project. Goal: a production-ready, pip-installable template that researchers can drop into their own pipelines.
+Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server), `research/` (5 research workflows + assurance pipeline), `parole/` (parole decision-support workflow). The pattern is domain-agnostic; `core/` is the extension point.
+
+Solo project. Goal: a production-ready, pip-installable template that researchers and domain engineers can drop into their own pipelines.
 
 ---
 
@@ -63,9 +65,8 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 ## Things to avoid
 
 - Don't add abstractions, generalizations, or flexibility this template doesn't require. Three similar lines beats a premature helper.
-- Don't expand beyond the five ARIS workflows without a decision entry.
+- Don't add new workflows to `research/` or new domains beyond current scope without a decision entry.
 - Don't add a web UI, database backend, or deployment infra before the core library is stable.
-- Don't add MCP server integration before the base agent/workflow layer has test coverage.
 - Don't expose raw Anthropic or OpenAI client objects outside `agents.py`. All model calls go through `ExecutorAgent` / `ReviewerAgent`.
 - Don't use `--no-verify`, `--force`, or `git reset --hard` without explicit user instruction.
 - Default ship-flow: once a feature/fix branch is committed and local checks pass (format, lint, typecheck, tests touched by the change), push and open a PR without asking. User instruction overrides — say "commit only" or "don't push" to gate.

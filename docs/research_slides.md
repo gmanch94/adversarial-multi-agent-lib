@@ -52,7 +52,7 @@ Technical · Functional · Operating Reference
 
 &nbsp;
 
-*Based on ARIS — Yang, Li, Li (SJTU, April 2026)*
+*Based on ARIS — Yang, Li, Li (SJTU, May 2026)*
 *Product & Engineering Leadership · May 2026*
 
 ---
@@ -117,19 +117,19 @@ Task ──► Executor (Claude Opus 4.7, adaptive thinking)
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  adv_multi_agent                                                        │
 │                                                                         │
-│  core/                          workflows/             assurance/       │
-│  ├─ agents.py                   ├─ review_loop.py      ├─ verifier.py   │
-│  │   ExecutorAgent (facade)     │   AutoReviewLoop      │   ClaimVerifier│
-│  │   ├─ _AnthropicExecutor      ├─ idea_discovery.py   └─ editor.py     │
-│  │   └─ _GeminiExecutor         ├─ rebuttal.py             ScientificEditor
-│  │   ReviewerAgent (facade)     ├─ base.py                               │
-│  │   ├─ _OpenAIReviewer         └─ manuscript_assurance.py               │
-│  │   └─ _AnthropicReviewer          ManuscriptAssurance                  │
-│  ├─ config.py  Config                                                   │
-│  ├─ ledger.py  ClaimLedger      skills/                                  │
-│  ├─ wiki.py    ResearchWiki     ├─ registry.py  SkillRegistry            │
-│  └─ _internal.py               ├─ mcp_server.py FastMCP (4 tools)        │
-│                                 └─ templates/   15 × *.md                │
+│  core/                    research/                  parole/            │
+│  ├─ agents.py             ├─ workflows/              ├─ workflows/      │
+│  │   ExecutorAgent        │   ├─ review_loop.py      │   parole.py      │
+│  │   ReviewerAgent        │   ├─ idea_discovery.py   │   ParoleAssessment│
+│  ├─ config.py Config      │   ├─ rebuttal.py         ├─ skills/         │
+│  ├─ ledger.py ClaimLedger │   └─ manuscript_assurance│   templates/     │
+│  ├─ wiki.py   ResearchWiki├─ assurance/              │   6 × *.md       │
+│  ├─ workflow.py           │   ├─ verifier.py         └─ __init__.py     │
+│  │   BaseWorkflow         │   └─ editor.py                              │
+│  ├─ _internal.py          └─ skills/                                    │
+│  └─ skills/                   templates/  15 × *.md                     │
+│     ├─ registry.py                                                      │
+│     └─ mcp_server.py (FastMCP, 4 tools)                                 │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -683,7 +683,7 @@ cp .env.example .env
 python examples/basic_review_loop.py
 ```
 
-**Package data:** 15 skill templates are bundled inside the wheel and accessible via `SkillRegistry.bundled_skills_path()` — no extra install step.
+**Package data:** 21 skill templates bundled inside the wheel (15 research + 6 parole). Access via `SkillRegistry.bundled_skills_path(domain='research')` or `domain='parole'` — no extra install step.
 
 **Python:** 3.11+. All async. No `asyncio.run()` inside library code — callers control the event loop.
 
@@ -773,7 +773,7 @@ Skills reload on `registry.load()` — no restart needed. Subdirectories are ign
 Subclass `BaseWorkflow`, implement `async def run(...)`:
 
 ```python
-from adv_multi_agent.workflows.base import BaseWorkflow, WorkflowResult
+from adv_multi_agent.core.workflow import BaseWorkflow, WorkflowResult
 
 class SystematicReview(BaseWorkflow):
     async def run(
@@ -813,7 +813,7 @@ class SystematicReview(BaseWorkflow):
 
 | Dimension | Standard | Detail |
 |---|---|---|
-| **Tests** | 160 passing, 0 failures | pytest + pytest-asyncio |
+| **Tests** | 181 passing, 0 failures | pytest + pytest-asyncio |
 | **Test types** | Unit + integration | Unit: pure logic (no API calls). Integration: fake agents via dependency injection |
 | **Type safety** | mypy `strict = true` | No `Any` without comment; all return types explicit |
 | **Linting** | ruff, 100-char line limit | Covers formatting + import order + common errors |
@@ -823,7 +823,7 @@ class SystematicReview(BaseWorkflow):
 
 **Run CI locally:**
 ```bash
-python -m pytest tests/                    # 160 tests
+python -m pytest tests/                    # 181 tests
 python -m mypy src/ tests/ --strict        # type check
 python -m ruff check src/ tests/           # lint
 python -m build                            # verify wheel builds
@@ -846,10 +846,11 @@ python -m build                            # verify wheel builds
 | Phase | Scope | Status |
 |---|---|---|
 | 1–3 | Core library, tests, ManuscriptAssurance | ✅ Complete |
-| 4 | 15 skill templates | ✅ Complete |
+| 4 | 15 research skill templates | ✅ Complete |
 | 5 | PyPI packaging (wheel + sdist, namespace, bundled skills) | ✅ Complete — upload pending credentials |
 | 6 | Multi-provider executor (Anthropic + Gemini) | ✅ Complete |
 | 7 | MCP server wrapper + Gemini example | ✅ Complete |
+| 8 | Domain subpackages (`core/`, `research/`, `parole/`) + parole use case | ✅ Complete |
 
 **Near-term:**
 
@@ -881,12 +882,12 @@ python -m build                            # verify wheel builds
 
 **Gemini executor:** `pip install 'adv-multi-agent[gemini]'`
 
-**MCP server:** `claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.skills.mcp_server`
+**MCP server:** `claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.mcp_server`
 
 **Docs:** `docs/build-plan.md` · `docs/decisions.md` · `CLAUDE.md`
 
-**Examples:** `examples/basic_review_loop.py` · `examples/gemini_executor.py` · `examples/manuscript_assurance.py`
+**Examples:** `examples/research/basic_review_loop.py` · `examples/research/gemini_executor.py` · `examples/parole/parole_assessment.py`
 
 &nbsp;
 
-*Yang, Li, Li — "ARIS: Adversarial Research Intelligence System" (SJTU, 2026)*
+*Yang, Li, Li — "ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration" (SJTU, May 2026)*
