@@ -7,6 +7,7 @@ Internal utilities shared across core, workflows, and assurance.
 - coerce_score:        clamp a numeric value to [0, 10] and reject inf/NaN
 - safe_resolve_path:   resolve a user-supplied path, optionally constrained to a base
 - sanitize_for_prompt: strip control chars and cap length before embedding in prompts
+- extract_flags:       parse a named FLAGS section out of a reviewer critique
 """
 from __future__ import annotations
 
@@ -185,3 +186,48 @@ def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:
     if len(text) > max_chars:
         text = text[:max_chars] + "...[truncated]"
     return text
+
+
+def extract_flags(critique: str, header: str) -> list[str]:
+    """
+    Parse a named FLAGS section out of a reviewer critique.
+
+    Returns the list of bullet items under `header`, stopping at the next
+    section header. A section header is any of:
+
+    • a line starting with `Overall`, `Key issues`, or a markdown `#`
+    • a bare uppercase-with-colon header (e.g. `SCOPE FLAGS:`)
+    • an inline uppercase header on the same line
+      (e.g. `EVIDENCE FLAGS: None detected`, `REVIEWER VETO: ...`) —
+      recognised by the LHS of the first `:` being uppercase + spaces only.
+
+    Returns `[]` if the header is absent, or if the section content is one
+    of the conventional empty markers: `None detected`, `None`, `n/a`
+    (case-insensitive).
+
+    Used by retail workflows (`recall_scope`, `loyalty_offer`,
+    `promo_markdown`) that share a multi-flag review-output structure.
+    `demand_forecasting` and `labor_scheduling` use simpler inline parsers
+    by design — their critique structure only has one flag class so the
+    inline-header stop is not needed.
+    """
+    if header not in critique:
+        return []
+    section = critique.split(header, 1)[1]
+    flags: list[str] = []
+    for raw_line in section.splitlines():
+        stripped_raw = raw_line.strip()
+        stripped = stripped_raw.lstrip("-•*").strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        if lower.startswith(("overall", "key issues", "#")):
+            break
+        if ":" in stripped_raw:
+            lhs = stripped_raw.split(":", 1)[0].strip()
+            if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
+                break
+        if lower in ("none detected", "none", "n/a"):
+            return []
+        flags.append(stripped)
+    return flags

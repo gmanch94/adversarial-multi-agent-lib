@@ -213,7 +213,6 @@ class LaborSchedulingWorkflow(BaseWorkflow):
         review = None
         current_flags: list[str] = []
         all_flags: list[str] = []
-        max_claim_chars = getattr(config, "max_claim_text_chars", 1000)
 
         for round_num in range(1, config.max_review_rounds + 1):
             wiki_ctx = self.wiki.context_for_round(round_num)
@@ -245,7 +244,7 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 )
 
             output = await self.executor.run(prompt, context="")
-            self._register_claims(output, round_num, max_claim_chars)
+            self._register_claims(output, round_num)
 
             review = await self.reviewer.review(
                 output,
@@ -281,25 +280,6 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 "ledger_summary": self.ledger.summary(),
             },
         )
-
-    def _register_claims(self, output: str, round_num: int, max_chars: int) -> None:
-        if "## Claims" not in output:
-            return
-        claims_section = output.split("## Claims", 1)[1]
-        existing = {c.text for c in self.ledger.all()}
-        for raw_line in claims_section.splitlines():
-            line = raw_line.strip().lstrip("-•").strip()
-            if not line:
-                continue
-            if len(line) > max_chars:
-                line = line[:max_chars]
-            if line in existing:
-                continue
-            try:
-                self.ledger.add(line, round_num=round_num)
-                existing.add(line)
-            except ValueError:
-                continue
 
     @staticmethod
     def _extract_compliance_flags(critique: str) -> list[str]:

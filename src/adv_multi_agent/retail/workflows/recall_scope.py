@@ -46,7 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 _DISCLAIMER = (
@@ -274,7 +274,6 @@ class RecallScopeWorkflow(BaseWorkflow):
         all_scope_flags: list[str] = []
         all_evidence_flags: list[str] = []
         veto_reason: str | None = None
-        max_claim_chars = getattr(config, "max_claim_text_chars", 1000)
         max_wiki_chars = config.max_wiki_body_chars
 
         for round_num in range(1, config.max_review_rounds + 1):
@@ -303,15 +302,15 @@ class RecallScopeWorkflow(BaseWorkflow):
                 )
 
             output = await self.executor.run(prompt, context="")
-            self._register_claims(output, round_num, max_claim_chars)
+            self._register_claims(output, round_num)
 
             review = await self.reviewer.review(
                 output,
                 criteria=_RECALL_REVIEW_CRITERIA,
             )
             score = review.score
-            current_scope_flags = self._extract_flags(review.critique, "SCOPE FLAGS:")
-            current_evidence_flags = self._extract_flags(review.critique, "EVIDENCE FLAGS:")
+            current_scope_flags = extract_flags(review.critique, "SCOPE FLAGS:")
+            current_evidence_flags = extract_flags(review.critique, "EVIDENCE FLAGS:")
             all_scope_flags.extend(current_scope_flags)
             all_evidence_flags.extend(current_evidence_flags)
 
@@ -356,57 +355,6 @@ class RecallScopeWorkflow(BaseWorkflow):
             converged=converged,
             metadata=metadata,
         )
-
-    def _register_claims(self, output: str, round_num: int, max_chars: int) -> None:
-        if "## Claims" not in output:
-            return
-        claims_section = output.split("## Claims", 1)[1]
-        existing = {c.text for c in self.ledger.all()}
-        for raw_line in claims_section.splitlines():
-            line = raw_line.strip().lstrip("-•").strip()
-            if not line:
-                continue
-            if len(line) > max_chars:
-                line = line[:max_chars]
-            if line in existing:
-                continue
-            try:
-                self.ledger.add(line, round_num=round_num)
-                existing.add(line)
-            except ValueError:
-                continue
-
-    @staticmethod
-    def _extract_flags(critique: str, header: str) -> list[str]:
-        """Extract a named flag list from reviewer critique.
-
-        Stops at the next section header. A section header is any of:
-          • a line starting with `Overall`, `Key issues`, or a markdown `#`
-          • a bare uppercase-with-colon header (e.g. `SCOPE FLAGS:`)
-          • an inline uppercase header (e.g. `EVIDENCE FLAGS: None detected`,
-            `REVIEWER VETO: ...`) — recognised by the LHS of the first `:`
-            being uppercase + spaces only.
-        """
-        if header not in critique:
-            return []
-        section = critique.split(header, 1)[1]
-        flags: list[str] = []
-        for raw_line in section.splitlines():
-            stripped_raw = raw_line.strip()
-            stripped = stripped_raw.lstrip("-•*").strip()
-            if not stripped:
-                continue
-            lower = stripped.lower()
-            if lower.startswith(("overall", "key issues", "#")):
-                break
-            if ":" in stripped_raw:
-                lhs = stripped_raw.split(":", 1)[0].strip()
-                if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
-                    break
-            if lower in ("none detected", "none", "n/a"):
-                return []
-            flags.append(stripped)
-        return flags
 
     @staticmethod
     def _extract_veto(critique: str, max_chars: int) -> str | None:

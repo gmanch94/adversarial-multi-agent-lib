@@ -226,32 +226,6 @@ class TestPromoOutputStructure:
         assert result.metadata["ledger_summary"]["total"] >= 3
 
 
-class TestExtractFlags:
-    def test_extracts_elasticity_flags_stops_at_margin_header(self) -> None:
-        critique = (
-            "ELASTICITY FLAGS:\n- Outside band\n- Borrowed category\n"
-            "MARGIN FLAGS: None detected"
-        )
-        flags = PromoMarkdownWorkflow._extract_flags(critique, "ELASTICITY FLAGS:")
-        assert len(flags) == 2
-
-    def test_extracts_timing_flags(self) -> None:
-        critique = (
-            "TIMING FLAGS:\n- Memorial Day overlap inflates lift\nOverall score: 7/10"
-        )
-        flags = PromoMarkdownWorkflow._extract_flags(critique, "TIMING FLAGS:")
-        assert len(flags) == 1
-
-    def test_returns_empty_when_none_detected(self) -> None:
-        assert (
-            PromoMarkdownWorkflow._extract_flags("MARGIN FLAGS: None detected", "MARGIN FLAGS:")
-            == []
-        )
-
-    def test_returns_empty_when_header_absent(self) -> None:
-        assert PromoMarkdownWorkflow._extract_flags("clean.", "TIMING FLAGS:") == []
-
-
 class TestPromoRequestPromptText:
     def test_renders_all_labels(self) -> None:
         text = make_request().to_prompt_text()

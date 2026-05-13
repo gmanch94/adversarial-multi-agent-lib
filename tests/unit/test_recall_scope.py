@@ -282,37 +282,6 @@ class TestRecallOutputStructure:
         assert result.metadata["ledger_summary"]["total"] >= 3
 
 
-class TestExtractFlags:
-    def test_extracts_scope_flags(self) -> None:
-        critique = (
-            "Overall score: 7/10\nKey issues: x\n"
-            "SCOPE FLAGS:\n- Lot LOT-X missing\n- Store KRO-X missing\n"
-            "EVIDENCE FLAGS: None detected\nREVIEWER VETO: None"
-        )
-        flags = RecallScopeWorkflow._extract_flags(critique, "SCOPE FLAGS:")
-        assert len(flags) == 2
-        assert any("LOT-X" in f for f in flags)
-
-    def test_extracts_evidence_flags_stops_at_veto(self) -> None:
-        critique = (
-            "SCOPE FLAGS: None detected\n"
-            "EVIDENCE FLAGS:\n- No primary lab evidence\n"
-            "REVIEWER VETO: Some directive that mentions evidence."
-        )
-        flags = RecallScopeWorkflow._extract_flags(critique, "EVIDENCE FLAGS:")
-        assert len(flags) == 1
-        assert "No primary lab evidence" in flags[0]
-
-    def test_returns_empty_when_none_detected(self) -> None:
-        flags = RecallScopeWorkflow._extract_flags(
-            "SCOPE FLAGS: None detected\nEVIDENCE FLAGS: None detected", "SCOPE FLAGS:"
-        )
-        assert flags == []
-
-    def test_returns_empty_when_header_absent(self) -> None:
-        assert RecallScopeWorkflow._extract_flags("clean.", "SCOPE FLAGS:") == []
-
-
 class TestExtractVeto:
     def test_returns_none_when_directive_is_none(self) -> None:
         veto = RecallScopeWorkflow._extract_veto("REVIEWER VETO: None", 1000)
