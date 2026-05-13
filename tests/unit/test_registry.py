@@ -236,3 +236,28 @@ class TestSkillRender:
         skill = SkillRegistry(str(tmp_path)).get("sk4")
         result = skill.render(topic="test")
         assert result == 'Example JSON: {"key": "value"} for test.'
+
+    def test_h3_oversized_input_value_raises(self, tmp_path: Path) -> None:
+        """H3: caller-supplied input values must be size-capped to bound prompt size."""
+        write_skill(tmp_path, "s.md", name="big", inputs="[x]", body="V={x}")
+        skill = SkillRegistry(str(tmp_path)).get("big")
+        with pytest.raises(ValueError, match="exceeds"):
+            skill.render(x="x" * 100_000)
+
+    def test_h3_too_many_input_keys_raises(self, tmp_path: Path) -> None:
+        """H3: caller-supplied input dict must have a bounded key count."""
+        write_skill(tmp_path, "s.md", name="many", inputs="[x]", body="V={x}")
+        skill = SkillRegistry(str(tmp_path)).get("many")
+        too_many = {f"k{i}": "v" for i in range(200)}
+        too_many["x"] = "ok"
+        with pytest.raises(ValueError, match="too many"):
+            skill.render(**too_many)
+
+    def test_h3_control_chars_stripped_from_value(self, tmp_path: Path) -> None:
+        """H3: control chars (incl. ANSI ESC) stripped from rendered output."""
+        write_skill(tmp_path, "s.md", name="ctrl", inputs="[x]", body="V={x}")
+        skill = SkillRegistry(str(tmp_path)).get("ctrl")
+        out = skill.render(x="hi\x1b[2Jbye\x00!")
+        assert "\x1b" not in out
+        assert "\x00" not in out
+        assert "hi" in out and "bye" in out

@@ -29,6 +29,14 @@ _VALID_SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _MAX_TEMPLATE_CHARS = 50_000
 _MAX_DESCRIPTION_CHARS = 500
 
+# H3/H4: bound caller-supplied input dict at the Skill.render chokepoint so
+# every consumer (MCP server, programmatic caller, tests) inherits the same
+# guarantees. A 10 MB input value otherwise produces a 10 MB prompt and the
+# MCP transport returns it verbatim.
+_MAX_INPUT_VALUE_CHARS = 8_192
+_MAX_INPUT_KEYS = 64
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x9b]")
+
 
 class _PartialFormat(dict[str, str]):
     """format_map helper: substitutes declared keys, leaves unknown {tokens} intact."""
@@ -50,11 +58,30 @@ class Skill:
         Uses format_map with a passthrough dict so that {tokens} not in `inputs`
         (e.g. JSON examples, LaTeX, code blocks) are left verbatim instead of
         raising KeyError.
+
+        H3/H4: caller-supplied input values are bounded in count, per-value
+        length, and stripped of control characters before substitution. This
+        chokepoint protects every consumer (MCP server, library caller, tests)
+        from DoS via 10 MB values and terminal-injection via ANSI escapes.
         """
-        missing = [k for k in self.inputs if k not in kwargs]
+        if len(kwargs) > _MAX_INPUT_KEYS:
+            raise ValueError(
+                f"too many input keys: {len(kwargs)} (max {_MAX_INPUT_KEYS})"
+            )
+        sanitized: dict[str, str] = {}
+        for key, value in kwargs.items():
+            if not isinstance(value, str):
+                value = str(value)
+            if len(value) > _MAX_INPUT_VALUE_CHARS:
+                raise ValueError(
+                    f"input '{key}' length {len(value)} exceeds "
+                    f"max {_MAX_INPUT_VALUE_CHARS} chars"
+                )
+            sanitized[key] = _CONTROL_CHARS_RE.sub("", value)
+        missing = [k for k in self.inputs if k not in sanitized]
         if missing:
             raise ValueError(f"Skill '{self.name}' missing inputs: {missing}")
-        return self.template.format_map(_PartialFormat(**kwargs))
+        return self.template.format_map(_PartialFormat(**sanitized))
 
 
 class SkillRegistry:
