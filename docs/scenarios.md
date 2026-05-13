@@ -30,8 +30,8 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 | Scenario | Status | Notes |
 |---|---|---|
-| Demand forecasting | **planned** | Executor signals weekly replenishment; reviewer challenges seasonality, external shocks. Failure = spoilage or stockouts |
-| Labor scheduling | **planned** | Executor generates store schedules; reviewer flags labor law violations, overtime cost, coverage gaps |
+| Demand forecasting | **built** | DemandForecastWorkflow — ASSUMPTION FLAGS convergence gate; synthetic Kroger example |
+| Labor scheduling | **built** | LaborSchedulingWorkflow — COMPLIANCE FLAGS convergence gate; synthetic Kroger example |
 | Inventory replenishment | candidate | Auto-order logic reviewed for supplier lead time assumptions |
 
 ---

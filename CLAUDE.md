@@ -8,7 +8,7 @@ Auto-loaded each session. Repo posture for Claude Code. Keep lean — append onl
 
 **adv-multi-agent-products** — reusable Python library implementing the adversarial multi-agent collaboration pattern from the ARIS paper (Yang, Li, Li — SJTU, May 2026). Executor agent (Claude Opus 4.7, adaptive thinking) paired with a cross-model reviewer (GPT-4o by default) to prevent echo chambers.
 
-Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server), `research/` (5 research workflows + assurance pipeline), `parole/` (parole decision-support workflow). The pattern is domain-agnostic; `core/` is the extension point.
+Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server), `research/` (5 research workflows + assurance pipeline), `parole/` (parole decision-support workflow), `retail/` (demand forecasting + labor scheduling workflows). The pattern is domain-agnostic; `core/` is the extension point.
 
 Solo project. Goal: a production-ready, pip-installable template that researchers and domain engineers can drop into their own pipelines.
 
