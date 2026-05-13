@@ -1,10 +1,15 @@
 """
 Workflow — Labor Scheduling (Retail Teaching Example)
 
-Demonstrates the ARIS adversarial pattern for retail labor scheduling.
-Executor drafts a weekly store schedule; reviewer challenges coverage,
-compliance with stated labor laws, cost efficiency, and fairness.
-Flags labor law violations under COMPLIANCE FLAGS.
+Demonstrates the ARIS adversarial pattern (Yang, Li, Li — SJTU + Shanghai
+Innovation Institute, arXiv:2605.03042, May 2026) for retail labor
+scheduling. Executor drafts a weekly store schedule; reviewer (recommended:
+different model family per ARIS §2.1 principle 1) challenges coverage,
+compliance with stated labor laws, cost efficiency, and fairness. Flags
+labor law violations under COMPLIANCE FLAGS.
+
+If you use this workflow, cite the ARIS paper — see CITATION.cff in the
+repo root.
 
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
@@ -16,6 +21,14 @@ PRODUCTION_GAPS:
     4. Payroll system write-back — schedule must not auto-publish.
     5. Manager approval gate — a store manager must review and publish
        the schedule; AI output must not go directly to employees.
+    6. Dedicated third-model compliance auditor — this workflow folds the
+       labor-law compliance check into the same reviewer that scores
+       quality (single-stage), which differs from the ARIS three-stage
+       assurance cascade. A production system should use a separately
+       configured model (different family from BOTH executor and reviewer)
+       whose only job is labor-law compliance verification. Legal
+       interpretation of statutes by a single LLM is not a defensible
+       compliance check. See ARIS §3.1.
 """
 from __future__ import annotations
 

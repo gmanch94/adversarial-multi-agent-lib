@@ -1,9 +1,14 @@
 """
 Workflow — Demand Forecasting (Retail Teaching Example)
 
-Demonstrates the ARIS adversarial pattern for retail replenishment decisions.
-Executor synthesizes a demand forecast; reviewer challenges assumptions and
-flags any unsubstantiated adjustments under ASSUMPTION FLAGS.
+Demonstrates the ARIS adversarial pattern (Yang, Li, Li — SJTU + Shanghai
+Innovation Institute, arXiv:2605.03042, May 2026) for retail replenishment
+decisions. Executor synthesizes a demand forecast; reviewer (recommended:
+different model family per ARIS §2.1 principle 1) challenges assumptions
+and flags any unsubstantiated adjustments under ASSUMPTION FLAGS.
+
+If you use this workflow, cite the ARIS paper — see CITATION.cff in the
+repo root.
 
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
@@ -17,6 +22,13 @@ PRODUCTION_GAPS:
        actual margin and spoilage data, not qualitative assessment.
     5. Buyer approval gate — the replenishment order must not be placed
        automatically. A human buyer must review and confirm.
+    6. Dedicated third-model assumption auditor — this workflow folds the
+       assumption audit into the same reviewer that scores quality (single-
+       stage), which differs from the ARIS three-stage assurance cascade
+       (experiment-audit → result-to-claim → paper-claim-audit). A
+       production system should use a separately configured model (different
+       family from BOTH executor and reviewer) whose only job is to flag
+       unsubstantiated assumptions. See ARIS §3.1.
 """
 from __future__ import annotations
 

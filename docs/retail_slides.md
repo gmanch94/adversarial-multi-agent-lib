@@ -16,6 +16,10 @@ Technical · Design · Safety Reference
 *Domain application of the adv-multi-agent library*
 *Product & Engineering Leadership · May 2026*
 
+&nbsp;
+
+*Based on ARIS (Yang, Li, Li — SJTU + Shanghai Innovation Institute, arXiv:2605.03042)*
+
 ---
 
 <!-- _class: section -->
@@ -453,6 +457,7 @@ The pattern parity is intentional — adding a third retail workflow (markdown o
 | Supplier API integration | `lead_time_days` should come from EDI / supplier API in real time |
 | Cost model | Stockout and overstock costs from actual margin + spoilage data, not qualitative assessment |
 | Buyer approval gate enforced in code | Replenishment must not be placed automatically |
+| Dedicated third-model assumption auditor | Single-stage reviewer folds quality + assumption audit; ARIS §3.1 specifies a three-stage cascade. Production needs a separately configured auditor (different family from BOTH executor and reviewer) |
 
 Listed verbatim in `demand_forecasting.py` module docstring. The library does not pretend to be a replenishment system; it is a reasoning scaffold.
 
@@ -467,6 +472,7 @@ Listed verbatim in `demand_forecasting.py` module docstring. The library does no
 | Shift-swap and time-off handling | Not modeled here — production schedulers handle approvals and pickup |
 | Payroll system write-back | Schedule must not auto-publish; downstream payroll integration is out of scope |
 | Manager approval gate enforced in code | Schedule must not go directly to employees |
+| Dedicated third-model compliance auditor | Legal interpretation of statutes by a single LLM is not defensible. ARIS §3.1 specifies a three-stage cascade; production needs a separately configured compliance auditor model |
 
 Listed verbatim in `labor_scheduling.py` module docstring. The library is a teaching example — not a workforce-management product.
 
@@ -519,6 +525,36 @@ Test suite total: 203 tests (160 research + 21 parole + 22 retail). All green. m
 
 ---
 
+<!-- _class: section -->
+
+# References
+
+---
+
+## Citation
+
+The design pattern this library implements:
+
+> Yang, R., Li, Y., & Li, S. (2026). *ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration*. arXiv:2605.03042. Shanghai Jiao Tong University; Shanghai Innovation Institute.
+> [https://arxiv.org/abs/2605.03042](https://arxiv.org/abs/2605.03042)
+
+```bibtex
+@article{yang2026aris,
+  title   = {ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration},
+  author  = {Yang, Ruofeng and Li, Yongcan and Li, Shuai},
+  journal = {arXiv preprint arXiv:2605.03042},
+  year    = {2026}
+}
+```
+
+**All workflows in this library are domain adaptations of the ARIS executor + cross-family-reviewer loop. If you use this work, please cite the underlying research.**
+
+ARIS project page: [github.com/wanshuiyin/Auto-claude-code-research-in-sleep](https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep)
+
+See `CITATION.cff` in the repo root for machine-readable citation metadata.
+
+---
+
 <!-- _class: lead -->
 
 # Thank you
@@ -530,3 +566,4 @@ Questions?
 Repo: github.com/gmanch94/adv-multi-agent
 Brief: docs/retail-executive-brief.md
 Spec: docs/superpowers/specs/2026-05-13-retail-domain-design.md
+Citation: CITATION.cff
