@@ -1,22 +1,30 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (end of session — retail domain added, PR #2 open)
+Last updated: 2026-05-13 (end of session — retail domain shipped via PR #2 + #3 merged; three-domain library complete)
 
 ---
 
 ## Current state
 
-**All phases complete + retail domain added.** Library is production-ready and pip-installable.
+**All phases complete + three-domain library shipped.** Production-ready and pip-installable.
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: `feat/retail-domain` branch pushed; PR #2 open against `main`. 203 tests. 30 skill templates (15 research + 6 parole + 9 retail).
+Local: clean on `main` (or about to be — see below). 203 tests. 30 skill templates (15 research + 6 parole + 9 retail). 3 domains. `CITATION.cff` in repo root.
 
 ### What shipped this session
 
 - **`src/adv_multi_agent/retail/`** — `DemandForecastWorkflow` (ASSUMPTION FLAGS gate), `LaborSchedulingWorkflow` (COMPLIANCE FLAGS gate); 9 skill templates; `examples/retail/demand_forecasting.py` + `examples/retail/labor_scheduling.py`
-- **Docs** — `docs/scenarios.md` (domain-grouped scenario tracker); spec at `docs/superpowers/specs/2026-05-13-retail-domain-design.md`; plan at `docs/superpowers/plans/2026-05-13-retail-domain.md`
-- **Docs refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md` updated for retail
-- **PR** — https://github.com/gmanch94/adv-multi-agent/pull/2 (review in progress)
+- **Spec + plan** — `docs/superpowers/specs/2026-05-13-retail-domain-design.md`, `docs/superpowers/plans/2026-05-13-retail-domain.md`
+- **Domain artifacts** — `docs/retail-executive-brief.md`, `docs/retail_slides.md` (Marp, uses `adv-slides` theme), `docs/scenarios.md` (domain-grouped scenario tracker)
+- **Doc refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md`, `docs/deployment-architecture.md`, `docs/decisions.md` (D9 added), `docs/NEXT_SESSION.md`
+- **ARIS attribution** — `CITATION.cff` (machine-readable, GitHub renders "Cite this repository" button); README citation section with BibTeX; retail module docstrings cite Yang/Li/Li + arXiv:2605.03042; slides have dedicated References slide
+- **Cascade-gap disclosure** — both retail modules document the single-stage-reviewer simplification of ARIS §3.1 three-stage cascade in PRODUCTION_GAPS (production should use a separately configured third-model auditor)
+- **Hygiene** — `.claude/` gitignored (local Claude Code permissions cache)
+- **Merged PRs** — #2 (retail domain + initial docs), #3 (cascade-gap doc + ARIS attribution + `.claude/` gitignore)
+
+### Out-of-repo artifacts (local only)
+
+- `docs/linkedin-announcement.md` — gitignored; LinkedIn paste-ready post with Unicode bold for native rendering. Copy from `Just shipped 𝗮𝗱𝘃-𝗺𝘂𝗹𝘁𝗶-𝗮𝗴𝗲𝗻𝘁...` through the hashtags line; skip the "Notes" section.
 
 ---
 
@@ -58,14 +66,16 @@ examples/
 - D1: Executor = `claude-opus-4-7`, adaptive thinking
 - D2: Reviewer = GPT-4o (cross-family default)
 - D8: Multi-provider thin facade; Anthropic + Gemini in scope; Bedrock deferred (no free tier)
+- D9: Retail domain mirrors parole structure exactly; per-workflow `*Request` dataclass + domain-specific FLAGS gate (ASSUMPTION / COMPLIANCE); flat skill templates with `demand_*` / `labor_*` prefixes; synthetic data only
 
 ---
 
 ## What still needs doing
 
-1. **Merge PR #2** — retail domain review in progress.
-2. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
-3. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
+1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
+2. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
+3. **Production gap closure for retail** — see PRODUCTION_GAPS in `demand_forecasting.py` / `labor_scheduling.py` if anyone wants to pilot: live POS / HCM integration, actuarial baseline, third-model auditor (ARIS §3.1 cascade), approval gates, append-only audit store.
+4. **Future domains** — `docs/scenarios.md` lists candidates: retail commercial (promo, supplier, private label), retail customer (loyalty), retail safety (recall), healthcare, finance, legal, HR.
 
 ---
 
