@@ -52,7 +52,7 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 | Scenario | Status | Notes |
 |---|---|---|
-| Loyalty / personalization offers | candidate | Executor generates segment offer strategy; reviewer challenges margin erosion, gaming risk, income fairness |
+| Loyalty / personalization offers | **built** | LoyaltyOfferWorkflow — FAIRNESS + MARGIN + GAMING flags; explicit allowed/disallowed attribute lists (parole bias-gate pattern applied commercially) |
 
 ---
 
