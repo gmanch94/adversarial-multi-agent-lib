@@ -1,23 +1,22 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (end of session — parole domain + doc refresh + GitHub + slides fix)
+Last updated: 2026-05-13 (end of session — retail domain added, PR #2 open)
 
 ---
 
 ## Current state
 
-**All phases complete.** Library is production-ready and pip-installable.
+**All phases complete + retail domain added.** Library is production-ready and pip-installable.
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: `master` branch, clean. 181 tests. 21 skill templates (15 research + 6 parole).
+Local: `feat/retail-domain` branch pushed; PR #2 open against `main`. 203 tests. 30 skill templates (15 research + 6 parole + 9 retail).
 
 ### What shipped this session
 
-- **`src/adv_multi_agent/parole/`** — `ParoleAssessmentWorkflow`, `ParoleCase`, bias-gate convergence, 6 skill templates, `examples/parole/parole_assessment.py`
-- **Docs refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md`, `docs/deployment-architecture.md`
-- **New docs** — `docs/parole_slides.md`, `docs/parole-executive-brief.md`; renamed `docs/research_slides.md`, `docs/research-executive-brief.md`
-- **Slides CSS fix** — extracted to `docs/themes/adv-slides.css`; `theme: adv-slides` in both slide files; `.marprc.yml` + `.vscode/settings.json` added
-- **GitHub** — repo created, all content on `main`, default branch set, stale `feat/restructure-by-usecase` deleted
+- **`src/adv_multi_agent/retail/`** — `DemandForecastWorkflow` (ASSUMPTION FLAGS gate), `LaborSchedulingWorkflow` (COMPLIANCE FLAGS gate); 9 skill templates; `examples/retail/demand_forecasting.py` + `examples/retail/labor_scheduling.py`
+- **Docs** — `docs/scenarios.md` (domain-grouped scenario tracker); spec at `docs/superpowers/specs/2026-05-13-retail-domain-design.md`; plan at `docs/superpowers/plans/2026-05-13-retail-domain.md`
+- **Docs refresh** — `README.md`, `CLAUDE.md`, `docs/architecture.md` updated for retail
+- **PR** — https://github.com/gmanch94/adv-multi-agent/pull/2 (review in progress)
 
 ---
 
@@ -43,9 +42,13 @@ src/adv_multi_agent/
   parole/
     workflows/parole.py ParoleAssessmentWorkflow, ParoleCase
     skills/templates/   6 × *.md
+  retail/
+    workflows/          DemandForecastWorkflow (ForecastRequest), LaborSchedulingWorkflow (SchedulingRequest)
+    skills/templates/   9 × *.md (5 demand_* + 4 labor_*)
 examples/
   research/             basic_review_loop.py, gemini_executor.py, manuscript_assurance.py
   parole/               parole_assessment.py
+  retail/               demand_forecasting.py, labor_scheduling.py
 ```
 
 ---
@@ -60,8 +63,9 @@ examples/
 
 ## What still needs doing
 
-1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
-2. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
+1. **Merge PR #2** — retail domain review in progress.
+2. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
+3. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
 
 ---
 

@@ -40,6 +40,11 @@ src/adv_multi_agent/
     workflows/
       parole.py                 #   ParoleAssessmentWorkflow, ParoleCase
     skills/templates/           #   6 bundled parole skill templates
+  retail/                       # retail decision-support domain
+    workflows/
+      demand_forecasting.py     #   DemandForecastWorkflow, ForecastRequest
+      labor_scheduling.py       #   LaborSchedulingWorkflow, SchedulingRequest
+    skills/templates/           #   9 bundled retail skill templates
 
 examples/
   research/
@@ -48,6 +53,9 @@ examples/
     manuscript_assurance.py
   parole/
     parole_assessment.py
+  retail/
+    demand_forecasting.py
+    labor_scheduling.py
 ```
 
 ---
@@ -175,6 +183,30 @@ for item in result.metadata["board_checklist"]:
 See `examples/parole/parole_assessment.py` and `docs/parole-executive-brief.md`.
 ⚠️ **NOT FOR PRODUCTION DEPLOYMENT** — see `parole.py` module docstring for the deployment checklist.
 
+### Retail decision support (advisory only)
+
+```python
+from adv_multi_agent.retail.workflows.demand_forecasting import (
+    DemandForecastWorkflow, ForecastRequest,
+)
+from adv_multi_agent.retail.workflows.labor_scheduling import (
+    LaborSchedulingWorkflow, SchedulingRequest,
+)
+
+# Demand forecast — ASSUMPTION FLAGS convergence gate
+forecast = await DemandForecastWorkflow(config).run(
+    request=ForecastRequest(store_id="KRO-OH-0042", sku="...", ...)
+)
+
+# Labor schedule — COMPLIANCE FLAGS convergence gate
+schedule = await LaborSchedulingWorkflow(config).run(
+    request=SchedulingRequest(store_id="KRO-OH-0042", week_start="2026-05-18", ...)
+)
+```
+
+See `examples/retail/demand_forecasting.py` and `examples/retail/labor_scheduling.py`.
+⚠️ **NOT FOR PRODUCTION DEPLOYMENT** — `PRODUCTION_GAPS` documented in each module docstring (live POS/HCM integration, actuarial baseline, human approval gate).
+
 ### Skills
 
 ```python
@@ -194,6 +226,9 @@ claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.m
 
 # Or parole skills
 SKILLS_DOMAIN=parole claude mcp add adv-multi-agent-parole -- python -m adv_multi_agent.core.skills.mcp_server
+
+# Or retail skills
+SKILLS_DOMAIN=retail claude mcp add adv-multi-agent-retail -- python -m adv_multi_agent.core.skills.mcp_server
 ```
 
 ---
@@ -204,7 +239,7 @@ SKILLS_DOMAIN=parole claude mcp add adv-multi-agent-parole -- python -m adv_mult
 - **Reviewer** — GPT-4o by default. Set `REVIEWER_PROVIDER=anthropic` for a same-family pairing (less adversarial, no OpenAI key required). Same-family raises a `UserWarning` at construction.
 - **Claim ledger** — append-only JSON, persisted after each mutation. 3-stage verifier resolves `PENDING → SUPPORTED / DISPUTED / RETRACTED`.
 - **Wiki** — shared knowledge store across workflow runs. Self-improvement proposals require explicit human approval: `wiki.approve_improvement(id)`.
-- **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). 21 bundled templates (15 research + 6 parole). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
+- **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). 30 bundled templates (15 research + 6 parole + 9 retail). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
 
 ---
 

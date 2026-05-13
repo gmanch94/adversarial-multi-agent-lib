@@ -22,7 +22,7 @@ The library has two activation modes. Every section below applies to both unless
 | Process model | Caller's Python process | Multi-tenant server with per-session sandboxes |
 | Persistence | Local JSON (`ledger.json`, `wiki.json`) via atomic writes | Postgres / SQLite per workspace |
 | Concurrency | Single-process; document the limit | File-locked or DB-backed; multi-process safe |
-| Skills | 21 bundled templates (15 research + 6 parole) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
+| Skills | 30 bundled templates (15 research + 6 parole + 9 retail) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
 | Executor surface | Anthropic API direct | Anthropic + Bedrock + Vertex (per decision matrix in [decisions.md](decisions.md)) |
 | Observability | Caller wires their own logging | Built-in audit log + OpenTelemetry exporter |
 | Self-improvement adoption | Pending-only; caller approves out of band | Same, but approval is an authenticated UI action |
@@ -51,12 +51,20 @@ flowchart LR
         subgraph ParoleDomain["parole/"]
             ParoleWf[ParoleAssessmentWorkflow]
         end
+        subgraph RetailDomain["retail/"]
+            DemandWf[DemandForecastWorkflow]
+            LaborWf[LaborSchedulingWorkflow]
+        end
         Workflows --> Agents
         Workflows --> Stores
         Assurance --> Agents
         Assurance --> Stores
         ParoleWf --> Agents
         ParoleWf --> Stores
+        DemandWf --> Agents
+        DemandWf --> Stores
+        LaborWf --> Agents
+        LaborWf --> Stores
     end
 
     subgraph Third["Third-party APIs"]
@@ -73,6 +81,8 @@ flowchart LR
 
     Researcher --> Caller --> Workflows
     Researcher --> Caller --> ParoleWf
+    Researcher --> Caller --> DemandWf
+    Researcher --> Caller --> LaborWf
     Agents --> Anthropic
     Agents --> Gemini
     Agents --> OpenAI
@@ -102,6 +112,8 @@ The library is a thin Python package over two external APIs and the local filesy
 | **`ClaimVerifier`** | 3-stage assurance: integrity → result-mapping → adversarial audit. All stages use the reviewer (cross-model). | [`research/assurance/verifier.py`](../src/adv_multi_agent/research/assurance/verifier.py) |
 | **`ScientificEditor`** | 5-pass editing pipeline + reviewer spot-check. Input size guarded. | [`research/assurance/editor.py`](../src/adv_multi_agent/research/assurance/editor.py) |
 | **`ParoleAssessmentWorkflow`** | Parole decision-support workflow; dual-mandate reviewer (quality + bias gate); advisory brief with mandatory disclaimer. | [`parole/workflows/parole.py`](../src/adv_multi_agent/parole/workflows/parole.py) |
+| **`DemandForecastWorkflow`** | Retail demand forecasting; reviewer audits assumptions (seasonality/weather/events); ASSUMPTION FLAGS convergence gate; advisory output with buyer checklist. | [`retail/workflows/demand_forecasting.py`](../src/adv_multi_agent/retail/workflows/demand_forecasting.py) |
+| **`LaborSchedulingWorkflow`** | Retail weekly labor schedule; reviewer audits coverage + labor-law compliance; COMPLIANCE FLAGS convergence gate; advisory output with manager checklist. | [`retail/workflows/labor_scheduling.py`](../src/adv_multi_agent/retail/workflows/labor_scheduling.py) |
 | **`Config`** | Single source of truth for model IDs, API keys, paths, bounds. Validates + sandboxes at construction; redacts secrets in repr. | [`core/config.py`](../src/adv_multi_agent/core/config.py) |
 | **`_internal`** | Shared utilities: JSON parser, atomic write, redaction, score coercion, path sandboxing, prompt sanitization. | [`core/_internal.py`](../src/adv_multi_agent/core/_internal.py) |
 

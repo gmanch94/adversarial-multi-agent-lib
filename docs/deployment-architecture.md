@@ -36,21 +36,31 @@ flowchart TB
             subgraph ParoleDom["parole/"]
                 ParoleWf["ParoleAssessmentWorkflow<br/>(advisory brief · bias gate)"]:::lib
             end
+            subgraph RetailDom["retail/"]
+                DemandWf["DemandForecastWorkflow<br/>(advisory forecast · ASSUMPTION FLAGS gate)"]:::lib
+                LaborWf["LaborSchedulingWorkflow<br/>(advisory schedule · COMPLIANCE FLAGS gate)"]:::lib
+            end
             subgraph CorePkg["core/"]
                 Agents["Agents<br/>ExecutorAgent (Anthropic or Gemini)<br/>ReviewerAgent (OpenAI or Anthropic)"]:::lib
                 Stores["Stores<br/>ClaimLedger · ResearchWiki"]:::lib
-                SkillsReg["SkillRegistry · MCP server<br/>(21 bundled templates · SKILLS_DOMAIN)"]:::lib
+                SkillsReg["SkillRegistry · MCP server<br/>(30 bundled templates · SKILLS_DOMAIN)"]:::lib
             end
 
             Caller --> Cfg
             Caller --> Workflows
             Caller --> ParoleWf
+            Caller --> DemandWf
+            Caller --> LaborWf
             Workflows --> Agents
             Workflows --> Stores
             Assurance --> Agents
             Assurance --> Stores
             ParoleWf --> Agents
             ParoleWf --> Stores
+            DemandWf --> Agents
+            DemandWf --> Stores
+            LaborWf --> Agents
+            LaborWf --> Stores
         end
     end
 
@@ -80,7 +90,7 @@ flowchart TB
 | `GEMINI_API_KEY` | Caller's env / `.env` | Required iff `executor_provider=gemini`. Same redaction invariant. |
 | `EXECUTOR_PROVIDER` | Caller's env / `.env` (default `anthropic`) | `anthropic` \| `gemini`. Selects `_AnthropicExecutor` or `_GeminiExecutor` backend. |
 | `REVIEWER_PROVIDER` | Caller's env / `.env` (default `openai`) | `openai` \| `anthropic`. Same-family pairing raises `UserWarning`. |
-| `SKILLS_DOMAIN` | Caller's env (default `research`) | `research` \| `parole`. Selects which bundled template set the MCP server loads. |
+| `SKILLS_DOMAIN` | Caller's env (default `research`) | `research` \| `parole` \| `retail`. Selects which bundled template set the MCP server loads. |
 | `EFFORT_LEVEL` | Caller's env / `.env` (default `high`) | Validated via `_effort_from_env`. Invalid value raises with named env var. |
 | `MAX_REVIEW_ROUNDS` | Caller's env / `.env` (default 5) | Range-checked `[1, 50]` at construction. |
 | `SCORE_THRESHOLD` | Caller's env / `.env` (default 8.0) | Range-checked `[0.0, 10.0]` at construction. |
@@ -98,6 +108,8 @@ flowchart TB
 | Caller runs `RebuttalWorkflow` | `Executor.run` (triage) → `Wiki.add(NOTE)` → `Executor.run` (draft) → `Reviewer.run` (adversarial check) → `_parse_issues` → optional `Executor.run` (finalise) → `Wiki.add(NOTE final)` |
 | Caller runs `ManuscriptAssurance` | `AutoReviewLoop.run` → `ClaimVerifier.verify` (on PENDING claims) → `ScientificEditor.edit` → `WorkflowResult` with merged metadata |
 | Caller runs `ParoleAssessmentWorkflow` | `sanitize_for_prompt(case fields)` → per round: `Executor.run` (advisory brief) → `Ledger.add` (claims) → `Reviewer.review` (quality score + bias_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not bias_flags` → inject disclaimer + board checklist |
+| Caller runs `DemandForecastWorkflow` | `sanitize_for_prompt(request fields)` → per round: `Executor.run` (forecast + recommendation) → `Ledger.add` (claims) → `Reviewer.review` (quality score + assumption_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not assumption_flags` → inject disclaimer + buyer checklist |
+| Caller runs `LaborSchedulingWorkflow` | `sanitize_for_prompt(request fields)` → per round: `Executor.run` (weekly schedule) → `Ledger.add` (claims) → `Reviewer.review` (quality score + compliance_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not compliance_flags` → inject disclaimer + manager checklist |
 | Caller approves improvement | Caller inspects `result.metadata["pending_improvement_ids"]` → `workflow.wiki.get(id)` → human review → `workflow.wiki.approve_improvement(id)` (atomic write) |
 | Caller reloads skills after editing `.md` files | `workflow.skills.reload()` (if SkillRegistry attached) → non-recursive glob → frontmatter parse → name/identifier/size validation → in-memory dict swap |
 | Process receives SIGINT mid-write | `atomic_write_text` writes to `.{name}.{pid}.tmp` → fsync → `os.replace` → never leaves a torn JSON file; on next start `_load()` sees either the prior version or the new one |
@@ -125,9 +137,9 @@ flowchart TB
 
         subgraph Pkg["adv-multi-agent (pip install -e .)"]
             direction TB
-            Src["src/adv_multi_agent/<br/>core/ · research/ · parole/"]:::lib
-            Examples["examples/research/ · examples/parole/"]:::lib
-            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole"]:::lib
+            Src["src/adv_multi_agent/<br/>core/ · research/ · parole/ · retail/"]:::lib
+            Examples["examples/research/ · examples/parole/ · examples/retail/"]:::lib
+            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole + 9 retail"]:::lib
         end
     end
 
@@ -152,9 +164,9 @@ flowchart TB
 | Install | `pip install -e .` against this repo | `pip install adv-multi-agent` (PyPI publish pending credentials) |
 | API keys | Real keys in `.env` (gitignored) | Caller's secret manager / CI variable |
 | Workspace | Repo root (`./ledger.json`, `./wiki.json` auto-created and sandboxed there) | Caller-controlled (`Config(workspace_dir="/var/lib/research")`) |
-| Skill files | Bundled in wheel (21 templates); local override via `Config(skills_dir=...)` | Same |
+| Skill files | Bundled in wheel (30 templates); local override via `Config(skills_dir=...)` | Same |
 | Network | Live API calls — costs real money per run | Same — there is no mock mode |
-| Tests | 181 tests: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) | Caller writes their own tests against their workflows |
+| Tests | 203 tests: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) | Caller writes their own tests against their workflows |
 
 ### How to run the canonical example
 
