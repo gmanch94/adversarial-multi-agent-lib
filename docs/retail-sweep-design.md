@@ -89,7 +89,8 @@ Skill templates are flat files under `src/adv_multi_agent/retail/skills/template
 - `offer_proposal: str` — discount / bundle / threshold being considered
 - `historical_response: str` — past loyalty-program performance for similar offer
 - `margin_floor: str` — minimum acceptable contribution margin
-- `protected_attributes: str` — fields the segment is allowed / not allowed to be derived from
+- `allowed_attributes: list[str]` — explicit allowlist of customer fields the segment may be derived from (e.g. `["purchase_history", "loyalty_tier", "store_visits"]`)
+- `disallowed_attributes: list[str]` — explicit denylist of fields and known proxies (e.g. `["zip_code", "language_preference", "first_name", "household_income_inferred"]`); reviewer treats any segment criterion derived from these as a `FAIRNESS FLAGS:` candidate
 - `competing_offers: str` — concurrent promos or competitor offers
 - `gaming_risk: str` — any structural way customers could exploit the offer
 
