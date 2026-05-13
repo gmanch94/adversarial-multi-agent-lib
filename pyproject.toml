@@ -61,6 +61,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "adv_multi_agent.research.skills" = ["templates/*.md"]
 "adv_multi_agent.parole.skills" = ["templates/*.md"]
+"adv_multi_agent.retail.skills" = ["templates/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
