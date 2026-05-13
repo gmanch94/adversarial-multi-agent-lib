@@ -10,7 +10,7 @@ Run from the repo root (no sys.path hack needed since src/ is a regular package)
 This walks an executor + cross-model reviewer through the convergence loop,
 then prints the final output, ledger summary, and any pending self-improvement
 proposals (which the caller — you — must explicitly approve via
-`wiki.approve_improvement(id)`).
+`wiki.approve_improvement(id, human_reviewer_id=...)`).
 """
 from __future__ import annotations
 

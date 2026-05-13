@@ -98,7 +98,8 @@ async def main() -> None:
     if pending_ids:
         print(
             f"\nPending self-improvement proposals ({len(pending_ids)}) — "
-            "review and approve explicitly via workflow.wiki.approve_improvement(id):"
+            "review and approve explicitly via "
+            "workflow.wiki.approve_improvement(id, human_reviewer_id=...):"
         )
         for pid in pending_ids:
             entry = workflow.wiki.get(pid)

@@ -63,7 +63,7 @@ class _ExecutorBackend(BaseAgent):
     """All executor backends must expose both run() and stream()."""
 
     @abstractmethod
-    async def stream(self, prompt: str, context: str = "") -> AsyncIterator[str]: ...
+    def stream(self, prompt: str, context: str = "") -> AsyncIterator[str]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +147,8 @@ class _GeminiExecutor(_ExecutorBackend):
         if not config.gemini_api_key:
             raise ValueError("Config.gemini_api_key is empty but executor_provider=gemini")
         try:
-            from google import genai as _genai  # type: ignore[import-untyped]
-            from google.genai import types as _gtypes  # type: ignore[import-untyped]
+            from google import genai as _genai
+            from google.genai import types as _gtypes
         except ImportError as exc:
             raise ImportError(
                 "Install google-genai: pip install 'adv-multi-agent[gemini]'"
@@ -180,11 +180,12 @@ class _GeminiExecutor(_ExecutorBackend):
         return response.text or ""
 
     async def stream(self, prompt: str, context: str = "") -> AsyncIterator[str]:
-        async for chunk in self._client.aio.models.generate_content_stream(
+        stream = await self._client.aio.models.generate_content_stream(
             model=self.config.gemini_executor_model,
             contents=self._build_contents(prompt, context),
             config=self._build_config(),
-        ):
+        )
+        async for chunk in stream:
             if chunk.text:
                 yield chunk.text
 

@@ -13,7 +13,7 @@ Chains three stages:
   3. ScientificEditor   — 5-pass prose editing
 
 Pending self-improvement proposals are surfaced in the output but never
-auto-approved; call `workflow.wiki.approve_improvement(id)` explicitly after
+auto-approved; call `workflow.wiki.approve_improvement(id, human_reviewer_id=...)` explicitly after
 human review.
 """
 from __future__ import annotations

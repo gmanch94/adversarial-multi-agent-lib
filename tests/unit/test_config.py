@@ -7,7 +7,6 @@ import pytest
 
 from adv_multi_agent.core.config import (
     Config,
-    EffortLevel,
     ExecutorProvider,
     ReviewerProvider,
 )
