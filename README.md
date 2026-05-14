@@ -180,7 +180,7 @@ for item in result.metadata["board_checklist"]:
     print(item)
 ```
 
-See `examples/parole/parole_assessment.py` and `docs/parole-executive-brief.md`.
+See `examples/parole/parole_assessment.py` and `docs/slides/parole-executive-brief.md`.
 ⚠️ **NOT FOR PRODUCTION DEPLOYMENT** — see `parole.py` module docstring for the deployment checklist.
 
 ### Retail decision support (advisory only)
