@@ -1,9 +1,14 @@
 # Specialized B2B P&C Insurance — Design Doc
 
-Last updated: 2026-05-14
-Status: **DRAFT — design only, no code.** Anchor: Claims Reserve Estimation. Sweep order TBD post-anchor.
+Last updated: 2026-05-14 (Specialty Lines track added per D-PC-6)
+Status: **IN PROGRESS — Foundational track shipped (4 workflows); Specialty track in tree (3 workflows, held on commit).**
 
-Scope is **specialized commercial Property & Casualty**. Personal lines (auto/home), health, and life are explicitly **out of scope** — adversarial-multi-agent value is highest where decisions are irreversible, regulator-audited, and asymmetric-information-heavy. Commercial P&C concentrates all three.
+Scope is **specialized commercial Property & Casualty**, organised into two tracks:
+
+- **Foundational** — mainstream commercial: claims reserve, coverage / bad-faith decision, complex commercial underwriting, cyber. These exercise the core ARIS shapes (veto + triple-flag, dual-flag, triple-flag) on broadly-applicable commercial-lines problems.
+- **Specialty** (per D-PC-6) — niche commercial markets where adversarial-multi-agent value is highest: environmental impairment, parametric crop, gig-economy platform liability. (Group captives and equine mortality deferred per the same decision row.) Specialty lines concentrate heterogeneous risk + regulator-overlap + asymmetric information — the exact properties that benefit most from the cross-model reviewer pairing.
+
+Personal lines (auto/home), health, and life are explicitly **out of scope**.
 
 ---
 
@@ -140,23 +145,84 @@ Example files: one per scenario at `examples/pc/<scenario>.py`, synthetic data o
 
 ---
 
+## Specialty Lines track (D-PC-6)
+
+The first 4 scenarios are mainstream commercial. Truly *specialized* P&C — the markets users typically mean by "specialty" — is niche commercial: agricultural operations, equine mortality, environmental risks, group captives, gig-economy platforms. Three of these are in scope for this domain:
+
+### 5. Environmental Impairment Liability — `EnvironmentalImpairmentWorkflow` (PR #5)
+
+**Gate type:** `KNOWN-CONDITION FLAGS` + `TAIL FLAGS` + `REGULATORY-OVERLAP FLAGS` + **reviewer-veto**.
+
+**Request fields:** site summary, site history (Phase I/II ESA + regulator filings), pollution condition (contaminants + media + discovery date), policy form (PLL / CPL / EIL form, known-condition clause, retroactive date), governing state (trigger doctrine), regulator status (EPA / state DEP / CERCLA / Brownfields), co-insurer history (long-tail policy chain), proposed decision / reserve.
+
+**Reviewer flags:** known-condition / prior-knowledge exclusion mapping; coverage-trigger doctrine + policy-period attribution; EPA / state DEP / NRD overlap; veto on prior-knowledge-on-PLL denial.
+
+**Skill templates:** `environmental_phase_one_audit.md`, `environmental_trigger_doctrine.md`, `environmental_regulatory_overlap.md`, `environmental_long_tail_reserve.md`.
+
+**Why specialty:** long-tail (10-30 yr development); EPA / CERCLA / state-DEP regulator overlap; prior-knowledge / known-condition disputes are the dominant loss driver.
+
+---
+
+### 6. Parametric Crop — `ParametricCropWorkflow` (PR #6)
+
+**Gate type:** `PERIL-MATCH FLAGS` + `BASIS FLAGS` + `ATTACHMENT FLAGS`. **No veto** — parametric covers settle by-design on trigger; discipline is up-front.
+
+**Request fields:** producer summary, crop + APH yield history, loss history (cause-by-cause), proposed cover type (MPCI / crop-hail / rainfall-index / degree-day / NDVI / named-storm), data source (station / grid / satellite product ID), climate baseline (20+ yr back-test with trend treatment), reinsurance context (SRA group / commercial retro).
+
+**Reviewer flags:** trigger-vs-loss-pathway correlation; spatial + statistical basis risk; climate-baseline attachment defensibility under trend creep.
+
+**Skill templates:** `crop_peril_match_check.md`, `crop_basis_risk_quantification.md`, `crop_climate_baseline_backtest.md`, `crop_producer_disclosure_draft.md`.
+
+**Why specialty:** USDA-RMA federal-program overlay; basis risk between trigger and actual on-farm loss is the dominant economic concern; climate-trend selection bias materially shifts pricing.
+
+---
+
+### 7. Gig-Economy Platform Liability — `GigPlatformLiabilityWorkflow` (PR #7)
+
+**Gate type:** `CLASSIFICATION FLAGS` + `COVERAGE-GAP FLAGS` + `REGULATORY-PATCHWORK FLAGS` + **reviewer-veto**.
+
+**Request fields:** platform summary, workforce classification (1099 / W-2 / contested by state), coverage stack (commercial GL / TNC / occ-acc / contingent-WC / EPLI), personal-policy context (worker personal-auto / GL commercial-use exclusions, app telemetry timestamping), state regulatory posture (AB5 / Prop 22 / state TNC laws / NLRB joint-employer), pending litigation (class actions, AG inquiries, DOL audits), proposed bind / decision.
+
+**Reviewer flags:** state-specific classification test result; personal-vs-platform coverage seam (especially Period 1 / 2 / 3 for TNC-style covers); state-regulatory patchwork; veto on bind that would only survive a classification audit by accident.
+
+**Skill templates:** `gig_classification_test.md`, `gig_coverage_seam_map.md`, `gig_state_patchwork_audit.md`, `gig_telemetry_evidence_check.md`.
+
+**Why specialty:** state-by-state regulatory patchwork (AB5 + Prop 22 + state TNC laws + NLRB) is the most-changing surface in P&C specialty; worker-classification disputes can retroactively transform the coverage stack; personal-vs-platform policy seam during platform-on transitions is the dominant claims battleground.
+
+---
+
 ## Out-of-scope for this sweep (future)
 
 - **Reinsurance treaty placement** — heavy actuarial dependency; deferred.
 - **Submission triage** — single-flag, low-novelty; covered by D9 pattern.
 - **Renewal repricing** — overlaps with #3; revisit after #3 lands.
 - **Surety bond** — niche; revisit if user demand appears.
+- **Group captive allocation** (specialty) — cross-member rating fairness + NAIC RRG Act; deferred per D-PC-6 (after gig + environmental + crop).
+- **Equine mortality** (specialty) — dual-flag + veto on concealment; deferred per D-PC-6 (lowest priority of the specialty set).
 
 ---
 
-## Anchor build sequence (proposed; locked at first-PR sign-off)
+## Build sequence
 
-1. **PR #1** — `ClaimsReserveWorkflow` + `reserve_*` skill templates (5) + example + tests. Locks the P&C veto+triple-flag convention. Mirrors the recall_scope shape so the diff is mostly content, not structure.
-2. PR #2 — `CoverageDecisionWorkflow` (veto + dual-flag).
-3. PR #3 — `CommercialUnderwritingWorkflow` (triple-flag, no veto).
-4. PR #4 — `CyberUnderwritingWorkflow` (triple-flag, no veto).
+**Foundational track** (shipped / in tree):
 
-Pre-anchor open question (resolve before PR #1): does the `pc/` namespace mirror retail exactly (`workflows/`, `skills/templates/`)? Default: **yes** — same import path shape (`adv_multi_agent.pc.workflows.claims_reserve`).
+1. **PR #1 ✅** — `ClaimsReserveWorkflow` + 5 `reserve_*` skill templates + example + 15 tests. Locked P&C veto+triple-flag convention.
+2. **PR #2** — `CoverageDecisionWorkflow` (veto + dual-flag).
+3. **PR #3** — `CommercialUnderwritingWorkflow` (triple-flag, no veto).
+4. **PR #4** — `CyberUnderwritingWorkflow` (triple-flag, no veto).
+
+**Specialty track** (D-PC-6; in tree, held on commit):
+
+5. **PR #5** — `EnvironmentalImpairmentWorkflow` + 4 `environmental_*` skills + example + tests.
+6. **PR #6** — `ParametricCropWorkflow` + 4 `crop_*` skills + example + tests.
+7. **PR #7** — `GigPlatformLiabilityWorkflow` + 4 `gig_*` skills + example + tests.
+
+**Deferred specialty:**
+
+- Group captive allocation — re-evaluate after gig + environmental + crop stabilise.
+- Equine mortality — lowest priority; build if a concrete user need emerges.
+
+The `pc/` namespace mirrors retail exactly (`workflows/`, `skills/templates/`, `examples/pc/<scenario>.py`).
 
 ---
 
@@ -166,3 +232,4 @@ Pre-anchor open question (resolve before PR #1): does the `pc/` namespace mirror
 - D-RETAIL-1 — reviewer-veto pattern (reused).
 - D-RETAIL-2 → D-RETAIL-7 — no-base-class convention (reused).
 - D-PC-1..5 — landed with this design doc.
+- D-PC-6 — Specialty Lines scope expansion (this update).

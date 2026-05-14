@@ -242,3 +242,78 @@ def extract_flags(critique: str, header: str) -> list[str]:
         if len(flags) >= _MAX_FLAGS_PER_HEADER:
             break
     return flags
+
+
+# ---------------------------------------------------------------------------
+# Veto directive extraction — shared by every reviewer-veto workflow
+# (M-PC-1: line-anchored marker match closes substring-containment regression
+#  on the criteria-quote case; M2 / L5 hardening preserved in the continuation
+#  loop. Replaces 5 byte-identical static-method copies.)
+# ---------------------------------------------------------------------------
+
+def extract_veto_directive(
+    critique: str,
+    marker: str = "REVIEWER VETO:",
+    max_chars: int = 1000,
+) -> str | None:
+    """
+    Parse a verbatim veto directive from a reviewer critique.
+
+    The marker is anchored to line-start (allowing leading whitespace) so a
+    commentary mention of the marker name earlier in the critique — e.g. a
+    reviewer quoting the criteria block — does NOT mis-anchor the parser
+    (M-PC-1: same shape as the M1 fix that line-anchored `extract_flags`).
+
+    Returns the verbatim directive, with leading bullet markers stripped from
+    continuation lines and trailing sibling-header sections excluded.
+    Returns None if:
+    - The marker is not present at line-start.
+    - The marker line value is one of the no-veto tokens (`none`,
+      `none detected`, `n/a`, case-insensitive) AND no continuation lines
+      follow it (M2: a continuation directive after a "none" marker is
+      still captured).
+    - All continuation lines are empty or are sibling section headers.
+
+    Sibling-header detection uses the L5-hardened rule
+    (`lhs.replace(" ", "").isalpha() and lhs.isupper()`) — rejects mixed-
+    case AND digit/punctuation-only colon lines.
+
+    The returned directive is truncated to `max_chars`.
+    """
+    # NOTE: trailing whitespace eater is `[ \t]*` (horizontal whitespace
+    # only) — `\s*` would greedily consume the newline and pull the first
+    # continuation line into match.group(1), then trigger a premature break
+    # on the now-empty post-match line.
+    match = re.search(rf"(?m)^[ \t]*{re.escape(marker)}[ \t]*(.*)$", critique)
+    if match is None:
+        return None
+
+    first_line = match.group(1).strip()
+    rest = critique[match.end():]
+
+    collected: list[str] = []
+    if first_line and first_line.lower() not in ("none", "none detected", "n/a"):
+        collected.append(first_line)
+
+    for raw in rest.splitlines():
+        line = raw.strip()
+        if not line:
+            if collected:
+                break
+            continue
+        lower = line.lower()
+        sibling_header = False
+        if line.endswith(":"):
+            lhs = line[:-1]
+            if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
+                sibling_header = True
+        if lower.startswith(("overall", "key issues", "#")) or sibling_header:
+            break
+        collected.append(line.lstrip("-•*").strip())
+
+    if not collected:
+        return None
+    veto = " ".join(collected)
+    if len(veto) > max_chars:
+        veto = veto[:max_chars]
+    return veto

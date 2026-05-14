@@ -46,7 +46,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import (
+    extract_flags,
+    extract_veto_directive,
+    sanitize_for_prompt,
+)
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 _DISCLAIMER = (
@@ -360,55 +364,12 @@ class RecallScopeWorkflow(BaseWorkflow):
     def _extract_veto(critique: str, max_chars: int) -> str | None:
         """Return the verbatim veto directive, or None if not vetoed.
 
-        Veto is recognised on the `REVIEWER VETO:` line. The value
-        "None" (any case) means no veto. Otherwise we capture the rest
-        of the line plus any non-empty continuation lines until the next
-        section header.
+        Thin delegate to `core._internal.extract_veto_directive`, which
+        applies the M-PC-1 line-anchored marker match + M2 continuation
+        + L5 sibling-header hardening uniformly across every veto-using
+        workflow. Test API preserved.
         """
-        if "REVIEWER VETO:" not in critique:
-            return None
-        section = critique.split("REVIEWER VETO:", 1)[1]
-        lines = section.splitlines()
-        if not lines:
-            return None
-
-        # Don't short-circuit on a "none"/"none detected" first line —
-        # a reviewer may emit the marker on line 1 then a real directive
-        # on continuation lines (M2 — early-return drops continuation).
-        # The loop below skips the marker line at idx=0 and lets
-        # continuation lines populate `collected`. If no continuation
-        # follows, `collected` stays empty and we return None at the end.
-        collected: list[str] = []
-        for idx, raw in enumerate(lines):
-            line = raw.strip()
-            if idx == 0:
-                if line and line.lower() not in ("none", "none detected", "n/a"):
-                    collected.append(line)
-                continue
-            if not line:
-                if collected:
-                    break
-                continue
-            lower = line.lower()
-            sibling_header = False
-            if line.endswith(":"):
-                lhs = line[:-1]
-                # L5: match the shared extract_flags sibling-header rule
-                # (alpha+spaces, all-upper). Reject pure-digit / mixed
-                # punctuation lines that the looser `[:-1].isupper()` check
-                # accepted.
-                if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
-                    sibling_header = True
-            if lower.startswith(("overall", "key issues", "#")) or sibling_header:
-                break
-            collected.append(line.lstrip("-•*").strip())
-
-        if not collected:
-            return None
-        veto = " ".join(collected)
-        if len(veto) > max_chars:
-            veto = veto[:max_chars]
-        return veto
+        return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
     def _format_flag_section(

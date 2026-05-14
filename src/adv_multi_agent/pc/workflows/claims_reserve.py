@@ -55,7 +55,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import (
+    extract_flags,
+    extract_veto_directive,
+    sanitize_for_prompt,
+)
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 _DISCLAIMER = (
@@ -424,48 +428,9 @@ class ClaimsReserveWorkflow(BaseWorkflow):
 
     @staticmethod
     def _extract_veto(critique: str, max_chars: int) -> str | None:
-        """Return the verbatim veto directive, or None if not vetoed.
-
-        Veto is recognised on the `REVIEWER VETO:` line. The value
-        "None" (any case) means no veto. Otherwise we capture the rest
-        of the line plus any non-empty continuation lines until the next
-        section header. Mirrors the post-2026-05-13 M2/L5-hardened
-        implementation in RecallScopeWorkflow.
-        """
-        if "REVIEWER VETO:" not in critique:
-            return None
-        section = critique.split("REVIEWER VETO:", 1)[1]
-        lines = section.splitlines()
-        if not lines:
-            return None
-
-        collected: list[str] = []
-        for idx, raw in enumerate(lines):
-            line = raw.strip()
-            if idx == 0:
-                if line and line.lower() not in ("none", "none detected", "n/a"):
-                    collected.append(line)
-                continue
-            if not line:
-                if collected:
-                    break
-                continue
-            lower = line.lower()
-            sibling_header = False
-            if line.endswith(":"):
-                lhs = line[:-1]
-                if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
-                    sibling_header = True
-            if lower.startswith(("overall", "key issues", "#")) or sibling_header:
-                break
-            collected.append(line.lstrip("-•*").strip())
-
-        if not collected:
-            return None
-        veto = " ".join(collected)
-        if len(veto) > max_chars:
-            veto = veto[:max_chars]
-        return veto
+        """Thin delegate to `core._internal.extract_veto_directive`
+        (M-PC-1 / M2 / L5 hardening). Test API preserved."""
+        return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
     def _format_flag_section(
