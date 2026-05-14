@@ -56,8 +56,12 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated gig-platform liability analysis "
@@ -123,6 +127,10 @@ if and only if at least one of the following holds:
     mandated workers' comp AND state law does not permit the
     substitution.
 Otherwise: "REVIEWER VETO: None".
+
+FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
+"Overall", "Key issues", or a markdown header (#) — those markers terminate
+the veto block in the parser.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero CLASSIFICATION FLAGS AND zero COVERAGE-GAP FLAGS
@@ -267,14 +275,15 @@ class GigPlatformLiabilityRequest:
     """Bind terms or coverage call submitted for review."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Platform summary: {self.platform_summary}",
-            f"Workforce classification: {self.workforce_classification}",
-            f"Coverage stack: {self.coverage_stack}",
-            f"Personal-policy context: {self.personal_policy_context}",
-            f"State regulatory posture: {self.state_regulatory_posture}",
-            f"Pending litigation: {self.pending_litigation}",
-            f"Proposed bind / decision: {self.proposed_bind_or_decision}",
+            f"Platform summary: {self.platform_summary[:cap]}",
+            f"Workforce classification: {self.workforce_classification[:cap]}",
+            f"Coverage stack: {self.coverage_stack[:cap]}",
+            f"Personal-policy context: {self.personal_policy_context[:cap]}",
+            f"State regulatory posture: {self.state_regulatory_posture[:cap]}",
+            f"Pending litigation: {self.pending_litigation[:cap]}",
+            f"Proposed bind / decision: {self.proposed_bind_or_decision[:cap]}",
         ])
 
 
@@ -426,7 +435,8 @@ class GigPlatformLiabilityWorkflow(BaseWorkflow):
             if not flags:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

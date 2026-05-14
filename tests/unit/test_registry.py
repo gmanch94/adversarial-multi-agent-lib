@@ -262,6 +262,19 @@ class TestSkillRender:
         assert "\x00" not in out
         assert "hi" in out and "bye" in out
 
+    def test_l_pc_4_braces_stripped_from_input_value(self, tmp_path: Path) -> None:
+        """L-PC-4: braces in input values must be stripped to prevent
+        format-syntax smuggling into the rendered prompt."""
+        write_skill(tmp_path, "s.md", name="brace", inputs="[x]", body="V={x}")
+        skill = SkillRegistry(str(tmp_path)).get("brace")
+        out = skill.render(x="hello {system_override} world {{escaped}}")
+        assert "{" not in out
+        assert "}" not in out
+        assert "hello" in out and "world" in out
+        # The literal content (sans braces) is preserved:
+        assert "system_override" in out
+        assert "escaped" in out
+
 
 # ---------------------------------------------------------------------------
 # M10 — multi-line frontmatter values (block scalar)

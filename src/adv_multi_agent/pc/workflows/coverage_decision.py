@@ -49,8 +49,12 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated coverage analysis is not an "
@@ -110,6 +114,10 @@ if and only if at least one of the following holds:
   • Reasonable-expectations doctrine clearly applies AND analysis ignores
     it.
 Otherwise: "REVIEWER VETO: None".
+
+FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
+"Overall", "Key issues", or a markdown header (#) — those markers terminate
+the veto block in the parser.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero WORDING FLAGS AND zero CASE-LAW FLAGS AND no VETO:
@@ -230,13 +238,14 @@ class CoverageDecisionRequest:
     """Cover / partial / denial + rationale being proposed for review."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Claim summary: {self.claim_summary}",
-            f"Policy wording: {self.policy_wording}",
-            f"Factual disputes: {self.factual_disputes}",
-            f"State law: {self.state_law}",
-            f"Bad-faith exposure: {self.bad_faith_exposure}",
-            f"Proposed decision: {self.proposed_decision}",
+            f"Claim summary: {self.claim_summary[:cap]}",
+            f"Policy wording: {self.policy_wording[:cap]}",
+            f"Factual disputes: {self.factual_disputes[:cap]}",
+            f"State law: {self.state_law[:cap]}",
+            f"Bad-faith exposure: {self.bad_faith_exposure[:cap]}",
+            f"Proposed decision: {self.proposed_decision[:cap]}",
         ])
 
 
@@ -367,7 +376,8 @@ class CoverageDecisionWorkflow(BaseWorkflow):
         parts: list[str] = []
         if wording_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in wording_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(wording_flags)
             )
             parts.append(
                 "⚠️  WORDING FLAGS (quote the controlling clause verbatim and re-map "
@@ -376,7 +386,8 @@ class CoverageDecisionWorkflow(BaseWorkflow):
             )
         if case_law_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in case_law_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(case_law_flags)
             )
             parts.append(
                 "⚠️  CASE-LAW FLAGS (replace the authority with in-jurisdiction, "

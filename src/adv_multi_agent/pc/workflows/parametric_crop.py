@@ -51,8 +51,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import (
+    extract_flags,
+    sanitize_for_prompt,
+    truncate_flag_display,
+)
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated parametric / crop design is "
@@ -236,14 +243,15 @@ class ParametricCropRequest:
     parametric); aggregate / fund headroom."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Producer summary: {self.producer_summary}",
-            f"Crop and yield history: {self.crop_and_yield_history}",
-            f"Loss history: {self.loss_history}",
-            f"Proposed cover type: {self.proposed_cover_type}",
-            f"Data source: {self.data_source}",
-            f"Climate baseline: {self.climate_baseline}",
-            f"Reinsurance context: {self.reinsurance_context}",
+            f"Producer summary: {self.producer_summary[:cap]}",
+            f"Crop and yield history: {self.crop_and_yield_history[:cap]}",
+            f"Loss history: {self.loss_history[:cap]}",
+            f"Proposed cover type: {self.proposed_cover_type[:cap]}",
+            f"Data source: {self.data_source[:cap]}",
+            f"Climate baseline: {self.climate_baseline[:cap]}",
+            f"Reinsurance context: {self.reinsurance_context[:cap]}",
         ])
 
 
@@ -373,7 +381,8 @@ class ParametricCropWorkflow(BaseWorkflow):
             if not flags:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

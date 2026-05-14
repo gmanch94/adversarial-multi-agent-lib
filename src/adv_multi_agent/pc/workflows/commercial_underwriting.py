@@ -41,8 +41,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import (
+    extract_flags,
+    sanitize_for_prompt,
+    truncate_flag_display,
+)
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated underwriting recommendation is "
@@ -200,14 +207,15 @@ class CommercialUnderwritingRequest:
     exposure."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Insured summary: {self.insured_summary}",
-            f"Prior loss history: {self.prior_loss_history}",
-            f"Hazard grade: {self.hazard_grade}",
-            f"Requested coverage: {self.requested_coverage}",
-            f"Proposed terms: {self.proposed_terms}",
-            f"Regulatory context: {self.regulatory_context}",
-            f"Capacity constraint: {self.capacity_constraint}",
+            f"Insured summary: {self.insured_summary[:cap]}",
+            f"Prior loss history: {self.prior_loss_history[:cap]}",
+            f"Hazard grade: {self.hazard_grade[:cap]}",
+            f"Requested coverage: {self.requested_coverage[:cap]}",
+            f"Proposed terms: {self.proposed_terms[:cap]}",
+            f"Regulatory context: {self.regulatory_context[:cap]}",
+            f"Capacity constraint: {self.capacity_constraint[:cap]}",
         ])
 
 
@@ -336,7 +344,8 @@ class CommercialUnderwritingWorkflow(BaseWorkflow):
             if not flags:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

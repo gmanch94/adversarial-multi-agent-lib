@@ -36,6 +36,12 @@ _MAX_DESCRIPTION_CHARS = 500
 _MAX_INPUT_VALUE_CHARS = 8_192
 _MAX_INPUT_KEYS = 64
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x9b]")
+# L-PC-4: strip `{` and `}` from caller-supplied input values before
+# substitution. _PartialFormat passes through unknown `{xyz}` tokens unchanged,
+# so a brace-laden input could smuggle format-syntax into the rendered prompt
+# and influence the consuming LLM's parsing. Strip outright — callers should
+# not pass brace-laden content into a skill input.
+_BRACE_CHARS_RE = re.compile(r"[{}]")
 
 
 class _PartialFormat(dict[str, str]):
@@ -84,7 +90,9 @@ class Skill:
                     f"input '{key}' length {len(value)} exceeds "
                     f"max {_MAX_INPUT_VALUE_CHARS} chars"
                 )
-            sanitized[key] = _CONTROL_CHARS_RE.sub("", value)
+            stripped = _CONTROL_CHARS_RE.sub("", value)
+            # L-PC-4: strip braces to prevent format-syntax smuggling.
+            sanitized[key] = _BRACE_CHARS_RE.sub("", stripped)
         missing = [k for k in self.inputs if k not in sanitized]
         if missing:
             raise ValueError(f"Skill '{self.name}' missing inputs: {missing}")

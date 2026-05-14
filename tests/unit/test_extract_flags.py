@@ -140,3 +140,46 @@ class TestExtractFlagsSizeCap:
         # First N preserved in order.
         assert flags[0] == "flag 0"
         assert flags[-1] == f"flag {_MAX_FLAGS_PER_HEADER - 1}"
+
+
+class TestTruncateFlagDisplay:
+    """L-PC-5 — display cap for `_format_flag_section` re-injection. Bounds
+    prompt size on the executor side without losing audit-trail fidelity
+    (metadata still keeps the full accumulated list)."""
+
+    def test_under_cap_returns_unchanged(self) -> None:
+        from adv_multi_agent.core._internal import (
+            _MAX_FLAGS_DISPLAYED,
+            truncate_flag_display,
+        )
+
+        flags = [f"f{i}" for i in range(_MAX_FLAGS_DISPLAYED - 1)]
+        assert truncate_flag_display(flags) == flags
+
+    def test_at_cap_returns_unchanged(self) -> None:
+        from adv_multi_agent.core._internal import (
+            _MAX_FLAGS_DISPLAYED,
+            truncate_flag_display,
+        )
+
+        flags = [f"f{i}" for i in range(_MAX_FLAGS_DISPLAYED)]
+        assert truncate_flag_display(flags) == flags
+
+    def test_over_cap_truncates_with_marker(self) -> None:
+        from adv_multi_agent.core._internal import (
+            _MAX_FLAGS_DISPLAYED,
+            truncate_flag_display,
+        )
+
+        flags = [f"f{i}" for i in range(_MAX_FLAGS_DISPLAYED + 5)]
+        out = truncate_flag_display(flags)
+        # First N preserved, then a single truncation marker.
+        assert len(out) == _MAX_FLAGS_DISPLAYED + 1
+        assert out[:_MAX_FLAGS_DISPLAYED] == flags[:_MAX_FLAGS_DISPLAYED]
+        assert out[-1].startswith("...")
+        assert "5 more" in out[-1]
+
+    def test_empty_returns_empty(self) -> None:
+        from adv_multi_agent.core._internal import truncate_flag_display
+
+        assert truncate_flag_display([]) == []

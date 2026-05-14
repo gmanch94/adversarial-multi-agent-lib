@@ -42,8 +42,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import (
+    extract_flags,
+    sanitize_for_prompt,
+    truncate_flag_display,
+)
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated cyber underwriting recommendation "
@@ -204,13 +211,14 @@ class CyberUnderwritingRequest:
     (SolarWinds-class systemic risk)."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Applicant summary: {self.applicant_summary}",
-            f"Control attestations: {self.control_attestations}",
-            f"Control evidence: {self.control_evidence}",
-            f"Requested coverage: {self.requested_coverage}",
-            f"Proposed terms: {self.proposed_terms}",
-            f"Aggregation context: {self.aggregation_context}",
+            f"Applicant summary: {self.applicant_summary[:cap]}",
+            f"Control attestations: {self.control_attestations[:cap]}",
+            f"Control evidence: {self.control_evidence[:cap]}",
+            f"Requested coverage: {self.requested_coverage[:cap]}",
+            f"Proposed terms: {self.proposed_terms[:cap]}",
+            f"Aggregation context: {self.aggregation_context[:cap]}",
         ])
 
 
@@ -339,7 +347,8 @@ class CyberUnderwritingWorkflow(BaseWorkflow):
             if not flags:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

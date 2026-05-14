@@ -245,6 +245,34 @@ def extract_flags(critique: str, header: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Flag re-injection display cap (L-PC-5)
+# ---------------------------------------------------------------------------
+
+# Maximum number of flag bullets that may be re-injected into the next-round
+# executor prompt via `_format_flag_section`. The upstream `extract_flags`
+# already caps at _MAX_FLAGS_PER_HEADER=64; this is a tighter cap on the
+# DISPLAY/RE-INJECTION path. Metadata (`accumulated[header]`) keeps all
+# accumulated flags for audit-trail purposes; only the next-round prompt is
+# truncated.
+_MAX_FLAGS_DISPLAYED = 16
+
+
+def truncate_flag_display(flags: list[str]) -> list[str]:
+    """
+    Cap a per-header flag list at `_MAX_FLAGS_DISPLAYED` for re-injection
+    into the next-round executor prompt. If the list is longer, append a
+    single truncation marker so the executor knows entries were elided.
+
+    Audit-trail callers (`metadata['*_flags']`, `accumulated[header]`)
+    should NOT route through this helper — they must keep the full list.
+    """
+    if len(flags) <= _MAX_FLAGS_DISPLAYED:
+        return flags
+    extra = len(flags) - _MAX_FLAGS_DISPLAYED
+    return flags[:_MAX_FLAGS_DISPLAYED] + [f"... ({extra} more truncated)"]
+
+
+# ---------------------------------------------------------------------------
 # Veto directive extraction — shared by every reviewer-veto workflow
 # (M-PC-1: line-anchored marker match closes substring-containment regression
 #  on the criteria-quote case; M2 / L5 hardening preserved in the continuation

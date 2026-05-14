@@ -380,3 +380,27 @@ class TestClaimsReserveRequestToPromptText:
             "Current reserve proposal:",
         ]:
             assert fragment in text
+
+    def test_l_pc_3_per_field_cap_truncates_oversized_field(self) -> None:
+        """L-PC-3: a single 50k-char field must be truncated to
+        `_MAX_FIELD_CHARS` BEFORE concatenation, so later fields are not
+        starved out of the 6000-char post-concat truncation window."""
+        from adv_multi_agent.pc.workflows.claims_reserve import _MAX_FIELD_CHARS
+
+        # Baseline: count "x" chars naturally present in the default
+        # make_request fixture (so the assertion can measure the delta
+        # introduced by the huge field alone).
+        baseline_x = make_request().to_prompt_text().count("x")
+
+        huge = "x" * 50_000
+        req = make_request(comparable_cases=huge)
+        text = req.to_prompt_text()
+        # The huge field is capped; later fields are still present.
+        assert "Comparable cases:" in text
+        assert "Current reserve proposal:" in text
+        # Comparable-cases run of xs after slicing must be exactly the cap
+        # (delta over baseline equals `_MAX_FIELD_CHARS`, not 50_000).
+        delta = text.count("x") - baseline_x
+        assert delta == _MAX_FIELD_CHARS, (
+            f"expected cap-sized run of xs ({_MAX_FIELD_CHARS}), got {delta}"
+        )

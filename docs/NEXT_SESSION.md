@@ -132,7 +132,7 @@ examples/
 6. **P&C insurance domain (B2B)** — design doc at [`docs/superpowers/specs/2026-05-14-pc-domain-design.md`](superpowers/specs/2026-05-14-pc-domain-design.md); D-PC-1..6 locked.
    - **Foundational track shipped 2026-05-14**: ClaimsReserve, CoverageDecision, CommercialUnderwriting, CyberUnderwriting (4 workflows + 17 skill templates + 4 examples + 4 test suites).
    - **Specialty track shipped 2026-05-14** (per D-PC-6): EnvironmentalImpairment (veto + KNOWN-CONDITION / TAIL / REGULATORY-OVERLAP), ParametricCrop (PERIL-MATCH / BASIS / ATTACHMENT, no veto), GigPlatformLiability (veto + CLASSIFICATION / COVERAGE-GAP / REGULATORY-PATCHWORK).
-   - **Post-sweep security audit 2026-05-14** ([report](security-audits/2026-05-14-pc-sweep.md)): 0 CRIT · 0 HIGH · 1 MED · 5 LOW · 15 clean. **M-PC-1** (veto-parser substring containment — same shape as 2026-05-13 M1, duplicated across 5 clones) closed pre-merge by hoisting to `core/_internal.extract_veto_directive` (line-anchored regex). 22 regression tests in `test_extract_veto_directive.py`. 5 LOW findings backlogged.
+   - **Post-sweep security audit 2026-05-14** ([report](security-audits/2026-05-14-pc-sweep.md)): 0 CRIT · 0 HIGH · 1 MED · 5 LOW · 15 clean. **M-PC-1** closed pre-merge (shared `extract_veto_directive` helper). **L-PC-2 / L-PC-3 / L-PC-4 / L-PC-5** all closed in follow-up batch 2026-05-14: criteria-prompt FORMAT NOTE, `_MAX_FIELD_CHARS` per-field cap, brace-strip in `Skill.render`, shared `truncate_flag_display` re-injection cap. L-PC-1 (consolidation) subsumed by M-PC-1 fix. All 6 findings closed.
    - **Deferred specialty**: group captive allocation + equine mortality (per D-PC-6).
 7. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
 

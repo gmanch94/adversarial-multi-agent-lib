@@ -48,8 +48,12 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap (see claims_reserve.py for rationale).
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated environmental analysis is not "
@@ -114,6 +118,10 @@ if and only if at least one of the following holds:
   • Co-insurer notification is required AND analysis treats the matter as
     single-policy.
 Otherwise: "REVIEWER VETO: None".
+
+FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
+"Overall", "Key issues", or a markdown header (#) — those markers terminate
+the veto block in the parser.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero KNOWN-CONDITION FLAGS AND zero TAIL FLAGS AND zero
@@ -254,15 +262,16 @@ class EnvironmentalImpairmentRequest:
     review."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Site summary: {self.site_summary}",
-            f"Site history: {self.site_history}",
-            f"Pollution condition: {self.pollution_condition}",
-            f"Policy form: {self.policy_form}",
-            f"Governing state: {self.governing_state}",
-            f"Regulator status: {self.regulator_status}",
-            f"Co-insurer history: {self.co_insurer_history}",
-            f"Proposed decision / reserve: {self.proposed_decision_or_reserve}",
+            f"Site summary: {self.site_summary[:cap]}",
+            f"Site history: {self.site_history[:cap]}",
+            f"Pollution condition: {self.pollution_condition[:cap]}",
+            f"Policy form: {self.policy_form[:cap]}",
+            f"Governing state: {self.governing_state[:cap]}",
+            f"Regulator status: {self.regulator_status[:cap]}",
+            f"Co-insurer history: {self.co_insurer_history[:cap]}",
+            f"Proposed decision / reserve: {self.proposed_decision_or_reserve[:cap]}",
         ])
 
 
@@ -412,7 +421,8 @@ class EnvironmentalImpairmentWorkflow(BaseWorkflow):
             if not flags:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

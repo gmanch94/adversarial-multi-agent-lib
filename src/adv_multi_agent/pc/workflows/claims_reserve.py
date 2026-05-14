@@ -59,8 +59,14 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap on Request.to_prompt_text. Bounds any single
+# caller-supplied field from starving later fields out of the 6000-char
+# concatenated-prompt budget enforced at the workflow boundary.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated reserve recommendation is not "
@@ -130,6 +136,10 @@ if and only if at least one of the following holds:
     reserve-authority floor for the applicable approving authority
     (i.e. the draft routes to the wrong sign-off level).
 Otherwise: "REVIEWER VETO: None".
+
+FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
+"Overall", "Key issues", or a markdown header (#) — those markers terminate
+the veto block in the parser.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero RESERVE FLAGS AND zero PRECEDENT FLAGS AND zero
@@ -277,16 +287,17 @@ class ClaimsReserveRequest:
     """Analyst's first-pass reserve $ + IBNR uplift basis."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Loss event: {self.loss_event}",
-            f"Injury / damage: {self.injury_or_damage}",
-            f"Coverage summary: {self.coverage_summary}",
-            f"Comparable cases: {self.comparable_cases}",
-            f"Venue: {self.venue}",
-            f"Defense posture: {self.defense_posture}",
-            f"Medical / repair estimate: {self.medical_or_repair_estimate}",
-            f"Regulatory exposure: {self.regulatory_exposure}",
-            f"Current reserve proposal: {self.current_reserve_proposal}",
+            f"Loss event: {self.loss_event[:cap]}",
+            f"Injury / damage: {self.injury_or_damage[:cap]}",
+            f"Coverage summary: {self.coverage_summary[:cap]}",
+            f"Comparable cases: {self.comparable_cases[:cap]}",
+            f"Venue: {self.venue[:cap]}",
+            f"Defense posture: {self.defense_posture[:cap]}",
+            f"Medical / repair estimate: {self.medical_or_repair_estimate[:cap]}",
+            f"Regulatory exposure: {self.regulatory_exposure[:cap]}",
+            f"Current reserve proposal: {self.current_reserve_proposal[:cap]}",
         ])
 
 
@@ -443,7 +454,8 @@ class ClaimsReserveWorkflow(BaseWorkflow):
         parts: list[str] = []
         if reserve_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in reserve_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(reserve_flags)
             )
             parts.append(
                 "⚠️  RESERVE FLAGS (adjust reserve $-figure or methodology):\n"
@@ -451,7 +463,8 @@ class ClaimsReserveWorkflow(BaseWorkflow):
             )
         if precedent_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in precedent_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(precedent_flags)
             )
             parts.append(
                 "⚠️  PRECEDENT FLAGS (re-select comparables that match venue and recency):\n"
@@ -459,7 +472,8 @@ class ClaimsReserveWorkflow(BaseWorkflow):
             )
         if litigation_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in litigation_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(litigation_flags)
             )
             parts.append(
                 "⚠️  LITIGATION FLAGS (re-state venue / posture / aggregate adjustments):\n"
