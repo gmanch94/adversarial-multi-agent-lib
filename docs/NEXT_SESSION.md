@@ -1,6 +1,6 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-14 (LOW backlog closed + D-RETAIL-2 re-eval locked + M10/M11 skill metadata shipped + P&C domain design doc landed)
+Last updated: 2026-05-14 (LOW backlog + D-RETAIL-2 re-eval + M10/M11 + P&C design doc + **P&C PR #1 ClaimsReserveWorkflow SHIPPED**)
 
 ---
 
@@ -129,7 +129,9 @@ examples/
 3. ~~**Re-evaluate D-RETAIL-2**~~ **LOCKED 2026-05-14** as D-RETAIL-7 — keep inline, no base class. Next re-eval gated on 9th scenario or cross-cutting concern.
 4. **Production gap closure for retail** — see PRODUCTION_GAPS in each module's docstring (live data feeds, third-model auditor cascade per ARIS §3.1, etc.).
 5. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
-6. **P&C insurance domain (B2B)** — design doc landed at [`docs/superpowers/specs/2026-05-14-pc-domain-design.md`](superpowers/specs/2026-05-14-pc-domain-design.md); decision rows D-PC-1..5 locked. Anchor PR #1: `ClaimsReserveWorkflow` (veto + triple-flag, mirrors recall_scope). Sequenced PRs: #2 CoverageDecision (veto + dual-flag), #3 CommercialUnderwriting (triple-flag), #4 CyberUnderwriting (triple-flag). No code yet — sweep starts on user trigger.
+6. **P&C insurance domain (B2B)** — design doc at [`docs/superpowers/specs/2026-05-14-pc-domain-design.md`](superpowers/specs/2026-05-14-pc-domain-design.md); D-PC-1..5 locked.
+   - **PR #1 SHIPPED 2026-05-14**: `ClaimsReserveWorkflow` (veto + triple-flag RESERVE/PRECEDENT/LITIGATION) + 5 `reserve_*.md` skill templates + `examples/pc/claims_reserve.py` (synthetic premises-TBI scenario) + 15 unit tests. `pyproject.toml` package-data extended for `adv_multi_agent.pc.skills`. 334 tests total (319 → +15).
+   - **Sequenced next**: PR #2 `CoverageDecisionWorkflow` (veto + dual-flag), PR #3 `CommercialUnderwritingWorkflow` (triple-flag), PR #4 `CyberUnderwritingWorkflow` (triple-flag). Each on user trigger.
 7. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
 
 ## Outputs from this session
