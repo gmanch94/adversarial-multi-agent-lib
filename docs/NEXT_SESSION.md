@@ -1,15 +1,40 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (retail sweep **COMPLETE** — all 6 scenarios shipped)
+Last updated: 2026-05-13 (retail sweep COMPLETE + post-sweep security delta audit closed)
 
 ---
 
 ## Current state
 
-**Retail sweep DONE.** 6 of 6 candidate scenarios shipped post-audit, plus 1 helper-extraction refactor PR.
+**Retail sweep DONE + post-sweep security delta audit CLOSED.** 6 of 6 candidate scenarios shipped post-audit, plus 1 helper-extraction refactor PR, plus a same-day security remediation directly on main.
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: clean on `main`. **300 tests** (was 222 pre-sweep). 6 retail workflows + 25 retail skill templates + 6 retail examples.
+Local: clean on `main` at `1aa0563`. **305 tests** (was 222 pre-sweep, 300 post-sweep, +5 regression tests for security MEDIUM findings). 8 retail workflows + 25 retail skill templates + 8 retail examples.
+
+### Post-sweep security audit (2026-05-13)
+
+Scoped delta audit on the new surface (3 new request dataclasses, helper extraction, reviewer-veto, list[str] caps, triple-flag state tracking). Report: [`docs/security-audits/2026-05-13-post-sweep-delta.md`](security-audits/2026-05-13-post-sweep-delta.md).
+
+**0 CRITICAL · 0 HIGH · 2 MEDIUM · 5 LOW · 9 INFO clean**.
+
+Closed same-day in commit `1aa0563` (direct-to-main with `[skip ci]` to save GitHub Actions minutes — user-authorised CI bypass; the local pre-PR gate passed before push):
+
+- **M1** — `extract_flags` now line-anchored regex (`re.search(rf"(?m)^\s*{re.escape(header)}", critique)`); commentary mentions of header names no longer mis-anchor parsing
+- **M2** — `_extract_veto` no longer early-returns on `"none detected"` first line; continuation directive after the marker is captured
+- **L3** — `_format_flag_section` in all 6 flag-gated workflows now routes each flag entry through `sanitize_for_prompt(f, max_chars=500)` before re-injection (cross-model prompt-injection defence-in-depth)
+
+Regression tests:
+- `tests/unit/test_extract_flags.py::TestExtractFlagsHeaderAnchoring` (3 tests)
+- `tests/unit/test_recall_scope.py::TestExtractVeto::test_marker_on_first_line_then_continuation_directive` + `::test_marker_only_returns_none`
+
+Backlogged (LOW, not pre-release blocking):
+- **L1** — no cap on claims/round in `_register_claims`
+- **L2** — no upper bound on `extract_flags` return list (bounded indirectly by 4000-char critique cap)
+- **L4** — `## Claims` substring split could mis-anchor on commentary
+- **L5** — `_extract_veto` sibling-header check looser than shared helper
+
+Info-only (no fix planned):
+- **I1** — async re-entrancy on shared ledger+wiki; documentation gap, not a code change
 
 ### Sweep PRs (all merged)
 
@@ -83,11 +108,19 @@ examples/
 
 ## What's left (broader, post-sweep)
 
-1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only.
-2. **Re-evaluate D-RETAIL-2 (no shared base class)** — with 6 workflows in tree, base-class extraction has evidence to argue from. Current view: NO, keep them inline. Reason: per-scenario banner text, metadata keys, and checklist items diverge enough that a base class would require config-dict injection that costs more than it saves. **Decision deferred until a 7th scenario or a divergence-without-justification appears.**
-3. **Production gap closure for retail** — see PRODUCTION_GAPS in each module's docstring (live data feeds, third-model auditor cascade per ARIS §3.1, etc.).
-4. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
-5. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
+1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only. Pre-release blockers from the security audit are now CLOSED.
+2. **LOW security findings backlog** (L1, L2, L4, L5 from the 2026-05-13 delta audit) — none are pre-release blocking; address opportunistically. Details in [`docs/security-audits/2026-05-13-post-sweep-delta.md`](security-audits/2026-05-13-post-sweep-delta.md).
+3. **Re-evaluate D-RETAIL-2 (no shared base class)** — with 6 workflows in tree, base-class extraction has evidence to argue from. Current view: NO, keep them inline. Reason: per-scenario banner text, metadata keys, and checklist items diverge enough that a base class would require config-dict injection that costs more than it saves. **Decision deferred until a 7th scenario or a divergence-without-justification appears.**
+4. **Production gap closure for retail** — see PRODUCTION_GAPS in each module's docstring (live data feeds, third-model auditor cascade per ARIS §3.1, etc.).
+5. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
+6. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
+
+## Outputs from this session
+
+- 4 sweep PRs (#18, #19, #20, plus state-save #21 and slides/briefs refresh #22) — all merged
+- 1 direct-to-main security remediation commit (`1aa0563`)
+- LinkedIn post draft (PM-framed, leads with reviewer-veto hook) — not persisted to repo
+- Audit doc: [`docs/security-audits/2026-05-13-post-sweep-delta.md`](security-audits/2026-05-13-post-sweep-delta.md)
 
 ---
 
