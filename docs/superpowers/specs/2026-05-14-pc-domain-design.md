@@ -160,9 +160,9 @@ Pre-anchor open question (resolve before PR #1): does the `pc/` namespace mirror
 
 ---
 
-## Decision references (see [decisions.md](decisions.md))
+## Decision references (see [decisions.md](../../decisions.md))
 
 - D1, D2, D7, D8 — model + convergence inheritance.
 - D-RETAIL-1 — reviewer-veto pattern (reused).
 - D-RETAIL-2 → D-RETAIL-7 — no-base-class convention (reused).
-- D-PC-1..5 — to be added with this design doc.
+- D-PC-1..5 — landed with this design doc.
