@@ -1,15 +1,44 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-14 (P&C Foundational + Specialty + post-sweep audit M-PC-1 remediation in one batch)
+Last updated: 2026-05-14 (P&C Foundational + Specialty SHIPPED + M-PC-1 / L-PC-2..5 audit findings ALL CLOSED + docs/slides/ subdir)
 
 ---
 
 ## Current state
 
-**Retail sweep DONE + LOW backlog CLOSED + D-RETAIL-2 re-eval LOCKED + M10/M11 skill metadata SHIPPED.**
+**P&C domain (B2B) shipped — Foundational + Specialty tracks complete. All audit findings closed. Local clean on `main` at `c3f97c6`.**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: clean on `main` (post-2026-05-14 direct commit). **318 tests** (305 → +13: 1 L2 cap, 3 L4 anchoring, 2 L1 cap, 2 L5 sibling-header, 3 M10 block scalar, 2 M11 version). 8 retail workflows + 25 retail skill templates + 8 retail examples.
+**409 tests** (318 pre-P&C → +91: 22 helper-suite test_extract_veto_directive, 15 ClaimsReserve, 13 CoverageDecision, 12 CommercialUnderwriting, 12 CyberUnderwriting, 12 EnvironmentalImpairment, 9 ParametricCrop, 13 GigPlatformLiability, 4 TruncateFlagDisplay, +1 L-PC-3, +1 L-PC-4). ruff + mypy clean.
+
+**15 workflows total**: 8 retail (demand, labor, recall, loyalty, promo, supplier, inventory, private_label) + 7 P&C (claims_reserve, coverage_decision, commercial_underwriting, cyber_underwriting, environmental_impairment, parametric_crop, gig_platform_liability) + 1 parole + 4 research.
+
+### 2026-05-14 session — P&C domain ship + audit closure
+
+**Commits (all direct-to-main with `[skip ci]`, user-authorised CI bypass; local gate ran before push):**
+
+- `43c0074` — P&C PR #1 ClaimsReserveWorkflow (anchor, veto + triple-flag)
+- `2ef68dc` — moved P&C design doc into `docs/superpowers/specs/` convention
+- `f30fdaa` — P&C design doc + D-PC-1..5 decision rows (Foundational scope)
+- `b940401` — Foundational PR #2-#4 (CoverageDecision, CommercialUnderwriting, CyberUnderwriting) + Specialty PR #5-#7 (Environmental, ParametricCrop, GigPlatform) + M-PC-1 remediation (hoisted `_extract_veto` to shared `core/_internal.extract_veto_directive`)
+- `4eae855` — removed stray `threshold` file (shell-redirect artifact from earlier commit msg)
+- `59af272` — moved 6 slide/brief docs to `docs/slides/` subdir; README pointer updated
+- `c3f97c6` — closed LOW backlog L-PC-2 / L-PC-3 / L-PC-4 / L-PC-5
+
+**Post-sweep P&C security audit 2026-05-14** ([report](security-audits/2026-05-14-pc-sweep.md)):
+- 0 CRIT · 0 HIGH · **1 MED (M-PC-1)** · 5 LOW · 15 clean
+- **M-PC-1 (veto-parser substring containment)** — closed pre-merge by hoisting `_extract_veto` → `core/_internal.extract_veto_directive` with line-anchored regex (`(?m)^[ \t]*REVIEWER VETO:[ \t]*(.*)$`). Replaced 5 byte-identical clones (4 PC + retail recall_scope) with thin delegating wrappers. 22 regression tests in `test_extract_veto_directive.py`.
+- **L-PC-1 (consolidation)** — subsumed by M-PC-1 fix (5 clones collapsed to thin wrappers).
+- **L-PC-2 (criteria FORMAT NOTE)** — added to all 4 PC veto-using workflows' criteria templates: don't begin a veto-directive continuation line with `Overall` / `Key issues` / `#`.
+- **L-PC-3 (per-field cap)** — `_MAX_FIELD_CHARS = 1500` module constant in each of 7 PC workflows; `to_prompt_text` slices every field before concatenation. Regression test: `test_l_pc_3_per_field_cap_truncates_oversized_field`.
+- **L-PC-4 (brace strip)** — `_BRACE_CHARS_RE` strip in `Skill.render` after control-char sanitization. Closes format-syntax smuggling vector for all skills. Regression test: `test_l_pc_4_braces_stripped_from_input_value`.
+- **L-PC-5 (re-injection volume)** — shared `truncate_flag_display(flags)` helper in `core/_internal.py`, caps at `_MAX_FLAGS_DISPLAYED = 16` with single truncation-marker bullet. Applied in `_format_flag_section` across all 7 PC workflows. Metadata audit-trail keeps full list; only re-injection bounded.
+
+**Decision rows added 2026-05-14:** D-PC-1 (domain scope), D-PC-2 (anchor on Claims Reserve), D-PC-3 (namespace mirrors retail), D-PC-4 (veto pattern reused selectively), D-PC-5 (test convention), D-PC-6 (Specialty Lines scope expansion). All locked in [docs/decisions.md](decisions.md).
+
+### Prior context (2026-05-13 retail sweep) — preserved for reference
+
+**Retail sweep DONE + LOW backlog CLOSED + D-RETAIL-2 re-eval LOCKED + M10/M11 skill metadata SHIPPED.** 318 tests pre-P&C.
 
 ### 2026-05-14 — LOW backlog + skill metadata (direct-to-main, `[skip ci]`)
 
@@ -77,7 +106,8 @@ src/adv_multi_agent/
     ledger.py           ClaimLedger (append-only JSON, atomic writes)
     wiki.py             ResearchWiki (4 entry kinds, improvement approval gate)
     workflow.py         BaseWorkflow, WorkflowResult — hosts _register_claims(self, output, round_num)
-    _internal.py        parse_first_json, sanitize_for_prompt, atomic_write, redact_secret, extract_flags
+    _internal.py        parse_first_json, sanitize_for_prompt, atomic_write, redact_secret, extract_flags,
+                        extract_veto_directive (M-PC-1 hardened), truncate_flag_display (L-PC-5)
     skills/
       registry.py       SkillRegistry (bundled_skills_path(domain=...))
       mcp_server.py     FastMCP (4 tools, stdio, SKILLS_DOMAIN env)
@@ -100,12 +130,30 @@ src/adv_multi_agent/
       private_label.py            PrivateLabelWorkflow + PrivateLabelRequest (triple-flag cannibalization)
     skills/templates/   25 × *.md (5 demand_* + 4 labor_* + 5 recall_* + 4 loyalty_* + 4 promo_* +
                                    4 supplier_* + 4 replenishment_* + 4 private_label_*)
+  pc/                    [Foundational + Specialty tracks, D-PC-1..6]
+    workflows/
+      claims_reserve.py            ClaimsReserveWorkflow + ClaimsReserveRequest (veto + RESERVE/PRECEDENT/LITIGATION)
+      coverage_decision.py         CoverageDecisionWorkflow + CoverageDecisionRequest (veto + WORDING/CASE-LAW)
+      commercial_underwriting.py   CommercialUnderwritingWorkflow + Request (LOSS-COST/EXCLUSION/CAPACITY, no veto)
+      cyber_underwriting.py        CyberUnderwritingWorkflow + Request (CONTROL-GAP/SUB-LIMIT/AGGREGATION, no veto)
+      environmental_impairment.py  EnvironmentalImpairmentWorkflow + Request (veto + KNOWN-CONDITION/TAIL/REGULATORY-OVERLAP)
+      parametric_crop.py           ParametricCropWorkflow + Request (PERIL-MATCH/BASIS/ATTACHMENT, no veto)
+      gig_platform_liability.py    GigPlatformLiabilityWorkflow + Request (veto + CLASSIFICATION/COVERAGE-GAP/REGULATORY-PATCHWORK)
+    skills/templates/   29 × *.md (5 reserve_* + 4 coverage_* + 4 underwriting_* + 4 cyber_* +
+                                   4 environmental_* + 4 crop_* + 4 gig_*)
 examples/
   research/             basic_review_loop.py, gemini_executor.py, manuscript_assurance.py
   parole/               parole_assessment.py
   retail/               demand_forecasting.py, labor_scheduling.py, recall_scope.py,
                         loyalty_offer.py, promo_markdown.py, supplier_brief.py,
                         inventory_replenishment.py, private_label.py
+  pc/                   claims_reserve.py, coverage_decision.py, commercial_underwriting.py,
+                        cyber_underwriting.py, environmental_impairment.py, parametric_crop.py,
+                        gig_platform_liability.py
+docs/
+  slides/               6 × *.md (parole + research + retail × slides + executive brief; moved 2026-05-14)
+  superpowers/specs/    2026-05-14-pc-domain-design.md + retail-domain-design.md + retro-specs
+  security-audits/      2026-05-12 / 2026-05-13 / 2026-05-14 audit reports
 ```
 
 ---
@@ -119,6 +167,8 @@ examples/
 - **D-RETAIL-1**: Reviewer-veto pattern (used by recall). Veto check runs after flag extraction; audit-trail writes happen before veto break.
 - **D-RETAIL-2**: No shared base class for retail workflows. Helper extraction was the right move at 3 workflows (PR #16); **base-class extraction is still rejected**. With 6 workflows now in tree, this can be re-evaluated — but the per-flag-header banner / metadata key / checklist text per scenario all differ enough that the inline code is honest.
 - **D-RETAIL-3..6**: skill-prefix scheme, one-example-per-scenario, synthetic-data-only, test convention.
+- **D-RETAIL-7**: 2026-05-14 re-evaluation — keep inline, no base class (8 workflows surveyed; 5 distinct injection points × 6 triple-flag workflows = config surface > duplication savings).
+- **D-PC-1..6**: P&C domain (commercial-only scope, anchor on Claims Reserve, namespace mirrors retail, veto pattern reused selectively, test convention parity, Specialty Lines track per D-PC-6 — Environmental + ParametricCrop + GigPlatform).
 
 ---
 
@@ -136,12 +186,19 @@ examples/
    - **Deferred specialty**: group captive allocation + equine mortality (per D-PC-6).
 7. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
 
-## Outputs from this session
+## Outputs from this session (2026-05-14)
 
-- 4 sweep PRs (#18, #19, #20, plus state-save #21 and slides/briefs refresh #22) — all merged
-- 1 direct-to-main security remediation commit (`1aa0563`)
-- LinkedIn post draft (PM-framed, leads with reviewer-veto hook) — not persisted to repo
-- Audit doc: [`docs/security-audits/2026-05-13-post-sweep-delta.md`](security-audits/2026-05-13-post-sweep-delta.md)
+- 7 P&C workflows + 29 P&C skill templates + 7 P&C examples + 7 P&C test files
+- Shared `extract_veto_directive` helper in `core/_internal.py` (replaces 5 _extract_veto clones, line-anchored regex closing M-PC-1)
+- Shared `truncate_flag_display` helper in `core/_internal.py` (re-injection cap closing L-PC-5)
+- Brace-strip hardening in `Skill.render` (closes L-PC-4 cross-domain)
+- Per-field cap `_MAX_FIELD_CHARS = 1500` in all 7 PC workflows (closes L-PC-3)
+- FORMAT NOTE in 4 veto-criteria templates (closes L-PC-2)
+- 22 helper-suite tests + 86 per-scenario tests = 108 new tests this session
+- D-PC-1..6 decision rows added to [`docs/decisions.md`](decisions.md)
+- Design doc [`docs/superpowers/specs/2026-05-14-pc-domain-design.md`](superpowers/specs/2026-05-14-pc-domain-design.md)
+- Audit doc [`docs/security-audits/2026-05-14-pc-sweep.md`](security-audits/2026-05-14-pc-sweep.md) (1 MED + 5 LOW all closed)
+- 6 slide/brief docs moved to [`docs/slides/`](slides/) subdir
 
 ---
 
@@ -155,6 +212,11 @@ examples/
 - Don't add a `RetailWorkflow` / `FlagGatedWorkflow` base class without a new decision (D-RETAIL-2 says no — re-evaluate per item 2 above, but default is still NO).
 - Don't migrate `demand`/`labor` `_extract_*_flags` parsers to use `extract_flags` — they're intentionally simpler for single-flag-class structure.
 - Don't reach for Agent subagents for 1–3 step lookups — direct tools are cheaper (see memory).
+- Don't re-implement `_extract_veto` in a new workflow — delegate to the shared `extract_veto_directive` helper (M-PC-1 fix prevents convention-level error compounding).
+- Don't bypass `truncate_flag_display` in `_format_flag_section` — re-injection volume bound depends on it.
+- Don't drop the L-PC-2 FORMAT NOTE from the veto-criteria block when copying a workflow template — it's load-bearing for multi-line directive parsing.
+- Don't commit messages containing `>` or `&` characters via bash `-m` — earlier session had two shell-redirect / pipe-parsing accidents (`threshold` file created from `score >= threshold`; `&` in `P&C` broke another). Either escape, replace with words (`gt`/`and`), or use a here-doc file.
+- Don't push to retail's `recall_scope.py`-derived workflows without checking parity — L-PC-2 and L-PC-3 retail parity (recall_scope criteria FORMAT NOTE, per-field caps) are gaps in retail not yet remediated. Audit was PC-scoped; retail parity is the obvious follow-up batch.
 
 ---
 
@@ -174,10 +236,19 @@ GitHub Actions runs the same on PR (`.github/workflows/ci.yml`).
 ## Session-start checklist
 
 1. Read this file.
-2. Read `docs/decisions.md` (D1..D9, D-RETAIL-1..6).
+2. Read `docs/decisions.md` (D1..D9, D-RETAIL-1..7, D-PC-1..6).
 3. Read `CLAUDE.md` (repo root).
 4. `git status` + `git log --oneline -5`.
 5. Ask the user what they want to work on. No proactive starts.
+
+## Likely next-session work (suggested, not committed)
+
+1. **Retail parity for L-PC-2 / L-PC-3** — `recall_scope.py` criteria FORMAT NOTE; per-field `_MAX_FIELD_CHARS = 1500` in 8 retail Request dataclasses. ~30 min.
+2. **Retail parity for L-PC-5** — `truncate_flag_display` applied in 6 retail `_format_flag_section` methods (recall, loyalty, promo, supplier, inventory, private_label). ~20 min.
+3. **PyPI publish** — rebuild dist (`python -m build`), `twine upload dist/*`. Blocked on credentials only. All pre-release blockers closed.
+4. **Group captive allocation + equine mortality** — deferred specialty per D-PC-6. Build only on user trigger.
+5. **Cross-domain L-PC-4 verification** — `Skill.render` brace strip is global. Verify no existing test relies on `{xyz}` smuggling through input values.
+6. **Test count audit** — verify `git grep -c "def test_"` matches pytest's 409 (sanity check that no test was orphaned during the rename / move of `_extract_veto`).
 
 ---
 
