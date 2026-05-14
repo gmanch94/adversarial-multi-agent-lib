@@ -1,6 +1,6 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-14 (LOW backlog closed + D-RETAIL-2 re-eval locked + M10/M11 skill metadata shipped)
+Last updated: 2026-05-14 (LOW backlog closed + D-RETAIL-2 re-eval locked + M10/M11 skill metadata shipped + P&C domain design doc landed)
 
 ---
 
@@ -129,7 +129,8 @@ examples/
 3. ~~**Re-evaluate D-RETAIL-2**~~ **LOCKED 2026-05-14** as D-RETAIL-7 — keep inline, no base class. Next re-eval gated on 9th scenario or cross-cutting concern.
 4. **Production gap closure for retail** — see PRODUCTION_GAPS in each module's docstring (live data feeds, third-model auditor cascade per ARIS §3.1, etc.).
 5. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
-6. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
+6. **P&C insurance domain (B2B)** — design doc landed at [`docs/pc-design.md`](pc-design.md); decision rows D-PC-1..5 locked. Anchor PR #1: `ClaimsReserveWorkflow` (veto + triple-flag, mirrors recall_scope). Sequenced PRs: #2 CoverageDecision (veto + dual-flag), #3 CommercialUnderwriting (triple-flag), #4 CyberUnderwriting (triple-flag). No code yet — sweep starts on user trigger.
+7. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
 
 ## Outputs from this session
 
