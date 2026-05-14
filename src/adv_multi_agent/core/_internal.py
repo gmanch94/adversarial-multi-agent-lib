@@ -161,6 +161,11 @@ def safe_resolve_path(path: str | Path, must_be_under: str | Path | None = None)
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# L2: bound the number of flag bullets returned per header. The 4000-char
+# critique cap upstream already bounds worst-case at ~hundreds, but an
+# explicit cap is defence-in-depth against prompt-bloat from a malicious
+# or pathological reviewer output.
+_MAX_FLAGS_PER_HEADER = 64
 
 
 def is_safe_id(value: Any) -> bool:
@@ -234,4 +239,6 @@ def extract_flags(critique: str, header: str) -> list[str]:
         if lower in ("none detected", "none", "n/a"):
             return []
         flags.append(stripped)
+        if len(flags) >= _MAX_FLAGS_PER_HEADER:
+            break
     return flags

@@ -1,15 +1,31 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-13 (retail sweep COMPLETE + post-sweep security delta audit closed)
+Last updated: 2026-05-14 (LOW backlog closed + D-RETAIL-2 re-eval locked + M10/M11 skill metadata shipped)
 
 ---
 
 ## Current state
 
-**Retail sweep DONE + post-sweep security delta audit CLOSED.** 6 of 6 candidate scenarios shipped post-audit, plus 1 helper-extraction refactor PR, plus a same-day security remediation directly on main.
+**Retail sweep DONE + LOW backlog CLOSED + D-RETAIL-2 re-eval LOCKED + M10/M11 skill metadata SHIPPED.**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-Local: clean on `main` at `1aa0563`. **305 tests** (was 222 pre-sweep, 300 post-sweep, +5 regression tests for security MEDIUM findings). 8 retail workflows + 25 retail skill templates + 8 retail examples.
+Local: clean on `main` (post-2026-05-14 direct commit). **318 tests** (305 → +13: 1 L2 cap, 3 L4 anchoring, 2 L1 cap, 2 L5 sibling-header, 3 M10 block scalar, 2 M11 version). 8 retail workflows + 25 retail skill templates + 8 retail examples.
+
+### 2026-05-14 — LOW backlog + skill metadata (direct-to-main, `[skip ci]`)
+
+- **L1** — `BaseWorkflow._register_claims` caps at `_MAX_CLAIMS_PER_ROUND = 200`; bounds ledger growth.
+- **L2** — `extract_flags` caps return list at `_MAX_FLAGS_PER_HEADER = 64`; defence-in-depth re-injection cap.
+- **L4** — `## Claims` split now line-anchored regex `(?m)^##\s+Claims\s*$`; commentary mention no longer mis-anchors.
+- **L5** — `RecallScopeWorkflow._extract_veto` sibling-header check aligned with shared `extract_flags` rule (`replace(" ", "").isalpha() and isupper()`); digit-colon lines no longer terminate capture.
+- **M10** — skill frontmatter supports `|` (literal) and `>` (folded) block scalars; description and other string fields can now be multi-line.
+- **M11** — `Skill` dataclass gains optional `version` field (default `"1.0.0"`), charset-validated by `_VALID_VERSION_RE`.
+- **D-RETAIL-7** — new decision row in [`docs/decisions.md`](decisions.md): re-evaluated D-RETAIL-2 with 8 workflows in tree; **keep inline, no base class**. Five distinct injection points × six workflows = config surface > duplication savings. Defer next re-eval until a 9th scenario or cross-cutting concern lands.
+
+New tests:
+- `tests/unit/test_extract_flags.py::TestExtractFlagsSizeCap` (L2)
+- `tests/unit/test_workflow_register_claims.py` (L1 + L4, 5 tests)
+- `tests/unit/test_recall_scope.py::TestExtractVeto::test_sibling_header_*` (L5, 2 tests)
+- `tests/unit/test_registry.py::TestBlockScalarFrontmatter` (M10, 3 tests) + `::TestSkillVersion` (M11, 3 tests)
 
 ### Post-sweep security audit (2026-05-13)
 
@@ -108,9 +124,9 @@ examples/
 
 ## What's left (broader, post-sweep)
 
-1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only. Pre-release blockers from the security audit are now CLOSED.
-2. **LOW security findings backlog** (L1, L2, L4, L5 from the 2026-05-13 delta audit) — none are pre-release blocking; address opportunistically. Details in [`docs/security-audits/2026-05-13-post-sweep-delta.md`](security-audits/2026-05-13-post-sweep-delta.md).
-3. **Re-evaluate D-RETAIL-2 (no shared base class)** — with 6 workflows in tree, base-class extraction has evidence to argue from. Current view: NO, keep them inline. Reason: per-scenario banner text, metadata keys, and checklist items diverge enough that a base class would require config-dict injection that costs more than it saves. **Decision deferred until a 7th scenario or a divergence-without-justification appears.**
+1. **PyPI publish** — rebuild dist first (`python -m build`), then `twine upload dist/*`. Blocked on PyPI credentials only. Pre-release blockers from the security audit are CLOSED. LOW backlog is CLOSED.
+2. ~~**LOW security findings backlog**~~ **CLOSED 2026-05-14** — L1, L2, L4, L5 all shipped with regression tests.
+3. ~~**Re-evaluate D-RETAIL-2**~~ **LOCKED 2026-05-14** as D-RETAIL-7 — keep inline, no base class. Next re-eval gated on 9th scenario or cross-cutting concern.
 4. **Production gap closure for retail** — see PRODUCTION_GAPS in each module's docstring (live data feeds, third-model auditor cascade per ARIS §3.1, etc.).
 5. **AWS Bedrock** (D8 deferred) — revisit when concrete need arises.
 6. **Future domains** — `docs/scenarios.md` lists healthcare, finance, legal, HR.
@@ -162,7 +178,7 @@ GitHub Actions runs the same on PR (`.github/workflows/ci.yml`).
 
 ## Open minor items (non-blocking)
 
-- M10: multi-line frontmatter values in skills — still single-line only
-- M11: skill versioning field — not implemented
+- ~~M10: multi-line frontmatter values in skills~~ **CLOSED 2026-05-14** — block scalar `|`/`>` supported.
+- ~~M11: skill versioning field~~ **CLOSED 2026-05-14** — `Skill.version` field with default `"1.0.0"`.
 - IdeaDiscovery `final_score=0.0` semantics — undocumented
 - dist/* stale — pyproject.toml changed during sweep; rebuild before PyPI upload

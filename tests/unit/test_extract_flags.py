@@ -123,3 +123,20 @@ class TestExtractFlagsHeaderAnchoring:
         critique = "Some line mentions SCOPE FLAGS: inline only.\nOverall score: 8"
         flags = extract_flags(critique, "SCOPE FLAGS:")
         assert flags == []
+
+
+class TestExtractFlagsSizeCap:
+    """Regression coverage for L2 — defence-in-depth cap on returned flag
+    count. Prevents a pathological reviewer output from ballooning the
+    next-round executor prompt via re-injection in `_format_flag_section`."""
+
+    def test_returns_at_most_max_flags(self) -> None:
+        from adv_multi_agent.core._internal import _MAX_FLAGS_PER_HEADER
+
+        bullets = "\n".join(f"- flag {i}" for i in range(_MAX_FLAGS_PER_HEADER + 50))
+        critique = f"SCOPE FLAGS:\n{bullets}\nOverall score: 7"
+        flags = extract_flags(critique, "SCOPE FLAGS:")
+        assert len(flags) == _MAX_FLAGS_PER_HEADER
+        # First N preserved in order.
+        assert flags[0] == "flag 0"
+        assert flags[-1] == f"flag {_MAX_FLAGS_PER_HEADER - 1}"

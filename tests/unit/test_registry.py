@@ -261,3 +261,103 @@ class TestSkillRender:
         assert "\x1b" not in out
         assert "\x00" not in out
         assert "hi" in out and "bye" in out
+
+
+# ---------------------------------------------------------------------------
+# M10 — multi-line frontmatter values (block scalar)
+# ---------------------------------------------------------------------------
+
+
+class TestBlockScalarFrontmatter:
+    def test_literal_block_scalar_preserves_newlines(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: blocky\n"
+            "description: |\n"
+            "  Line one of the description.\n"
+            "  Line two with detail.\n"
+            "  Line three.\n"
+            "inputs: []\n"
+            "---\n"
+            "body"
+        )
+        (tmp_path / "blocky.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("blocky")
+        assert skill.description == (
+            "Line one of the description.\n"
+            "Line two with detail.\n"
+            "Line three."
+        )
+
+    def test_folded_block_scalar_joins_with_space(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: folded\n"
+            "description: >\n"
+            "  one two\n"
+            "  three four\n"
+            "inputs: []\n"
+            "---\n"
+            "body"
+        )
+        (tmp_path / "folded.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("folded")
+        assert skill.description == "one two three four"
+
+    def test_block_scalar_terminates_on_dedent(self, tmp_path: Path) -> None:
+        """A less-indented sibling key ends the block, and is parsed normally."""
+        content = (
+            "---\n"
+            "name: dedent\n"
+            "description: |\n"
+            "  line A\n"
+            "  line B\n"
+            "inputs: [topic]\n"
+            "---\n"
+            "body"
+        )
+        (tmp_path / "dedent.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("dedent")
+        assert skill.description == "line A\nline B"
+        assert skill.inputs == ["topic"]
+
+
+# ---------------------------------------------------------------------------
+# M11 — skill version field
+# ---------------------------------------------------------------------------
+
+
+class TestSkillVersion:
+    def test_version_defaults_when_absent(self, tmp_path: Path) -> None:
+        write_skill(tmp_path, "s.md", name="vdefault")
+        skill = SkillRegistry(str(tmp_path)).get("vdefault")
+        assert skill.version == "1.0.0"
+
+    def test_version_from_frontmatter(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: vset\n"
+            "description: x\n"
+            "inputs: []\n"
+            "version: 2.3.1\n"
+            "---\n"
+            "body"
+        )
+        (tmp_path / "v.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("vset")
+        assert skill.version == "2.3.1"
+
+    def test_invalid_version_charset_rejected(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: vbad\n"
+            "description: x\n"
+            "inputs: []\n"
+            "version: has space\n"
+            "---\n"
+            "body"
+        )
+        (tmp_path / "v.md").write_text(content, encoding="utf-8")
+        with pytest.warns(UserWarning, match="invalid skill version"):
+            registry = SkillRegistry(str(tmp_path))
+        assert registry.list() == []

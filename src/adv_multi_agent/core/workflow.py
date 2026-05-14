@@ -1,6 +1,7 @@
 """Base workflow contract."""
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -9,6 +10,13 @@ from .agents import ExecutorAgent, ReviewerAgent
 from .config import Config
 from .ledger import ClaimLedger
 from .wiki import ResearchWiki
+
+# L1: hard cap on claims parsed per round. Bounds ledger growth from a
+# pathological executor output dumping unbounded bullets under ## Claims.
+# L4: line-anchor the section split so a commentary mention of "## Claims"
+# in prose cannot mis-anchor the parser to an earlier point.
+_MAX_CLAIMS_PER_ROUND = 200
+_CLAIMS_HEADER_RE = re.compile(r"(?m)^##\s+Claims\s*$")
 
 
 @dataclass
@@ -52,12 +60,16 @@ class BaseWorkflow(ABC):
         recall_scope, loyalty_offer, promo_markdown). Subclasses can
         override if they need a different parse rule.
         """
-        if "## Claims" not in output:
+        match = _CLAIMS_HEADER_RE.search(output)
+        if match is None:
             return
         max_chars = getattr(self.config, "max_claim_text_chars", 1000)
-        claims_section = output.split("## Claims", 1)[1]
+        claims_section = output[match.end():]
         existing = {c.text for c in self.ledger.all()}
+        added = 0
         for raw_line in claims_section.splitlines():
+            if added >= _MAX_CLAIMS_PER_ROUND:
+                break
             line = raw_line.strip().lstrip("-•").strip()
             if not line:
                 continue
@@ -68,5 +80,6 @@ class BaseWorkflow(ABC):
             try:
                 self.ledger.add(line, round_num=round_num)
                 existing.add(line)
+                added += 1
             except ValueError:
                 continue

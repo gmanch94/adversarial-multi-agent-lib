@@ -390,9 +390,16 @@ class RecallScopeWorkflow(BaseWorkflow):
                     break
                 continue
             lower = line.lower()
-            if lower.startswith(("overall", "key issues", "#")) or (
-                line.endswith(":") and line[:-1].isupper()
-            ):
+            sibling_header = False
+            if line.endswith(":"):
+                lhs = line[:-1]
+                # L5: match the shared extract_flags sibling-header rule
+                # (alpha+spaces, all-upper). Reject pure-digit / mixed
+                # punctuation lines that the looser `[:-1].isupper()` check
+                # accepted.
+                if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
+                    sibling_header = True
+            if lower.startswith(("overall", "key issues", "#")) or sibling_header:
                 break
             collected.append(line.lstrip("-•*").strip())
 

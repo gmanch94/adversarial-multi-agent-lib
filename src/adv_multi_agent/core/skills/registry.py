@@ -44,6 +44,9 @@ class _PartialFormat(dict[str, str]):
         return f"{{{key}}}"
 
 
+_VALID_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,31}$")
+
+
 @dataclass
 class Skill:
     name: str
@@ -51,6 +54,10 @@ class Skill:
     inputs: list[str]
     template: str       # prompt template with {input_name} placeholders; literal { } must be doubled
     path: Path
+    # M11: optional skill version. Charset and length are bounded
+    # (matches `_VALID_VERSION_RE`); absent or unparseable values default
+    # to "1.0.0" so existing skill files without a version still load.
+    version: str = "1.0.0"
 
     def render(self, **kwargs: Any) -> str:
         """Render the skill template with provided inputs.
@@ -174,12 +181,23 @@ class SkillRegistry:
                 f"template length {len(body_stripped)} exceeds max {_MAX_TEMPLATE_CHARS}"
             )
 
+        # M11: optional `version` frontmatter field, charset-bounded.
+        version_raw = fm.get("version", "1.0.0")
+        if not isinstance(version_raw, str):
+            version_raw = str(version_raw)
+        if not _VALID_VERSION_RE.match(version_raw):
+            raise ValueError(
+                f"invalid skill version '{version_raw}' — must match "
+                f"{_VALID_VERSION_RE.pattern}"
+            )
+
         return Skill(
             name=name,
             description=description,
             inputs=inputs,
             template=body_stripped,
             path=path,
+            version=version_raw,
         )
 
     @staticmethod
@@ -214,26 +232,63 @@ class SkillRegistry:
 
     @staticmethod
     def _parse_simple_yaml(text: str) -> dict[str, Any]:
-        """Minimal YAML: string scalars and inline lists. Single-line values only.
+        """Minimal YAML: string scalars, inline lists, and block scalars (`|`).
 
         M7: duplicate keys raise instead of silently overwriting.
         M8: quote stripping is balanced (matched pair only).
+        M10: a value of `|` opens a block scalar — subsequent lines that
+        are indented more than the key are joined with `\\n` until a
+        less-indented line or EOF. `>` (folded) is treated identically
+        with single-space joining.
         """
         result: dict[str, Any] = {}
-        for line in text.splitlines():
-            line = line.rstrip()
+        raw_lines = text.splitlines()
+        i = 0
+        while i < len(raw_lines):
+            raw = raw_lines[i]
+            line = raw.rstrip()
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
+                i += 1
                 continue
             if ":" not in stripped:
+                i += 1
                 continue
+            # Preserve key indentation for block-scalar comparison.
+            key_indent = len(line) - len(line.lstrip(" "))
             key, _, value = stripped.partition(":")
             key = key.strip()
             value = value.strip()
             if not key:
+                i += 1
                 continue
             if key in result:
                 raise ValueError(f"duplicate key in skill frontmatter: {key!r}")
+            # Block scalar: `|` (literal, preserve newlines) or `>` (folded,
+            # join with spaces). Indented continuation lines are gathered
+            # until a less-or-equally-indented non-blank line.
+            if value in ("|", ">"):
+                joiner = "\n" if value == "|" else " "
+                block: list[str] = []
+                j = i + 1
+                while j < len(raw_lines):
+                    cont = raw_lines[j]
+                    cont_stripped = cont.strip()
+                    if not cont_stripped:
+                        block.append("")
+                        j += 1
+                        continue
+                    cont_indent = len(cont) - len(cont.lstrip(" "))
+                    if cont_indent <= key_indent:
+                        break
+                    block.append(cont.lstrip(" "))
+                    j += 1
+                # Drop trailing blanks so terminating newlines don't leak.
+                while block and block[-1] == "":
+                    block.pop()
+                result[key] = joiner.join(block)
+                i = j
+                continue
             if value.startswith("[") and value.endswith("]"):
                 items = [
                     SkillRegistry._strip_balanced_quotes(v.strip())
@@ -243,6 +298,7 @@ class SkillRegistry:
                 result[key] = items
             else:
                 result[key] = SkillRegistry._strip_balanced_quotes(value)
+            i += 1
         return result
 
     # ------------------------------------------------------------------

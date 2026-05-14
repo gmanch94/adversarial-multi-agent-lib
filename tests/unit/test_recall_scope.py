@@ -338,6 +338,38 @@ class TestExtractVeto:
             is None
         )
 
+    def test_sibling_header_check_rejects_digit_only_colon_line(self) -> None:
+        """Regression — L5: the sibling-header stop now matches the shared
+        `extract_flags` rule (alpha+spaces, all-upper). A line like '1234:'
+        is NOT a section header and must be captured as veto continuation,
+        not treated as a terminator."""
+        critique = (
+            "REVIEWER VETO:\n"
+            "Halt — see incident\n"
+            "1234:\n"  # would have terminated under the looser old check
+            "additional directive text"
+        )
+        veto = RecallScopeWorkflow._extract_veto(critique, 1000)
+        assert veto is not None
+        assert "Halt" in veto
+        assert "1234:" in veto
+        assert "additional directive" in veto
+
+    def test_sibling_header_check_still_stops_on_real_header(self) -> None:
+        """L5 companion — a genuine all-upper sibling header still
+        terminates capture."""
+        critique = (
+            "REVIEWER VETO:\n"
+            "Real directive line\n"
+            "EVIDENCE FLAGS:\n"
+            "- not part of veto"
+        )
+        veto = RecallScopeWorkflow._extract_veto(critique, 1000)
+        assert veto is not None
+        assert "Real directive" in veto
+        assert "EVIDENCE" not in veto
+        assert "not part of veto" not in veto
+
 
 class TestRecallRequestToPromptText:
     def test_contains_all_fields(self) -> None:
