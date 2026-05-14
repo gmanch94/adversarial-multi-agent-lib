@@ -353,7 +353,9 @@ class PromoMarkdownWorkflow(BaseWorkflow):
             items = current[header]
             if not items:
                 continue
-            flags_text = "\n".join(f"  - {f}" for f in items)
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+            )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 

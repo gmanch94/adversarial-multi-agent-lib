@@ -85,3 +85,41 @@ class TestExtractFlagsBulletNormalisation:
         critique = "TIMING FLAGS:\n\n- only flag\n\nOverall score: 7"
         flags = extract_flags(critique, "TIMING FLAGS:")
         assert flags == ["only flag"]
+
+
+class TestExtractFlagsHeaderAnchoring:
+    """Regression coverage for M1 (substring-containment header match).
+
+    A commentary mention of the header name earlier in the critique must
+    NOT mis-anchor the parser. The real flag section begins at a
+    line-anchored occurrence.
+    """
+
+    def test_commentary_mention_does_not_mis_anchor(self) -> None:
+        critique = (
+            "Mentioning SCOPE FLAGS: should be tightened in the next revision.\n"
+            "Some prose here.\n"
+            "SCOPE FLAGS:\n"
+            "- real flag from the actual section\n"
+            "Overall score: 7"
+        )
+        flags = extract_flags(critique, "SCOPE FLAGS:")
+        # Without anchoring, the parser would mis-anchor on the first
+        # mention and return ["should be tightened in the next revision."]
+        # or trip over later sibling-header handling.
+        assert flags == ["real flag from the actual section"]
+
+    def test_indented_header_still_matches(self) -> None:
+        # Leading whitespace before the header is allowed.
+        critique = "  SCOPE FLAGS:\n- a flag"
+        flags = extract_flags(critique, "SCOPE FLAGS:")
+        assert flags == ["a flag"]
+
+    def test_header_not_at_line_start_returns_empty_when_no_real_section(
+        self,
+    ) -> None:
+        # If the header is only mentioned inline (never at line-start), no
+        # real section exists — return [].
+        critique = "Some line mentions SCOPE FLAGS: inline only.\nOverall score: 8"
+        flags = extract_flags(critique, "SCOPE FLAGS:")
+        assert flags == []

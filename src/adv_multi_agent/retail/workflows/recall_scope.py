@@ -372,13 +372,12 @@ class RecallScopeWorkflow(BaseWorkflow):
         if not lines:
             return None
 
-        first = lines[0].strip()
-        if first.lower() in ("", "none", "none detected", "n/a"):
-            # Allow continuation only if first line is empty (some reviewers
-            # break the directive onto the next line).
-            if first != "":
-                return None
-
+        # Don't short-circuit on a "none"/"none detected" first line —
+        # a reviewer may emit the marker on line 1 then a real directive
+        # on continuation lines (M2 — early-return drops continuation).
+        # The loop below skips the marker line at idx=0 and lets
+        # continuation lines populate `collected`. If no continuation
+        # follows, `collected` stays empty and we return None at the end.
         collected: list[str] = []
         for idx, raw in enumerate(lines):
             line = raw.strip()
@@ -412,13 +411,17 @@ class RecallScopeWorkflow(BaseWorkflow):
             return ""
         parts: list[str] = []
         if scope_flags:
-            flags_text = "\n".join(f"  - {f}" for f in scope_flags)
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in scope_flags
+            )
             parts.append(
                 "⚠️  SCOPE FLAGS (expand or contract scope to match evidence):\n"
                 f"{flags_text}"
             )
         if evidence_flags:
-            flags_text = "\n".join(f"  - {f}" for f in evidence_flags)
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in evidence_flags
+            )
             parts.append(
                 "⚠️  EVIDENCE FLAGS (cite primary evidence or remove the scope decision):\n"
                 f"{flags_text}"

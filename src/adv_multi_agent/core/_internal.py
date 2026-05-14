@@ -211,9 +211,13 @@ def extract_flags(critique: str, header: str) -> list[str]:
     by design — their critique structure only has one flag class so the
     inline-header stop is not needed.
     """
-    if header not in critique:
+    # Anchor the header at line-start (allowing leading whitespace) to
+    # avoid mis-anchoring on a commentary mention of the header name earlier
+    # in the critique (M1 — substring containment regression).
+    match = re.search(rf"(?m)^\s*{re.escape(header)}", critique)
+    if match is None:
         return []
-    section = critique.split(header, 1)[1]
+    section = critique[match.end():]
     flags: list[str] = []
     for raw_line in section.splitlines():
         stripped_raw = raw_line.strip()

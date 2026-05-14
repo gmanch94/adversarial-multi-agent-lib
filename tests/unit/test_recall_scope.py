@@ -314,6 +314,30 @@ class TestExtractVeto:
         assert veto is not None
         assert len(veto) == 200
 
+    def test_marker_on_first_line_then_continuation_directive(self) -> None:
+        """Regression — M2: a reviewer that emits a 'no veto' marker on
+        line 1 but then appends a real directive on continuation lines
+        must NOT silently lose the directive."""
+        critique = (
+            "REVIEWER VETO: none detected\n"
+            "Wait — on reflection, escalate to safety officer for "
+            "pathogen confirmation."
+        )
+        veto = RecallScopeWorkflow._extract_veto(critique, 1000)
+        assert veto is not None
+        assert "escalate" in veto.lower()
+        assert "safety officer" in veto.lower()
+
+    def test_marker_only_returns_none(self) -> None:
+        """Companion to M2 regression — marker alone with no continuation
+        still returns None."""
+        assert (
+            RecallScopeWorkflow._extract_veto(
+                "REVIEWER VETO: none detected", 1000
+            )
+            is None
+        )
+
 
 class TestRecallRequestToPromptText:
     def test_contains_all_fields(self) -> None:
