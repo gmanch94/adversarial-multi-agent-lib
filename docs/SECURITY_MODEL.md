@@ -2,7 +2,7 @@
 
 Update on any change to agent interfaces, config schema, external API calls, prompt templates, or persistence paths.
 
-Last reviewed: **2026-05-12** (post audit 2026-05-12, all CRITICAL/HIGH/MEDIUM/LOW findings closed).
+Last reviewed: **2026-05-14 PM** (post-industrial-sweep — H-IND-1 + L-IND-1 closed; L-IND-2..5 LOW backlog). Prior cycles: 2026-05-14 AM (PC sweep, M-PC-1 + L-PC-1..5 closed); 2026-05-13 (retail sweep); 2026-05-12 (initial sweep).
 
 ---
 
@@ -42,9 +42,14 @@ Last reviewed: **2026-05-12** (post audit 2026-05-12, all CRITICAL/HIGH/MEDIUM/L
 | `Skill.render` crash on `{`/`}` in templates | Library unusable on skills containing JSON/LaTeX | `format_map(_PartialFormat)` — unknown tokens pass through |
 | Malformed model output JSON | Workflow crash | Every parse site has `parse_first_json_or` with a safe default + type guard |
 | Issue dicts injected verbatim into format strings | Format-string injection | `RebuttalWorkflow._render_issues` re-renders parsed dict items into a controlled bullet list with per-field sanitization |
-| Retail request fields rendered into executor prompt | Prompt injection via free-text request | `*Request.to_prompt_text()` → `sanitize_for_prompt(..., max_chars=6000)` for every retail workflow (demand, labor, recall, loyalty, promo, supplier, replenishment, private_label) |
+| Domain-specific request fields rendered into executor prompt | Prompt injection via free-text request | `*Request.to_prompt_text()` → `sanitize_for_prompt(..., max_chars=6000)` for every workflow across retail (8), pc (7), industrial (8). Per-field cap `_MAX_FIELD_CHARS = 1500` applied in `to_prompt_text` slice **before** concatenation (L-PC-3 + inherited by industrial) — prevents oversized single field starving later fields out of the post-concat budget |
 | `LoyaltyOfferRequest.allowed_attributes` / `disallowed_attributes` lists | Pathological caller stuffs thousands of strings into prompt | `_render_attribute_list` caps at 64 entries × 200 chars each; truncation marker rendered into prompt; per-element `sanitize_for_prompt` |
-| Reviewer-emitted `REVIEWER VETO:` directive replayed into audit trail | Persistent injection via veto text | `RecallScopeWorkflow._extract_veto` strips per-line, capped at `Config.max_wiki_body_chars`; veto stored in metadata only, never re-fed into a prompt |
+| Reviewer-emitted `REVIEWER VETO:` directive replayed into audit trail | Persistent injection via veto text | Hoisted into shared `core/_internal.extract_veto_directive` (M-PC-1 line-anchored regex `(?m)^[ \t]*REVIEWER VETO:[ \t]*(.*)$`) used by 7 veto-using workflows (1 retail + 4 PC + 2 industrial); veto stored in metadata only, never re-fed into a prompt. M2 continuation rule + L5/H-IND-1 sibling-stop rule prevent slurp from neighbouring sections |
+| Substring `REVIEWER VETO:` mention in critique mis-anchoring veto parser | False-positive / false-negative veto (M-PC-1) | Line-anchored regex (above); 22 regression tests in `test_extract_veto_directive.py` |
+| Hyphenated FLAGS-header sibling-stop in `extract_flags` / `extract_veto_directive` | Slurp from peer sections into prior flag list (H-IND-1) — convergence gate breaks, audit metadata misattributes | Shared `_is_sibling_header_lhs` regex `^[A-Z][A-Z\s\-]*[A-Z]$\|^[A-Z]$` accepts uppercase + spaces + hyphens. Closes slurp across all hyphenated peer-header naming conventions (DESIGN-DEFECT, IP-LEAK, KNOWN-CONDITION, COVERAGE-GAP, PERIL-MATCH, etc.). 5 regression tests in `test_extract_flags.py::TestExtractFlagsHyphenSiblingStop` + `test_extract_veto_directive.py::test_sibling_header_check_stops_on_hyphenated_header` |
+| Worst-case flag re-injection volume across rounds | Prompt bloat → token spend + degraded executor focus | Shared `core/_internal.truncate_flag_display(flags)` caps display at `_MAX_FLAGS_DISPLAYED = 16` with a single truncation-marker bullet; used by every PC + industrial `_format_flag_section` (L-PC-5). Metadata audit-trail (`accumulated[header]`) keeps the full list; only re-injection bounded |
+| Skill-template `{xyz}` format-string smuggling | Caller-supplied input value triggers `KeyError` or covertly injects placeholders | `_BRACE_CHARS_RE` strip in `Skill.render` after control-char sanitization (L-PC-4 cross-domain) |
+| Veto-criteria continuation captures `Overall` / `Key issues` / `#` lines | Mis-categorisation of post-criteria text as veto directive | FORMAT NOTE in every veto-using workflow's criteria block instructs reviewer NOT to begin a continuation line with those tokens (L-PC-2). Parser also rejects them via stop-list |
 | Oversized document to editor | Context-window overrun | `ScientificEditor.edit` rejects inputs > 200K chars with `ValueError` before any API call |
 | API call hangs indefinitely | Workflow stuck | All clients constructed with `timeout=Config.request_timeout_seconds` (default 120s) |
 | Score threshold / max rounds out of range | Bypass / DoS | `Config` validates bounds at construction; env-parsing helpers reject out-of-range values |
@@ -58,7 +63,18 @@ Last reviewed: **2026-05-12** (post audit 2026-05-12, all CRITICAL/HIGH/MEDIUM/L
 | `from_dict` silently drops unknown keys | **Open by design** — schema migration would require versioning |
 | Concurrent multi-process writes still race | **Open by design** — single-process library scope; document in README |
 | Reviewer can still produce prompt-injection-formatted text in feedback | **Mitigated, not eliminated** — wiki sanitization + fences narrow the surface; a determined adversary controlling the reviewer is out of scope |
+| Pre-veto round-1 draft preserved only via ledger + wiki, not in `WorkflowResult.output` (L-IND-2) | **Open** — discovery defensibility holds via ledger/wiki, but `WorkflowResult.output` returns LAST draft. Backlog: add `metadata['first_draft']` to surface what's already preserved |
+| `bundled_skills_path(domain)` accepts arbitrary string; bounded by `importlib.resources` resolution (L-IND-4) | **Open** — cosmetic / robustness. Backlog: allowlist `{research, parole, retail, pc, industrial}` as defence-in-depth |
+| Per-field `_MAX_FIELD_CHARS = 1500` truncation is silent (L-IND-5) | **Open by design** — documented behaviour. Regulator-facing disclosure should note that the AI's view of any single field is bounded |
 
 ## 5. Last security review
 
-**2026-05-12** — Independent audit by subagent identified 3 CRITICAL, 6 HIGH, 8 MEDIUM, 6 LOW findings. All shipped on the same day. See `docs/security-audits/2026-05-12.md` for the report; `docs/superpowers/specs/2026-05-12-retro-specs-triage.md` for the rollup.
+**2026-05-14 PM** — Focused industrial sweep ([report](security-audits/2026-05-14-industrial-sweep.md)): 0 CRIT · **1 HIGH (H-IND-1)** · 0 MED · 5 LOW · 16 CLEAN. **H-IND-1 + L-IND-1 closed same-session** via single `_is_sibling_header_lhs` regex change in `core/_internal.py` (Karpathy convention-level error in the shared parser — closed simultaneously for 8 industrial workflows + 3 latent PC workflows). L-IND-2..5 remain LOW backlog.
+
+**2026-05-14 AM** — PC domain sweep ([report](security-audits/2026-05-14-pc-sweep.md)): 0 CRIT · 0 HIGH · 1 MED (M-PC-1) · 5 LOW (L-PC-1..5) · 15 CLEAN. M-PC-1 + L-PC-1..5 all closed same-day.
+
+**2026-05-13** — Retail domain sweep (CRIT-free; LOW-tier items closed alongside the D-RETAIL-2 re-eval and L1/L2/L4/L5 fixes).
+
+**2026-05-12** — Initial audit by subagent identified 3 CRITICAL, 6 HIGH, 8 MEDIUM, 6 LOW findings. All shipped on the same day. See `docs/security-audits/2026-05-12.md` for the report; `docs/superpowers/specs/2026-05-12-retro-specs-triage.md` for the rollup.
+
+**Cumulative posture across 5 cycles:** 23 workflows audited; convention-level error compounding identified twice (M-PC-1 opening-anchor, H-IND-1 closing-sibling-stop) and closed via shared-helper hoisting both times — the recurring lesson is that the shared parser is the single point of leverage for every domain, and any new naming convention (hyphen, slash, digit) needs to be confirmed against its accepted character class before merge.
