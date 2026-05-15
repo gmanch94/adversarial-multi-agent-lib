@@ -1,7 +1,22 @@
 # Industrial Manufacturing & IoT — Design Doc
 
-Last updated: 2026-05-14
-Status: **IN PROGRESS — MVP scaffold building; held on commit pending security audit.**
+Last updated: 2026-05-14 · refreshed post-ship 2026-05-14 PM
+Status: **SHIPPED — 8 MVP workflows live on `main` at `e0b725a`. Security audit 2026-05-14 PM ([report](../../security-audits/2026-05-14-industrial-sweep.md)): 0 CRIT / 1 HIGH (H-IND-1) / 0 MED / 5 LOW (L-IND-1..5). H-IND-1 + L-IND-1 closed same-session via shared `_is_sibling_header_lhs` regex change in `core/_internal.py` (one regex, 8 industrial + 3 latent PC workflows inherit the fix). L-IND-2..5 remain LOW backlog. 19 Phase-2 workflow designs locked here for future fill-in.**
+
+## Ship outcomes (post-design)
+
+| Item | Outcome |
+|---|---|
+| Workflows live | 8 MVP (MakeVsBuy, SupplierQualification, EngineeringChangeOrder, QualityIncidentRootCause, ProductLiabilityRootCause [veto], RecallScopeManufacturing [veto], SupplyChainResilience, TelematicsAnomalyTriage) |
+| Veto-using | 2 of 8 (ProductLiabilityRootCause, RecallScopeManufacturing) — matches design |
+| Skill templates | 32 (4 per workflow) |
+| Tests | 67 industrial unit tests + 5 H-IND-1 regression tests in `test_extract_flags.py` / `test_extract_veto_directive.py` |
+| Audit findings closed | **H-IND-1** — `_is_sibling_header_lhs` regex now accepts hyphens (`^[A-Z][A-Z\s\-]*[A-Z]$|^[A-Z]$`); covers DESIGN-DEFECT, IP-LEAK, KNOWN-CONDITION, COVERAGE-GAP, PERIL-MATCH, FMEA-DELTA, OPERATOR-ERROR, TRIGGER-EVIDENCE, FLEET-SCOPE, REGULATORY-NOTIFY, SINGLE-SOURCE, GEO-CONCENTRATION, LEAD-TIME-FRAGILITY, SIGNAL-EVIDENCE, FALSE-POSITIVE-COST, CAUSAL-CHAIN. **L-IND-1** — closed alongside H-IND-1 via same regex change. |
+| Open backlog (LOW) | L-IND-2 (surface `metadata['first_draft']` for vetoed workflows — regulator defensibility), L-IND-4 (allowlist `bundled_skills_path(domain)` arg), L-IND-5 (warn when per-field 1500-char silent truncation fires) |
+| Karpathy lesson | Convention-level error compounding identified **twice** in shared parser: M-PC-1 (opening-anchor) and H-IND-1 (closing-sibling-stop). Both closed via shared-helper hoisting — one regex, every domain inherits. Next new naming convention (digit / slash / punctuation in headers) must re-audit `_is_sibling_header_lhs`. |
+| Phase 2 status | 19 workflows locked-design, not built. Likely-first promotions: FunctionalSafetyCase [veto], PredictiveMaintenanceRUL, AutomationCommissioning [veto], PartsDemandForecast, PlantSiting [veto], DataRightsContract [veto]. |
+
+---
 
 Scope is **industrial manufacturing and hardware-enabled-software platforms**, modelled on the Crown Equipment Corporation surface (vertically-integrated lift-truck OEM with IoT telematics, automation, and aftermarket service). The pattern generalises to any discrete-manufacturing OEM that:
 
@@ -192,11 +207,11 @@ The industrial domain's "what a deployment would need" list:
 
 ---
 
-## Open questions
+## Open questions (post-ship status)
 
-1. **Should `FunctionalSafetyCaseWorkflow` (#10) jump to MVP** if the user prioritises DualMode commercial messaging? Currently Phase 2 — re-evaluate after MVP convergence.
-2. **`WarrantyReserveWorkflow` (#12) vs `pc.ClaimsReserveWorkflow` reuse** — likely a domain-cross reference rather than a separate workflow. Decide when Track 2 expands.
-3. **`PartsDemandForecastWorkflow` (#26) — retail-parity refactor first?** Per current `NEXT_SESSION.md`, the retail parity backlog (L-PC-2 / L-PC-3 / L-PC-5 cross-domain) is overdue; #26 should land *after* retail parity to keep helpers consistent.
+1. **`FunctionalSafetyCaseWorkflow` (#10) MVP-jump?** — held Phase 2 at MVP ship; not yet prioritised. Re-evaluate when DualMode commercial messaging surfaces in a session.
+2. **`WarrantyReserveWorkflow` (#12) vs `pc.ClaimsReserveWorkflow` reuse** — unresolved. Decide when Track 2 expands; cross-domain reference still preferred over duplicate workflow.
+3. **`PartsDemandForecastWorkflow` (#26)** — still gated on retail parity (L-PC-2 / L-PC-3 / L-PC-5 cross-domain backlog). Land parity first to keep helpers consistent.
 
 ---
 
@@ -216,3 +231,5 @@ Per workflow: source → 4 skill templates → example → unit tests (mirrors t
 ```
 
 After the 8th workflow lands and tests are green: focused `/security-audit` on the new surface, remediate, commit.
+
+**Actual ship outcome:** the build sequence ran as planned. Security audit surfaced H-IND-1 (HIGH) — `extract_flags` / `extract_veto_directive` sibling-stop rejected hyphenated peer headers — which 67 industrial unit tests missed because every test used `any(substring in f for f in flags)` instead of list-equality. Closed same-session via one regex change in `core/_internal._is_sibling_header_lhs`; 5 regression tests added. Three latent PC workflows (CoverageDecision, EnvironmentalImpairment, GigPlatformLiability) inherited the fix automatically. Lesson: triple-flag list extractors must be tested with `assert flags == [...]` or `assert len(flags) == N`, never `any(...)`.

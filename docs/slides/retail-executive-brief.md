@@ -76,7 +76,7 @@ No workflow places an order, publishes a schedule, sends a supplier proposal, ex
 | Approver checklists per workflow | ✅ Complete |
 | 8 retail examples (`examples/retail/*.py`) | ✅ Complete |
 | 300 unit + integration tests | ✅ All passing |
-| Design doc + locked decisions (`docs/retail-sweep-design.md`, D-RETAIL-1..6 in `decisions.md`) | ✅ Complete |
+| Design doc + locked decisions (`docs/superpowers/specs/2026-05-13-retail-domain-design.md`, D-RETAIL-1..6 in `decisions.md`) | ✅ Complete |
 | Live POS / HCM / WMS / ERP integration | ❌ PRODUCTION_GAP |
 | Actuarial demand baseline (Prophet / LightGBM) | ❌ PRODUCTION_GAP — LLM should adjust the residual, not generate the baseline |
 | Live weather / unemployment / commodity / freight feeds | ❌ PRODUCTION_GAP — caller-supplied text only |

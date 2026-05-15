@@ -615,7 +615,7 @@ If you use this work, please cite the underlying research:
 
 The eight retail workflows are domain adaptations of the ARIS executor + cross-family-reviewer loop. Veto, triple-flag-gate, and helper-extraction patterns are project-specific extensions over the ARIS baseline; see `docs/decisions.md` D-RETAIL-1..6.
 
-**Design doc:** `docs/retail-sweep-design.md` (APPROVED — advisor 2026-05-13)
+**Design doc:** `docs/superpowers/specs/2026-05-13-retail-domain-design.md` (APPROVED — advisor 2026-05-13)
 **Decisions:** `docs/decisions.md`
 **Examples:** `examples/retail/{demand_forecasting,labor_scheduling,recall_scope,loyalty_offer,promo_markdown,supplier_brief,inventory_replenishment,private_label}.py`
 

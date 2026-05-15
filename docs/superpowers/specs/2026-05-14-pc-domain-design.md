@@ -1,7 +1,20 @@
 # Specialized B2B P&C Insurance — Design Doc
 
-Last updated: 2026-05-14 (Specialty Lines track added per D-PC-6)
-Status: **IN PROGRESS — Foundational track shipped (4 workflows); Specialty track in tree (3 workflows, held on commit).**
+Last updated: 2026-05-14 (Specialty Lines track added per D-PC-6) · refreshed post-ship 2026-05-14 PM
+Status: **SHIPPED — all 7 workflows live on `main`. Foundational track (4) + Specialty track (3) merged. Security audit 2026-05-14 AM ([report](../../security-audits/2026-05-14-pc-sweep.md)): 0 CRIT / 0 HIGH / 1 MED (M-PC-1) / 5 LOW (L-PC-1..5) — all closed same-day. Latent H-IND-1 (hyphenated-header sibling-stop) discovered during industrial sweep 2026-05-14 PM also affected 3 PC workflows; closed via shared `_is_sibling_header_lhs` regex in `core/_internal.py`.**
+
+## Ship outcomes (post-design)
+
+| Item | Outcome |
+|---|---|
+| Workflows live | 7 (ClaimsReserve, CoverageDecision, CommercialUnderwriting, CyberUnderwriting, EnvironmentalImpairment, ParametricCrop, GigPlatformLiability) |
+| Veto-using | 4 of 7 (ClaimsReserve, CoverageDecision, EnvironmentalImpairment, GigPlatformLiability) |
+| Skill templates | 29 |
+| Audit findings closed | M-PC-1 (veto-marker line-anchor), L-PC-1 (skill template L-PC-4 cross-domain), L-PC-2 (FORMAT NOTE in criteria), L-PC-3 (`_MAX_FIELD_CHARS = 1500` per-field cap), L-PC-4 (`Skill.render` brace strip), L-PC-5 (`truncate_flag_display` re-injection cap = 16) |
+| Latent finding (closed post-industrial) | H-IND-1 — `extract_flags` / `extract_veto_directive` sibling-stop rejected hyphenated peer headers (`COVERAGE-GAP`, `PERIL-MATCH`, `KNOWN-CONDITION`); 3 PC workflows latently affected, closed via shared `_is_sibling_header_lhs` regex |
+| Open backlog | None PC-specific. Retail parity for L-PC-2/3/5 still open (preserved across sessions). |
+
+---
 
 Scope is **specialized commercial Property & Casualty**, organised into two tracks:
 
