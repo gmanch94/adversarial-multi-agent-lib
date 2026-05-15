@@ -193,6 +193,30 @@ def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:
     return text
 
 
+# H-IND-1: sibling-header detection. Accepts uppercase letters, spaces, and
+# hyphens in the LHS of a `HEADER:` line. The prior rule used
+# `lhs.replace(" ", "").isalpha()`, which rejected hyphens — so hyphen-
+# containing peer headers (`IP-LEAK FLAGS:`, `DESIGN-DEFECT FLAGS:`,
+# `KNOWN-CONDITION FLAGS:`, etc.) were NOT recognised as section terminators
+# and the parser slurped subsequent sibling sections into the prior list.
+# Allowing `-` (and trailing space tolerance via `+`) closes the slurp for
+# every existing and future flag-header naming convention without loosening
+# the alpha-only-uppercase requirement on the rest of the LHS.
+_SIBLING_HEADER_LHS_RE = re.compile(r"^[A-Z][A-Z\s\-]*[A-Z]$|^[A-Z]$")
+
+
+def _is_sibling_header_lhs(lhs: str) -> bool:
+    """Return True iff `lhs` is an uppercase-with-optional-hyphen-and-space
+    header LHS that should terminate a flag/veto-continuation parse.
+
+    Examples that return True:
+      "PRECEDENT FLAGS", "DESIGN-DEFECT FLAGS", "REVIEWER VETO", "F"
+    Examples that return False:
+      "Overall score", "Key issues", "", "  ", "123 FLAGS"
+    """
+    return bool(_SIBLING_HEADER_LHS_RE.match(lhs))
+
+
 def extract_flags(critique: str, header: str) -> list[str]:
     """
     Parse a named FLAGS section out of a reviewer critique.
@@ -234,7 +258,7 @@ def extract_flags(critique: str, header: str) -> list[str]:
             break
         if ":" in stripped_raw:
             lhs = stripped_raw.split(":", 1)[0].strip()
-            if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
+            if lhs and _is_sibling_header_lhs(lhs):
                 break
         if lower in ("none detected", "none", "n/a"):
             return []
@@ -333,7 +357,8 @@ def extract_veto_directive(
         sibling_header = False
         if line.endswith(":"):
             lhs = line[:-1]
-            if lhs and lhs.replace(" ", "").isalpha() and lhs.isupper():
+            # H-IND-1: also recognises hyphen-containing sibling headers.
+            if lhs and _is_sibling_header_lhs(lhs):
                 sibling_header = True
         if lower.startswith(("overall", "key issues", "#")) or sibling_header:
             break

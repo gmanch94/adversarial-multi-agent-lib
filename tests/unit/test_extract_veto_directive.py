@@ -119,6 +119,23 @@ class TestExtractVetoDirectiveL5:
         assert "EVIDENCE" not in veto
         assert "not part of veto" not in veto
 
+    def test_sibling_header_check_stops_on_hyphenated_header(self) -> None:
+        """H-IND-1: hyphenated peer headers (DESIGN-DEFECT FLAGS, etc.) must
+        also terminate the veto continuation parse. Prior to the H-IND-1 fix,
+        `lhs.replace(' ', '').isalpha()` rejected hyphens, so hyphenated
+        sibling headers were captured as veto-continuation text."""
+        critique = (
+            "REVIEWER VETO:\n"
+            "Real directive line\n"
+            "DESIGN-DEFECT FLAGS:\n"
+            "- not part of veto"
+        )
+        veto = extract_veto_directive(critique, "REVIEWER VETO:", 1000)
+        assert veto is not None
+        assert "Real directive" in veto
+        assert "DESIGN-DEFECT" not in veto
+        assert "not part of veto" not in veto
+
 
 class TestExtractVetoDirectiveMPC1:
     """M-PC-1 regression — line-anchored marker match.

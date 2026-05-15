@@ -1,0 +1,1 @@
+"""Industrial skill templates package."""

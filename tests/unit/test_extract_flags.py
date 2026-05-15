@@ -87,6 +87,55 @@ class TestExtractFlagsBulletNormalisation:
         assert flags == ["only flag"]
 
 
+class TestExtractFlagsHyphenSiblingStop:
+    """H-IND-1: hyphenated peer headers (DESIGN-DEFECT FLAGS, IP-LEAK FLAGS,
+    KNOWN-CONDITION FLAGS, ...) must terminate the prior section. Prior to
+    the H-IND-1 fix, the LHS check `lhs.replace(" ", "").isalpha()` rejected
+    hyphens — so hyphenated peer headers were NOT recognised as terminators
+    and the parser slurped subsequent sections into the prior list.
+    """
+
+    def test_stops_at_hyphenated_sibling_header(self) -> None:
+        critique = (
+            "DESIGN-DEFECT FLAGS:\n- Foreseeable-misuse tolerance not analysed\n"
+            "OPERATOR-ERROR FLAGS: None detected\n"
+            "WARNING-ADEQUACY FLAGS: None detected\n"
+            "REVIEWER VETO: None"
+        )
+        flags = extract_flags(critique, "DESIGN-DEFECT FLAGS:")
+        assert flags == ["Foreseeable-misuse tolerance not analysed"]
+
+    def test_stops_at_inline_hyphenated_sibling_with_none_detected(self) -> None:
+        critique = (
+            "IP-LEAK FLAGS:\n- IP class at risk not documented\n"
+            "GEO-CONCENTRATION FLAGS: None detected\n"
+        )
+        flags = extract_flags(critique, "IP-LEAK FLAGS:")
+        assert flags == ["IP class at risk not documented"]
+
+    def test_three_hyphenated_peer_sections_dont_bleed(self) -> None:
+        critique = (
+            "SIGNAL-EVIDENCE FLAGS:\n- weak corroboration\n"
+            "FALSE-POSITIVE-COST FLAGS:\n- base rate not stated\n"
+            "ACTIONABILITY FLAGS:\n- escalation threshold missing\n"
+        )
+        assert extract_flags(critique, "SIGNAL-EVIDENCE FLAGS:") == [
+            "weak corroboration"
+        ]
+        assert extract_flags(critique, "FALSE-POSITIVE-COST FLAGS:") == [
+            "base rate not stated"
+        ]
+        assert extract_flags(critique, "ACTIONABILITY FLAGS:") == [
+            "escalation threshold missing"
+        ]
+
+    def test_single_char_uppercase_header_still_recognised(self) -> None:
+        # Edge case: single-letter all-caps header LHS — the regex must
+        # still match (the alt branch `^[A-Z]$` covers this).
+        critique = "SCOPE FLAGS:\n- flag-1\nX:\n- ignored"
+        assert extract_flags(critique, "SCOPE FLAGS:") == ["flag-1"]
+
+
 class TestExtractFlagsHeaderAnchoring:
     """Regression coverage for M1 (substring-containment header match).
 
