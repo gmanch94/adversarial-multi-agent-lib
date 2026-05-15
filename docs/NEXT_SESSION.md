@@ -1,17 +1,34 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-14 (P&C Foundational + Specialty SHIPPED + M-PC-1 / L-PC-2..5 audit findings ALL CLOSED + docs/slides/ subdir)
+Last updated: 2026-05-14 (Industrial domain SHIPPED — MVP-8 + H-IND-1 closed same-session; pushed `e0b725a` on `main`)
 
 ---
 
 ## Current state
 
-**P&C domain (B2B) shipped — Foundational + Specialty tracks complete. All audit findings closed. Local clean on `main` at `c3f97c6`.**
+**Industrial domain shipped — MVP-8 of 27-workflow catalog. H-IND-1 closed pre-commit. Pushed `e0b725a` on `main`.**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-**409 tests** (318 pre-P&C → +91: 22 helper-suite test_extract_veto_directive, 15 ClaimsReserve, 13 CoverageDecision, 12 CommercialUnderwriting, 12 CyberUnderwriting, 12 EnvironmentalImpairment, 9 ParametricCrop, 13 GigPlatformLiability, 4 TruncateFlagDisplay, +1 L-PC-3, +1 L-PC-4). ruff + mypy clean.
+**481 tests** (409 pre-industrial → +72: 8 industrial workflow test files at ~8 tests each = 67, plus 5 H-IND-1 regression tests in `test_extract_flags.py` + `test_extract_veto_directive.py`). ruff + mypy clean.
 
-**15 workflows total**: 8 retail (demand, labor, recall, loyalty, promo, supplier, inventory, private_label) + 7 P&C (claims_reserve, coverage_decision, commercial_underwriting, cyber_underwriting, environmental_impairment, parametric_crop, gig_platform_liability) + 1 parole + 4 research.
+**23 workflows total**: 4 research + 1 parole + 8 retail + 7 P&C + **8 industrial MVP** (make_vs_buy, supplier_qualification, engineering_change_order, quality_incident_root_cause, product_liability_root_cause [veto], recall_scope_manufacturing [veto], supply_chain_resilience, telematics_anomaly_triage). 19 industrial Phase-2 designs locked in the design doc (not built).
+
+### 2026-05-14 session — Industrial domain ship + H-IND-1 fix
+
+**Commit:** `e0b725a` (direct to main, pushed). 70 files changed, +8045 LOC.
+
+- 8 MVP workflows + 32 skill templates + 8 examples + 8 unit-test files
+- D-IND-1 decision row + design doc (27-workflow catalog with MVP-8 marked + 19 Phase-2 designs)
+- **H-IND-1 (HIGH)** + **L-IND-1 (LOW)** closed same-session by single regex fix in `core/_internal.py`: sibling-stop now accepts hyphens (`_SIBLING_HEADER_LHS_RE = re.compile(r"^[A-Z][A-Z\s\-]*[A-Z]$|^[A-Z]$")`). Was a Karpathy convention-level error compounded across 8 industrial + 3 latent PC workflows (environmental KNOWN-CONDITION, gig-platform COVERAGE-GAP, parametric-crop PERIL-MATCH). 5 regression tests added.
+- Audit report: [docs/security-audits/2026-05-14-industrial-sweep.md](security-audits/2026-05-14-industrial-sweep.md). L-IND-2..5 documented as LOW backlog (pre-veto draft preservation, banner gating documented OK, bundled_skills_path allowlist, per-field silent truncation).
+- Exec brief + Marp slides: `docs/slides/industrial-executive-brief.md`, `docs/slides/industrial_slides.md`.
+- 8 compounding lessons appended to `docs/LESSONS_LEARNED.md`.
+
+### Prior 2026-05-14 (earlier in day) — P&C domain ship + audit closure (preserved for reference)
+
+**Commits:** `43c0074` (ClaimsReserve anchor) → `b940401` (Foundational + Specialty + M-PC-1 fix) → `c3f97c6` (L-PC-2..5 closure) → `2ccdc4a` (P&C slides + brief). M-PC-1 + L-PC-1..5 all closed.
+
+**15 P&C + retail workflows** (8 retail: demand, labor, recall, loyalty, promo, supplier, inventory, private_label; 7 P&C: claims_reserve, coverage_decision, commercial_underwriting, cyber_underwriting, environmental_impairment, parametric_crop, gig_platform_liability).
 
 ### 2026-05-14 session — P&C domain ship + audit closure
 
