@@ -8,7 +8,7 @@ Auto-loaded each session. Repo posture for Claude Code. Keep lean — append onl
 
 **adv-multi-agent-products** — reusable Python library implementing the adversarial multi-agent collaboration pattern from the ARIS paper (Yang, Li, Li — SJTU, May 2026). Executor agent (Claude Opus 4.7, adaptive thinking) paired with a cross-model reviewer (GPT-4o by default) to prevent echo chambers.
 
-Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server), `research/` (5 research workflows + assurance pipeline), `parole/` (parole decision-support workflow), `retail/` (demand forecasting + labor scheduling workflows). The pattern is domain-agnostic; `core/` is the extension point.
+Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server, shared helpers `extract_flags` / `extract_veto_directive` / `truncate_flag_display` / `sanitize_for_prompt` / `_is_sibling_header_lhs`), `research/` (4 research workflows + assurance pipeline), `parole/` (1 workflow), `retail/` (8 workflows), `pc/` (7 workflows · Foundational + Specialty tracks), `industrial/` (8 MVP of 27-workflow catalog · 19 Phase-2 designs locked). **23 workflows · 481 tests · 107 skill templates.** The pattern is domain-agnostic; `core/` is the extension point.
 
 Solo project. Goal: a production-ready, pip-installable template that researchers and domain engineers can drop into their own pipelines.
 
@@ -48,8 +48,10 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 - **Persistence:** all ledger/wiki writes go through the class methods. Never write raw JSON directly. `_save()` is called after every mutation.
 - **Naming:** snake_case everywhere. Files: `module_name.py`. Classes: `PascalCase`. No abbreviations except established ones (`id`, `url`, `api`).
 - **Tests:** pytest + pytest-asyncio. Unit tests for ledger/wiki/registry (pure logic). Integration tests mock the API clients. No live API calls in CI.
-- **Branches:** feature branches; PR even when solo. No direct commits to `main`. Branch naming: `feat/<thing>`, `fix/<thing>`, `docs/<thing>`, `chore/<thing>`.
-- **Commits (PowerShell):** inline `-m "..."` only. Long here-strings hit the 948-byte parse limit.
+- **Branches:** default ship-flow is direct-to-`main` for solo work (user authorisation standing for this repo per 2026-05-13 + 14 sessions). Use feature branches for in-flight work the user wants to review separately. Branch naming: `feat/<thing>`, `fix/<thing>`, `docs/<thing>`, `chore/<thing>`.
+- **Commits (PowerShell):** inline `-m "..."` only. Long here-strings hit the 948-byte parse limit. Avoid `&`, `>`, `<`, `|`, `&&` in commit message text — bash + PowerShell parse them as operators (past burn: `git commit -m "score >= threshold"` created a `threshold` file via shell redirect). Use words (`and`, `greater than`, `P and C`) or escape.
+- **Domain-add convention (D-IND-1 codifies the recipe):** new domain = sibling package under `src/adv_multi_agent/<domain>/` with `workflows/`, `skills/templates/`, examples under `examples/<domain>/`, tests under `tests/unit/test_<workflow>.py`. Each workflow: `*Request` dataclass with `_MAX_FIELD_CHARS = 1500` per-field cap in `to_prompt_text`, score-threshold + 1-3 FLAGS-class convergence gate, optional reviewer-veto via shared `extract_veto_directive`, `truncate_flag_display` in `_format_flag_section`, `_DISCLAIMER` injected in code (not from prompt), approver checklist. **No domain base class** (D-RETAIL-7 + D-IND-1). Add a row to `pyproject.toml` `[tool.setuptools.package-data]` for the skills template glob. Register MCP domain string under SKILLS_DOMAIN.
+- **Flag-header naming (H-IND-1 codifies the rule):** flag headers can use uppercase letters, spaces, **and hyphens** (`DESIGN-DEFECT FLAGS:`, `IP-LEAK FLAGS:`, etc.). The shared parser's `_is_sibling_header_lhs` regex `^[A-Z][A-Z\s\-]*[A-Z]$|^[A-Z]$` covers all current naming. Before introducing digit-containing, slash-containing, or punctuation-containing headers, audit `core/_internal.py` against the new convention — convention-level error compounding (M-PC-1 + H-IND-1) is the recurring failure mode.
 
 ---
 
@@ -65,7 +67,7 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 ## Things to avoid
 
 - Don't add abstractions, generalizations, or flexibility this template doesn't require. Three similar lines beats a premature helper.
-- Don't add new workflows to `research/` or new domains beyond current scope without a decision entry.
+- Don't add new workflows to `research/` or new domains beyond current scope without a decision entry. **Currently-shipped domains: research, parole, retail, pc, industrial.** Phase-2 industrial workflow promotion = fill-in against locked design, not new design — see [industrial design doc](docs/superpowers/specs/2026-05-14-industrial-domain-design.md).
 - Don't add a web UI, database backend, or deployment infra before the core library is stable.
 - Don't expose raw Anthropic or OpenAI client objects outside `agents.py`. All model calls go through `ExecutorAgent` / `ReviewerAgent`.
 - Don't use `--no-verify`, `--force`, or `git reset --hard` without explicit user instruction.
@@ -80,7 +82,8 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 - **Orthogonal edits** — fold-in policy: if you find a stale claim, bug, or doc drift while working on a task, fold the fix into the same PR. Surface it in the commit message body; don't pause to ask first. Exception: changes that touch a different invariant area (agent interfaces, API key handling, convergence logic) — for those, surface and confirm before folding.
 - **Imperative over declarative** — describe the desired outcome, not the steps.
 - **Single-path-of-control assumption** — assuming the executor is the only caller when the `Config` or `ClaimLedger` can be instantiated and mutated directly too. Every invariant enforced in a workflow must also hold at the class level.
-- **Convention-level error compounding across PRs** — if the same shape of bug appears in multiple PRs, the convention is wrong. Stop and fix the convention before adding more PRs.
+- **Convention-level error compounding across PRs** — if the same shape of bug appears in multiple PRs, the convention is wrong. Stop and fix the convention before adding more PRs. **Repeated twice in this project:** M-PC-1 (veto-marker opening-anchor across 5 workflows) and H-IND-1 (sibling-stop closing-anchor across 8 industrial + 3 latent PC workflows). Both closed via shared-helper hoisting in `core/_internal.py` — one regex change, every domain inherits the fix. Cf. `LESSONS_LEARNED.md` 2026-05-14.
+- **Test-shape pitfall** — `assert any(substring in f for f in result.metadata["flags"])` passes while the parser slurps extra elements. Prefer `assert flags == ["expected"]` or `assert len(flags) == N` when verifying list extractors. H-IND-1 was caught by an audit subagent, not by 67 passing unit tests, because every test used `any(...)`.
 
 ---
 
@@ -105,6 +108,8 @@ For multi-PR sweeps touching agent interfaces, config schema, or convergence log
 Call `advisor()` before committing to a non-obvious approach, before declaring a task done (with a durable deliverable already written), and when stuck. Minimum cadence: one call before approach crystallizes, one before declaring done.
 
 For PRs that touch agent interfaces, API key handling, prompt templates, or any "safety property" comment: spawn an independent code-reviewer subagent before merge. Brief like a colleague who hasn't read the conversation; ask for severity-tagged findings + verdict. Skip only for trivial single-file changes.
+
+**Domain-ship audit cadence:** every new domain → focused `security-audit` subagent on the new surface before commit. Inherits prior remediations (M-PC-1 / L-PC-1..5 / H-IND-1 / L-IND-1) automatically via shared helpers, but verifies the inheritance and surfaces any new attack vector specific to the domain's input shape. Track record across 5 cycles (2026-05-12 through 2026-05-14 PM): each cycle has found ≥1 fixable finding that unit tests missed.
 
 ---
 
