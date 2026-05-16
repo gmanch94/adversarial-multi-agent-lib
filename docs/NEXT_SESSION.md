@@ -1,17 +1,52 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 (Backlog closed — L-PC-2/3/5 retail parity + L-IND-2/4/5 all closed; pushed `4e3f561` on `main`)
+Last updated: 2026-05-16 (Healthcare domain SHIPPED — MVP-8 + audit closed; HEAD `783208d` on `main`)
 
 ---
 
 ## Current state
 
-**All backlog items closed. Clean `main` at `4e3f561`. 481 tests pass.**
+**Healthcare domain shipped — MVP-8 of 27-workflow catalog. Audit 0 CRIT / 0 HIGH / 1 MED (closed) / 4 LOW (backlog).**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-**481 tests** · ruff + mypy clean.
+**550 tests** · ruff + mypy clean.
 
-**23 workflows total**: 4 research + 1 parole + 8 retail + 7 P&C + **8 industrial MVP** (make_vs_buy, supplier_qualification, engineering_change_order, quality_incident_root_cause, product_liability_root_cause [veto], recall_scope_manufacturing [veto], supply_chain_resilience, telematics_anomaly_triage). 19 industrial Phase-2 designs locked in the design doc (not built).
+**36 workflows total**: 4 research + 1 parole + 8 retail + 7 P&C + 8 industrial MVP + **8 healthcare MVP** (diagnosis_code_audit, discharge_planning_risk, prior_authorization_review, claims_appeal_review, drug_interaction_flagging [veto], adverse_event_triage [veto], treatment_plan_review [veto], clinical_trial_eligibility [veto+bias]). 19 healthcare Phase-2 designs locked in design doc (not built).
+
+11 veto-using workflows across all domains. 6 domains.
+
+### 2026-05-16 session — Healthcare domain ship + audit closure
+
+**Commits (subagent-driven dev — 14 commits direct-to-main):**
+
+- `0094709` — Task 1: scaffold + domain allowlist
+- `ee83bbc` — Task 2: DiagnosisCodeAuditWorkflow (non-veto)
+- `fcdbfd0` — Task 3: DischargePlanningRiskWorkflow (non-veto)
+- `010baee` — Task 4: PriorAuthorizationReviewWorkflow (non-veto)
+- `cda26d8` — Task 5: ClaimsAppealReviewWorkflow (non-veto)
+- `0db88c2` — Task 5 follow-up: YAML frontmatter fix
+- `f38f586` — Task 6: DrugInteractionFlaggingWorkflow (veto)
+- `1f4a0dc` — Task 6 cleanup: drug_checklist placeholders + typo
+- `a4de26f` — Task 7: AdverseEventTriageWorkflow (veto, FDA 7/15-day citation)
+- `0a01101` — Task 8: TreatmentPlanReviewWorkflow (veto, drug-allergy/organ/procedure)
+- `0a5dbdb` — Task 9: ClinicalTrialEligibilityWorkflow (veto + bias-gate, JAMA 2019 cite)
+- `d482e1f` — Task 10: D-HEALTH-1..4 + scenarios.md healthcare section
+- `9d4912a` — Task 11: README + CLAUDE.md refresh for 6-domain state
+- `783208d` — Task 12: security audit + M-HEALTH-1 closed (tighten per-field cap assertions)
+
+**Audit findings 2026-05-16 (`docs/security-audits/2026-05-16-healthcare-sweep.md`):**
+
+- M-HEALTH-1 — per-field cap test assertions used `<= _MAX_FIELD_CHARS + 5` slack in 3 of 8 tests → tightened to `== _MAX_FIELD_CHARS`. CLOSED.
+- L-HEALTH-1 — `metadata['first_draft']` echoes sanitized PHI; caller responsibility to handle. BACKLOG.
+- L-HEALTH-2 — 5 metadata traceability scalars use raw `field[:200]` slices (no `sanitize_for_prompt`). BACKLOG.
+- L-HEALTH-3 — non-veto tests don't verify score-threshold boundary independently of flag presence. BACKLOG.
+- L-HEALTH-4 — operator PRODUCTION_GAPS scattered across 8 docstrings; consolidate into SECURITY_MODEL.md. BACKLOG.
+
+**Inheritance:** M-PC-1 (veto-marker line-anchor), H-IND-1 (`_is_sibling_header_lhs` hyphen-aware), L-PC-2/3/5 (FORMAT NOTE + `_MAX_FIELD_CHARS=1500` + `truncate_flag_display`), L-IND-2 (`first_draft`), L-IND-4 (`_KNOWN_DOMAINS` + `_ALLOWED_DOMAINS` extended for healthcare) — all inherited via shared helpers.
+
+### 2026-05-16 session — Prior backlog sweep (preserved)
+
+**Commit:** `4e3f561`. Closed L-PC-2/3/5 retail parity + L-IND-2/4/5. README MCP fix. 481 tests → 481 tests (no new tests; helpers + doc fixes).
 
 ### 2026-05-14 session — Industrial domain ship + H-IND-1 fix
 
