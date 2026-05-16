@@ -3,13 +3,35 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "examples/**"
+      - "memory/**"
+      - ".gitignore"
+      - "LICENSE"
+      - "CITATION.cff"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "examples/**"
+      - "memory/**"
+      - ".gitignore"
+      - "LICENSE"
+      - "CITATION.cff"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   secrets-scan:
     name: Secrets scan
     runs-on: ubuntu-latest
+    # Run on PRs only; redundant after merge since the PR job already cleared it.
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
