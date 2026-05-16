@@ -5,7 +5,11 @@ Stubbed in Task 1; filled in Tasks 3-5.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from .checkpoint import Checkpoint
+    from .token import ResumeToken
 
 
 class BudgetExceeded(Exception):
@@ -24,7 +28,7 @@ class CheckpointStore(Protocol):
     without changing DurableWorkflow.
     """
 
-    async def write(self, checkpoint) -> None: ...     # type: ignore[no-untyped-def]
-    async def read(self, run_id: str): ...             # type: ignore[no-untyped-def]
-    async def list_paused(self, wake_before: datetime) -> list: ...  # type: ignore[type-arg]
+    async def write(self, checkpoint: "Checkpoint") -> None: ...
+    async def read(self, run_id: str) -> "Checkpoint": ...
+    async def list_paused(self, wake_before: datetime) -> "list[ResumeToken]": ...
     async def delete(self, run_id: str) -> None: ...

@@ -94,7 +94,9 @@ class FileCheckpointStore:
     """Atomic-JSON checkpoint store rooted at base_dir/<run_id>.json.
 
     Mirrors ClaimLedger persistence posture: atomic_write_text (temp+rename),
-    safe_resolve_path confinement, JSON shape stable across writes.
+    JSON shape stable across writes. safe_resolve_path normalizes ~ expansion
+    and resolves base_dir relative to the caller's working directory; the
+    caller is responsible for placing base_dir under a sandboxed workspace_dir.
     """
 
     def __init__(self, base_dir: Path | str) -> None:
@@ -121,7 +123,13 @@ class FileCheckpointStore:
         for path in self._base_dir.glob("*.json"):
             try:
                 cp = _checkpoint_from_json(path.read_text(encoding="utf-8"))
-            except (CheckpointCorrupt, SchemaVersionMismatch):
+            except (CheckpointCorrupt, SchemaVersionMismatch) as exc:
+                import warnings
+                warnings.warn(
+                    f"FileCheckpointStore.list_paused: skipping {path.name}: {exc!r}",
+                    UserWarning,
+                    stacklevel=2,
+                )
                 continue
             if cp.status != "paused":
                 continue
