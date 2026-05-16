@@ -208,3 +208,26 @@ class TestDisclaimer:
         result = await wf.run(request=make_request())
         assert _DISCLAIMER in result.output
         assert "ADVISORY" in _DISCLAIMER.upper()
+
+
+@pytest.mark.asyncio
+class TestScoreThresholdBoundary:
+    """L-HEALTH-3: zero flags but approved=False (score below threshold) must not converge."""
+
+    async def test_does_not_converge_when_below_threshold(self, tmp_path: Path) -> None:
+        config = make_config(tmp_path)
+        executor = FakeExecutor(["d1", "d2", "d3"])
+        clean_critique = (
+            "READMISSION FLAGS: None detected\n"
+            "CARE-GAP FLAGS: None detected\n"
+            "SOCIAL-DETERMINANT FLAGS: None detected"
+        )
+        reviewer = FakeReviewer([
+            make_review(7.4, approved=False, critique=clean_critique),
+            make_review(7.4, approved=False, critique=clean_critique),
+            make_review(7.4, approved=False, critique=clean_critique),
+        ])
+        wf = DischargePlanningRiskWorkflow(executor=executor, reviewer=reviewer, config=config)
+        result = await wf.run(request=make_request())
+        assert result.converged is False
+        assert result.rounds == 3
