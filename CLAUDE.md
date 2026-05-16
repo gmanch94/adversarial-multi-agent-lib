@@ -39,6 +39,7 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 ## Working conventions
 
 - **Stack:** Python 3.11+ + `anthropic` SDK + `openai` SDK + `pydantic` v2 + `python-dotenv`.
+- **Durable runs:** `core/durable/` provides pause/resume for long-running workflows (days-to-weeks). Wrap any `BaseWorkflow` in `DurableWorkflow`; checkpoint via pluggable `CheckpointStore`. See `docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md` and `D-DURABLE-1..3`.
 - **Async throughout.** All agent calls are `async`/`await`. No `asyncio.run()` inside library code — only in example scripts and tests.
 - **Type hints everywhere.** `strict = true` in mypy config. No `Any` without a comment naming why.
 - **Models:** executor is `claude-opus-4-7` with `thinking: {type: "adaptive"}` and `output_config: {effort: ...}`. Reviewer is `gpt-4o` by default. Never hardcode model strings outside `config.py` — changes must happen in one place.

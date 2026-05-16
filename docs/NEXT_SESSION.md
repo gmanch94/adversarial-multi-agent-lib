@@ -1,6 +1,29 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 (Healthcare domain SHIPPED — MVP-8 + ALL audit findings closed; HEAD `66a3ab2` on `main`)
+Last updated: 2026-05-16 PM (Durable agent POC SHIPPED — Tasks 1-14 + H-DUR-3 fix; HEAD on `main`, NOT PUSHED)
+
+---
+
+## 2026-05-16 PM — Durable agent POC shipped
+
+- New subpackage: `core/durable/` (~9 files including tests fakes)
+- Concrete integration: `ClinicalTrialEligibilityDurableWorkflow` with 3 pause gates (rolling-data, approver-SLA, regulatory-clock)
+- Decisions: D-DURABLE-1 (schema-versioned + strict-extra), D-DURABLE-2 (hook = trust boundary), D-DURABLE-3 (pluggable Protocols)
+- Security cycle 7: 4 H / 6 M / 5 L / 15 CLEAN. H-DUR-3 closed; H-DUR-1/2/4 documented as posture
+- Test count: 621 pass (608 prior + 13 new) — mypy strict clean, ruff clean
+- **NOT PUSHED to GitHub** — user deferred push until GitHub usage resets. All commits local on `main`. Bulk-push command: `git push origin main` when ready
+
+### Next likely
+
+- Push when GitHub usage resets (`git push origin main`)
+- Address durable HIGHs that were documented-only:
+  - H-DUR-1: add resume-time veto-state-replay (prevents pause-bypass of veto)
+  - H-DUR-2: optional `validate_request_shape` post-hook
+  - H-DUR-4: `EncryptedFileCheckpointStore` decorator OR force healthcare callers to use a workspace_dir on an encrypted volume
+- M-DUR-1 (BudgetTracker lock), M-DUR-3 (TTL bounds), M-DUR-5 (Checkpoint field-type validation) — tracked in `SECURITY_MODEL.md` known gaps
+- PostgresCheckpointStore + PostgresAdvisoryLock impls — first real production durable use case lands these
+- Phase-2 industrial workflow promotion (PartsDemandForecastWorkflow)
+- New domains: finance / legal / HR per `scenarios.md`
 
 ---
 

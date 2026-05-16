@@ -195,6 +195,21 @@ Expected output: header line with executor + reviewer model IDs, the converged a
 
 ---
 
+## Optional durable scheduler
+
+`core/durable/SchedulerDaemon` runs paused workflows on a polling cadence. Single-process for POC; production paths:
+
+- **Storage:** swap `FileCheckpointStore` for `PostgresCheckpointStore` impl satisfying the `CheckpointStore` Protocol (one table, `run_id` PK, JSONB column, B-tree on `(status, wake_at)`).
+- **Locking:** swap `FileRunLock` for `PostgresAdvisoryLock` (pg_try_advisory_lock) or `RedisRunLock` (Redlock).
+- **Scheduling:** swap `PollingScheduler` for `CeleryBeatScheduler`/`TemporalScheduler`/`pg_boss` satisfying `SchedulerBackend`.
+
+Operator concerns:
+- `FileCheckpointStore` requires writable `workspace_dir/checkpoints/` and MUST be constructed with `workspace_dir=` to enable path-confinement (H-DUR-3 mitigation).
+- Paused checkpoints store `last_request_json` as raw caller-supplied data. For PHI deploys, ship an encrypted-at-rest `CheckpointStore` impl OR confine `workspace_dir` to an encrypted volume (H-DUR-4).
+- `SchedulerDaemon.run_forever()` is a long-running async task; supervise it under systemd / k8s.
+
+---
+
 ## 3. What's NOT in this picture
 
 These exist in design or in scope, but are intentionally inert at V0:

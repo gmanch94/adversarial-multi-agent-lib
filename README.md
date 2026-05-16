@@ -291,6 +291,38 @@ SKILLS_DOMAIN=healthcare claude mcp add adv-multi-agent-healthcare -- python -m 
 
 ---
 
+## Durable agents (`core/durable/`)
+
+Pause any workflow for days-to-weeks; resume without losing context. Composition wrapper over any `BaseWorkflow`; checkpoint via pluggable `CheckpointStore`. POC validated against `ClinicalTrialEligibilityDurableWorkflow` with 3 named pause gates (rolling-data, approver-SLA, regulatory-clock).
+
+```python
+from adv_multi_agent.core.durable import DurableWorkflow
+from adv_multi_agent.core.durable.checkpoint import FileCheckpointStore
+from adv_multi_agent.core.durable.hooks import MergeFreshInputsHook
+from adv_multi_agent.healthcare.workflows.clinical_trial_eligibility import TrialEligibilityRequest
+from adv_multi_agent.healthcare.workflows.clinical_trial_eligibility_durable import (
+    ClinicalTrialEligibilityDurableWorkflow,
+)
+
+inner = ClinicalTrialEligibilityDurableWorkflow(config=config)
+dw = DurableWorkflow(
+    inner=inner, config=config,
+    checkpoint_store=FileCheckpointStore(
+        base_dir="./checkpoints",
+        workspace_dir="./workspace",  # H-DUR-3: confine arbitrary-write surface
+    ),
+    reconciliation_hook=MergeFreshInputsHook(request_type=TrialEligibilityRequest),
+)
+
+paused = await dw.start(request)          # returns ResumeToken
+# ... days later ...
+done = await dw.resume(paused.token, fresh_inputs=updated_request)
+```
+
+Pluggable storage (`CheckpointStore`), locking (`RunLock`), and scheduling (`SchedulerBackend`) Protocols. POC ships file + in-memory impls; production swaps Postgres/Redis/Postgres-advisory-lock without changing `DurableWorkflow`. Schema-versioned `ResumeToken` + `Checkpoint` for forward compatibility. See `docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md` and `D-DURABLE-1`.
+
+---
+
 ## Architecture notes
 
 - **Executor** — `claude-opus-4-7` with `thinking: {type: "adaptive"}` and configurable `effort`. Gemini 2.5 Pro supported via `[gemini]` extra. Uses `.messages.stream()` context manager throughout.

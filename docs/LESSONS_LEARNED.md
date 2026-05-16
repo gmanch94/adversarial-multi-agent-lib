@@ -53,3 +53,14 @@ Append-only. Date each entry. Process lessons that compound.
 **6 audit cycles, all closed — the shared-helper pattern in `core/_internal.py` is the right architectural choice** — every cycle has either inherited mitigations cleanly (M-PC-1 → industrial → healthcare) or surfaced a parser-level fix that closed the issue across all domains simultaneously (H-IND-1 hyphenated headers). No domain-specific reimplementations of `extract_flags` / `extract_veto_directive` / `truncate_flag_display`. Convention-level error compounding was the historic risk; shared helpers are the closure.
 
 **Healthcare PHI handling is necessarily caller-responsibility, but document it everywhere** — D-HEALTH-3 makes this explicit: `sanitize_for_prompt` cleans control characters and applies length caps, but it does not (and cannot) validate HIPAA Safe Harbor de-identification. Every healthcare workflow's PRODUCTION_GAPS lists this as item #1. `metadata['first_draft']` (L-IND-2) preserves the executor draft for audit, but that draft echoes the sanitized PHI — comment block at assignment site (L-HEALTH-1) makes this visible. For regulated production: caller pipeline must de-identify before submission AND apply downstream PHI handling to `WorkflowResult.output` and `metadata['first_draft']`.
+
+---
+
+## 2026-05-16 — Durable agent POC
+
+- **Parametrize Protocol tests over multiple impls.** Running the same test suite against `FileCheckpointStore` AND `MemoryCheckpointStore` (and `FileRunLock` AND `MemoryRunLock`) caught a Protocol-fidelity divergence (`MemoryCheckpointStore.list_paused` not filtering `wake_before`) that single-impl tests would have missed. Cheap to add; high signal.
+- **`_KNOWN_MODELS` allowlist + `force_model_upgrade=False` default.** Resume against retired model raises `ModelRetired`; opt-in swap logs into `rounds_history`. Caller can never silently end up on a different model than what was pinned.
+- **Schema-versioned everything that crosses the pause boundary.** `ResumeToken` + `Checkpoint` both carry `schema_version`. Strict-extra rejection on deserialize. Future shape changes fail loud — no silent migration.
+- **Comment-asserted safety is a footgun (cf. CLAUDE.md).** Initial Task 3 docstring claimed "safe_resolve_path confinement" but the call was made without `must_be_under=`. Reviewer caught it; folded into Task 3 fix commit. Lesson: load-bearing safety claims in comments must point at the line that enforces them.
+- **Audit before declaring done, even at POC scope.** 1 H closed in same session (workspace_dir confinement); 3 H documented as posture. Without the audit, H-DUR-3 ships as a latent arbitrary-write surface.
+- **Reviewer-supplied implementer fixes ARE real spec edits.** Task 2 reviewer caught that `deserialize_token` field-order mismatch in the spec would have made one test fail; implementer reordered and reported the deviation. Don't refuse implementer-flagged spec fixes; review them like any other change.
