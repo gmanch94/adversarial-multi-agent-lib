@@ -1,7 +1,7 @@
 """RunLock — exclusive lock for a run_id, with TTL and heartbeat.
 
-POC ships FileRunLock (atomic-rename `<run_id>.lock` file with mtime as
-acquisition timestamp) and MemoryRunLock (in-process dict).
+POC ships FileRunLock (OS-level advisory file lock via fcntl/msvcrt) and
+MemoryRunLock (in-process dict).
 
 Production swap candidates: PostgresAdvisoryLock (pg_try_advisory_lock),
 RedisRunLock (Redlock pattern), DynamoConditionalLock. Same Protocol.
@@ -9,6 +9,7 @@ RedisRunLock (Redlock pattern), DynamoConditionalLock. Same Protocol.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,18 +73,63 @@ class MemoryRunLock:
         )
 
 
+# Platform-specific advisory file locking
+if sys.platform == "win32":
+    import msvcrt
+
+    def _try_lock_fd(fd: int) -> bool:
+        """Try exclusive advisory lock; True on success, False if held."""
+        try:
+            os.lseek(fd, 0, 0)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+
+    def _unlock_fd(fd: int) -> None:
+        try:
+            os.lseek(fd, 0, 0)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+else:
+    import fcntl
+
+    def _try_lock_fd(fd: int) -> bool:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def _unlock_fd(fd: int) -> None:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+
+
 class FileRunLock:
-    """Atomic-rename file-lock store rooted at base_dir/<run_id>.lock.
+    """OS-level advisory file lock keyed on `<base_dir>/<run_id>.lock`.
+
+    Mutual exclusion is enforced by `fcntl.flock` (POSIX) or `msvcrt.locking`
+    (Windows), not by mtime comparison. The lock is released when the FD
+    closes, which happens on explicit release(), process exit, or crash —
+    no stale-eviction race (M-DUR-2 closed).
+
+    `ttl_seconds` is advisory: stored in the lock file for diagnostics and
+    surfaces as `RunLocked.locked_at` in error messages. The OS, not the
+    TTL, governs reclaim.
 
     Args:
         base_dir: directory under which per-run lock files land.
         workspace_dir: if provided, base_dir is confined under it via
-            safe_resolve_path; an attempt to escape raises ValueError.
-            If None, base_dir is resolved without confinement and a
-            UserWarning is emitted. Production deploys SHOULD pass
-            workspace_dir to prevent arbitrary-write via untrusted
-            base_dir input (H-DUR-3).
+            safe_resolve_path. If None, emits a UserWarning (H-DUR-3).
     """
+
+    # Track open FDs keyed by (run_id, acquired_at) so release/heartbeat
+    # can find them. Class-level so the same lock instance survives moves.
+    _open_fds: "dict[tuple[str, float], int]" = {}
 
     def __init__(
         self,
@@ -112,21 +158,6 @@ class FileRunLock:
             raise ValueError(f"invalid run_id charset: {run_id!r}")
         return self._base_dir / f"{run_id}.lock"
 
-    def _read_stored_ttl(self, path: Path) -> int | None:
-        """Read the TTL written at acquisition. Returns None if unreadable."""
-        try:
-            content = path.read_text(encoding="utf-8").strip()
-        except (OSError, FileNotFoundError):
-            return None
-        # File format: "<acquired_at>\n<ttl_seconds>"
-        parts = content.split("\n")
-        if len(parts) < 2:
-            return None
-        try:
-            return int(parts[1])
-        except ValueError:
-            return None
-
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:
         if not (_MIN_TTL <= ttl_seconds <= _MAX_TTL):
             raise ValueError(
@@ -134,47 +165,55 @@ class FileRunLock:
             )
         path = self._path(run_id)
         now = time.time()
-        if path.exists():
-            mtime = path.stat().st_mtime
-            stored_ttl = self._read_stored_ttl(path)
-            # Use the TTL of the holder, not the requester. Falls back to the
-            # requester's ttl_seconds if the file is unreadable (defensive).
-            effective_ttl = stored_ttl if stored_ttl is not None else ttl_seconds
-            if (now - mtime) < effective_ttl:
-                raise RunLocked(run_id, mtime)
+        # Open shared inode in RW; OS lock arbitrates regardless of creator.
+        fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
+        if not _try_lock_fd(fd):
+            os.close(fd)
+            # Best-effort: read holder's acquired_at for diagnostic
             try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+                with open(path, "r", encoding="utf-8") as f:
+                    raw = f.read().strip()
+                holder_at = float(raw.split("\n")[0]) if raw else 0.0
+            except (OSError, ValueError):
+                holder_at = 0.0
+            raise RunLocked(run_id, holder_at)
+        # Write holder metadata for diagnostics (lock is what matters)
         try:
-            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError as exc:
-            raise RunLocked(run_id, path.stat().st_mtime) from exc
-        os.write(fd, f"{now}\n{ttl_seconds}".encode("utf-8"))
-        os.close(fd)
-        # Stamp mtime explicitly so file timestamp matches handle.acquired_at
-        # (Windows file mtime can otherwise advance past `now` between open+write,
-        # breaking TTL math when ttl_seconds is small).
-        try:
-            os.utime(str(path), (now, now))
-        except FileNotFoundError:
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, 0)
+            os.write(fd, f"{now}\n{ttl_seconds}\n".encode("utf-8"))
+        except OSError:
             pass
-        return LockHandle(run_id=run_id, acquired_at=now, ttl_seconds=ttl_seconds)
+        handle = LockHandle(run_id=run_id, acquired_at=now, ttl_seconds=ttl_seconds)
+        FileRunLock._open_fds[(run_id, handle.acquired_at)] = fd
+        return handle
 
     async def release(self, handle: LockHandle) -> None:
-        path = self._path(handle.run_id)
+        key = (handle.run_id, handle.acquired_at)
+        fd = FileRunLock._open_fds.pop(key, None)
+        if fd is None:
+            return
+        _unlock_fd(fd)
         try:
-            if path.exists() and abs(path.stat().st_mtime - handle.acquired_at) < 1.0:
-                path.unlink()
-        except FileNotFoundError:
+            os.close(fd)
+        except OSError:
+            pass
+        # Best-effort cleanup of the lock file.
+        try:
+            self._path(handle.run_id).unlink()
+        except (FileNotFoundError, PermissionError, OSError):
             pass
 
     async def heartbeat(self, handle: LockHandle) -> None:
-        path = self._path(handle.run_id)
-        if not path.exists():
+        key = (handle.run_id, handle.acquired_at)
+        fd = FileRunLock._open_fds.get(key)
+        if fd is None:
             return
-        now = time.time()
+        # Refresh acquired_at written to the file (diagnostic only)
         try:
-            os.utime(str(path), (now, now))
-        except FileNotFoundError:
-            return
+            now = time.time()
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, 0)
+            os.write(fd, f"{now}\n{handle.ttl_seconds}\n".encode("utf-8"))
+        except OSError:
+            pass
