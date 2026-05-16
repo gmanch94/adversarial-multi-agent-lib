@@ -40,9 +40,7 @@
 
 **Severity:** HIGH (logic invariant; design contract under-specified).
 
-**Status:** **DOCUMENTED POSTURE** in `SECURITY_MODEL.md` §3. Contract requires `pause()` only at end-of-round, after `rounds_history_entry` has been appended. Trial-durable subclass follows this contract.
-
-**Future remediation:** on resume, replay prior round's reviewer state and re-check for unsatisfied veto in `cp.rounds_history` before invoking next `run_round`. Regression test: construct a `run_round` that pauses after critique containing `REVIEWER VETO:` and assert resume halts.
+**Status:** **CLOSED 2026-05-16 PM (commit `a9d3e0e`)** — see SECURITY_MODEL.md §3 for the mitigation summary.
 
 ---
 
@@ -56,9 +54,7 @@
 
 **Severity:** HIGH for HIPAA / regulated deployments; MEDIUM otherwise.
 
-**Status:** **DOCUMENTED POSTURE** per D-DURABLE-2 — hook is caller-trusted Protocol. Trust boundary equal to original `Request` construction. Hook contract docstring states this explicitly.
-
-**Future remediation:** add `_validate_request_shape(request, expected_type)` after `hook.on_resume(...)` asserting type identity, per-field length ≤ cap, and `sanitize_for_prompt` idempotence.
+**Status:** **CLOSED 2026-05-16 PM (commit `28fb2bf`)** — `_validate_request_shape` invoked post-hook.
 
 ---
 
@@ -88,7 +84,7 @@
 
 **Severity:** HIGH for healthcare; MEDIUM otherwise.
 
-**Status:** **DOCUMENTED POSTURE** in `SECURITY_MODEL.md` §3 + §4 Known Gaps. D-HEALTH-3 extended across time. `FileCheckpointStore` is POC scope; healthcare deploys must (a) confine `workspace_dir` to encrypted volume (LUKS/BitLocker/EBS-encrypted), (b) ship `EncryptedFileCheckpointStore` decorator, or (c) use `PostgresCheckpointStore` with TDE.
+**Status:** **CLOSED 2026-05-16 PM (commit `dc1c70d`)** — `EncryptedCheckpointStore` decorator + `Cipher` Protocol.
 
 ---
 
@@ -102,6 +98,8 @@
 
 **Fix:** wrap `record` in `asyncio.Lock`; optional `expect_increments(min_per_round=1)` assertion.
 
+**Status:** CLOSED 2026-05-16 PM (commit `c633cc1`) — `asyncio.Lock` + `expect_increments` helper.
+
 ### M-DUR-2 — `FileRunLock` stale-eviction race
 
 **File:** `core/durable/lock.py`.
@@ -109,6 +107,8 @@
 Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (re-acquire). Mutual exclusion holds but error attribution misleading. Worse on fast-NFS / virtualized FS.
 
 **Fix:** replace with `fcntl.flock` (POSIX) or `msvcrt.locking` (Windows). Or document File* impls are single-host-low-contention.
+
+**Status:** CLOSED 2026-05-16 PM (commit `b9751ce`) — `fcntl.flock` / `msvcrt.locking` advisory lock; TTL is advisory only.
 
 ### M-DUR-3 — `ttl_seconds=0` / negative / huge accepted
 
@@ -118,6 +118,8 @@ Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (r
 
 **Fix:** validate `1 <= ttl_seconds <= 86400` in both impls' `acquire`.
 
+**Status:** CLOSED 2026-05-16 PM (commit `f711a07`).
+
 ### M-DUR-4 — `_serialize_request` `default=str` silently lossy + injection surface
 
 **File:** `core/durable/workflow.py`.
@@ -125,6 +127,8 @@ Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (r
 `json.dumps(..., default=str)` falls back to `str(obj)` for non-serializable types. Custom `__str__` with prompt-injection content lands in checkpoint. Round-trip lossy and silent (`Decimal`, `datetime`, `Path` → `str`).
 
 **Fix:** drop `default=str`; require callers to pre-serialize exotic fields. Add round-trip identity test.
+
+**Status:** CLOSED 2026-05-16 PM (commit `f711a07`).
 
 ### M-DUR-5 — Checkpoint field types unvalidated; model swap re-check missing
 
@@ -134,6 +138,8 @@ Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (r
 
 **Fix:** type-validate fields in `__post_init__`. Re-check allowlist after swap. Validate reviewer model.
 
+**Status:** CLOSED 2026-05-16 PM (commit `f711a07`).
+
 ### M-DUR-6 — `MemoryCheckpointStore.list_paused` Protocol-fidelity gap
 
 **File:** `core/durable/checkpoint.py`.
@@ -141,6 +147,8 @@ Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (r
 `FileCheckpointStore.list_paused` filters on `wake_at <= wake_before`; need to verify `MemoryCheckpointStore` applies the same filter. If not, paused runs wake before scheduled time on Memory backend.
 
 **Fix:** verify filter applies; add Protocol-fidelity regression test.
+
+**Status:** CLOSED 2026-05-16 PM (commit `f711a07`).
 
 ---
 
@@ -204,16 +212,16 @@ A researcher would expect to find these broken; they are not:
 
 | # | Severity | Area | File | Status |
 |---|----------|------|------|--------|
-| H-DUR-1 | HIGH | `_PauseSignal` bypasses convergence/veto on resume | `core/durable/workflow.py` | DOCUMENTED |
-| H-DUR-2 | HIGH | Reconciliation hook bypasses sanitization + field caps | `core/durable/workflow.py`, `hooks.py` | DOCUMENTED |
+| H-DUR-1 | HIGH | `_PauseSignal` bypasses convergence/veto on resume | `core/durable/workflow.py` | **CLOSED `a9d3e0e`** |
+| H-DUR-2 | HIGH | Reconciliation hook bypasses sanitization + field caps | `core/durable/workflow.py`, `hooks.py` | **CLOSED `28fb2bf`** |
 | H-DUR-3 | HIGH | `FileCheckpointStore` / `FileRunLock` accept any `base_dir` | `core/durable/checkpoint.py`, `lock.py` | CLOSED `4ad2776` |
-| H-DUR-4 | HIGH | `Checkpoint.last_request_json` stores raw PHI at rest | `core/durable/workflow.py`, `checkpoint.py` | DOCUMENTED |
-| M-DUR-1 | MEDIUM | `BudgetTracker.record` TOCTOU + no integrity check | `core/durable/budget.py` | OPEN |
-| M-DUR-2 | MEDIUM | `FileRunLock` stale-eviction race | `core/durable/lock.py` | OPEN |
-| M-DUR-3 | MEDIUM | `ttl_seconds=0` / negative / huge accepted | `core/durable/lock.py` | OPEN |
-| M-DUR-4 | MEDIUM | `_serialize_request` `default=str` lossy + injection | `core/durable/workflow.py` | OPEN |
-| M-DUR-5 | MEDIUM | Checkpoint field types unvalidated; swap re-check missing | `core/durable/checkpoint.py`, `workflow.py` | OPEN |
-| M-DUR-6 | MEDIUM | `MemoryCheckpointStore.list_paused` Protocol-fidelity gap | `core/durable/checkpoint.py` | OPEN |
+| H-DUR-4 | HIGH | `Checkpoint.last_request_json` stores raw PHI at rest | `core/durable/workflow.py`, `checkpoint.py` | **CLOSED `dc1c70d`** |
+| M-DUR-1 | MEDIUM | `BudgetTracker.record` TOCTOU + no integrity check | `core/durable/budget.py` | **CLOSED `c633cc1`** |
+| M-DUR-2 | MEDIUM | `FileRunLock` stale-eviction race | `core/durable/lock.py` | **CLOSED `b9751ce`** |
+| M-DUR-3 | MEDIUM | `ttl_seconds=0` / negative / huge accepted | `core/durable/lock.py` | **CLOSED `f711a07`** |
+| M-DUR-4 | MEDIUM | `_serialize_request` `default=str` lossy + injection | `core/durable/workflow.py` | **CLOSED `f711a07`** |
+| M-DUR-5 | MEDIUM | Checkpoint field types unvalidated; swap re-check missing | `core/durable/checkpoint.py`, `workflow.py` | **CLOSED `f711a07`** |
+| M-DUR-6 | MEDIUM | `MemoryCheckpointStore.list_paused` Protocol-fidelity gap | `core/durable/checkpoint.py` | **CLOSED `f711a07`** (verified parity) |
 | L-DUR-1 | LOW | `run_id` charset accepts Unicode | `core/durable/checkpoint.py`, `lock.py` | OPEN |
 | L-DUR-2 | LOW | `deserialize_token` shape validation | `core/durable/token.py` | OPEN |
 | L-DUR-3 | LOW | `atomic_write_text` lacks directory fsync POSIX | `core/_internal.py` | OPEN |
@@ -230,6 +238,6 @@ Cycle 3 (2026-05-14 AM, PC): 0C/0H/1M/5L all closed.
 Cycle 4 (2026-05-14 PM, industrial): 0C/1H/0M/5L all closed.
 Cycle 5 (2026-05-16, healthcare): 0C/0H/1M/4L all closed.
 Cycle 6 (2026-05-16, healthcare follow-up): all carried forward closed.
-**Cycle 7 (2026-05-16 PM, durable POC):** 0C/4H/6M/5L — 1H closed, 3H + all M/L documented as posture or tracked for follow-up.
+**Cycle 7 (2026-05-16 PM, durable POC):** 0C/4H/6M/5L initial → drained same-session to 0C/0H/0M/5L. 4 HIGH + 6 MEDIUM closed; 5 LOW remain tracked. Recurring lesson confirmed (H-DUR-3 was the third instance of "load-bearing comment without enforcement at the call site" — same shape as M-PC-1 and H-IND-1).
 
 **Recurring lesson:** convention-level error compounding remains the top failure mode. M-PC-1 (opening anchor) and H-IND-1 (closing sibling-stop) were the prior examples; H-DUR-3 (decorative `safe_resolve_path` call without `must_be_under=`) is the cycle-7 instance of the same shape. Shared helpers + load-bearing safety claims need enforcement at the call site, not in the docstring.

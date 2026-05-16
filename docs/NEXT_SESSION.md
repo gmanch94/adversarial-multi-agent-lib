@@ -1,6 +1,29 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 PM (Durable agent POC SHIPPED — Tasks 1-14 + H-DUR-3 fix; HEAD on `main`, NOT PUSHED)
+Last updated: 2026-05-16 PM (Durable POC backlog drain complete — all HIGH + MEDIUM closed; pushed to `origin/main`)
+
+---
+
+## 2026-05-16 PM (continued) — Durable POC backlog drain complete
+
+All HIGH + MEDIUM findings from cycle 7 closed in 6 commits:
+- `f711a07` — M-DUR-3/4/5/6 (validation hardening: ttl bounds, strict JSON, checkpoint field types, parity)
+- `c633cc1` — M-DUR-1 (BudgetTracker asyncio.Lock + expect_increments)
+- `28fb2bf` — H-DUR-2 (_validate_request_shape post-hook)
+- `a9d3e0e` — H-DUR-1 (RunHaltedByVeto + mid_round_pause marker)
+- `dc1c70d` — H-DUR-4 (EncryptedCheckpointStore + Cipher Protocol)
+- `b9751ce` — M-DUR-2 (OS-level fcntl/msvcrt FileRunLock)
+
+Durable surface: 0 CRIT / 0 HIGH / 0 MEDIUM / 5 LOW (tracked).
+
+646 tests pass. mypy strict clean. ruff clean. All pushed to `origin/main`.
+
+### Next likely
+
+- Close LOW backlog (L-DUR-1..5) — Unicode run_id charset, token field shape validation, POSIX directory fsync, scheduler per-token isolation, BudgetExceeded mid-round contract
+- PostgresCheckpointStore + PostgresAdvisoryLock impls (production storage path)
+- Phase-2 industrial PartsDemandForecastWorkflow promotion
+- New domains: finance / legal / HR per `scenarios.md`
 
 ---
 
