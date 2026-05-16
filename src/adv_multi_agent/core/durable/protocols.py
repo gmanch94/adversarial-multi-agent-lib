@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from .checkpoint import Checkpoint
+    from .lock import LockHandle
     from .token import ResumeToken
 
 
@@ -32,3 +33,15 @@ class CheckpointStore(Protocol):
     async def read(self, run_id: str) -> "Checkpoint": ...
     async def list_paused(self, wake_before: datetime) -> "list[ResumeToken]": ...
     async def delete(self, run_id: str) -> None: ...
+
+
+class RunLock(Protocol):
+    """Pluggable exclusive lock keyed by run_id with TTL + heartbeat.
+
+    POC ships FileRunLock + MemoryRunLock. Production swaps in
+    PostgresAdvisoryLock / RedisRunLock / DynamoConditionalLock.
+    """
+
+    async def acquire(self, run_id: str, ttl_seconds: int) -> "LockHandle": ...
+    async def release(self, handle: "LockHandle") -> None: ...
+    async def heartbeat(self, handle: "LockHandle") -> None: ...
