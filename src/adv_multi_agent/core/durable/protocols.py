@@ -14,7 +14,11 @@ if TYPE_CHECKING:
 
 
 class BudgetExceeded(Exception):
-    """Raised when a durable run exceeds its budget cap. Filled in Task 5."""
+    """Raised when a durable run exceeds its budget cap.
+
+    DurableWorkflow catches this, persists the checkpoint with
+    status='budget_exceeded', and re-raises wrapped in RunOutcome.
+    """
 
 
 class ReconciliationHook:
