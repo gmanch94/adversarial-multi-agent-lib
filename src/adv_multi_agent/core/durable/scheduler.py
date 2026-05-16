@@ -45,13 +45,18 @@ class SchedulerDaemon:
         token_resolver: Callable[[ResumeToken], ResumeToken] | None = None,
         poll_interval_seconds: float = 60.0,
         batch_size: int = 10,
+        max_retries: int = 3,
     ) -> None:
         self._scheduler = scheduler
         self._factory = workflow_factory
         self._token_resolver = token_resolver or (lambda t: t)
         self._poll = poll_interval_seconds
         self._batch = batch_size
+        self._max_retries = max_retries
         self._stop = asyncio.Event()
+        # L-DUR-4: per-token failure counts + quarantine to prevent log-spam DoS
+        self._failures: dict[str, int] = {}
+        self._quarantine: set[str] = set()
 
     def stop(self) -> None:
         self._stop.set()
@@ -66,13 +71,34 @@ class SchedulerDaemon:
                 continue
             for token in tokens:
                 resolved = self._token_resolver(token)
+                if resolved.run_id in self._quarantine:
+                    continue  # L-DUR-4: skip poisoned tokens
                 try:
                     dw = self._factory(resolved.workflow_class)
                     await dw.resume(resolved)
+                    self._failures.pop(resolved.run_id, None)
                 except (RunNotFound, CheckpointCorrupt, SchemaVersionMismatch):
                     logger.exception("scheduler resume failed for %s", resolved.run_id)
+                    self._failures[resolved.run_id] = (
+                        self._failures.get(resolved.run_id, 0) + 1
+                    )
+                    if self._failures[resolved.run_id] >= self._max_retries:
+                        logger.error(
+                            "quarantining %s after %d failures",
+                            resolved.run_id, self._max_retries,
+                        )
+                        self._quarantine.add(resolved.run_id)
                 except Exception:
                     logger.exception("scheduler resume crashed for %s", resolved.run_id)
+                    self._failures[resolved.run_id] = (
+                        self._failures.get(resolved.run_id, 0) + 1
+                    )
+                    if self._failures[resolved.run_id] >= self._max_retries:
+                        logger.error(
+                            "quarantining %s after %d failures",
+                            resolved.run_id, self._max_retries,
+                        )
+                        self._quarantine.add(resolved.run_id)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._poll)
             except asyncio.TimeoutError:

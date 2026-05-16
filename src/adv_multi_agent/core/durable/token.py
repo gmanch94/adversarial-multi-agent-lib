@@ -6,8 +6,13 @@ fail loud at load instead of silently corrupting state.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, fields
+from datetime import datetime as _dt
 from typing import Any
+
+# L-DUR-2: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
+_RUN_ID_RE_TOKEN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 
 CURRENT_SCHEMA_VERSION = 1
 """Bumped on any incompatible change to ResumeToken or Checkpoint shape."""
@@ -56,5 +61,30 @@ def deserialize_token(s: str) -> ResumeToken:
             f"library CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION}; "
             f"run migration tool or downgrade the library"
         )
+
+    # L-DUR-2: validate field shapes before construction
+    run_id = data.get("run_id")
+    if not isinstance(run_id, str) or not _RUN_ID_RE_TOKEN.fullmatch(run_id):
+        raise ValueError(
+            f"token run_id {run_id!r} does not match charset "
+            f"^[a-zA-Z0-9][a-zA-Z0-9-]{{0,63}}$"
+        )
+    try:
+        _dt.fromisoformat(data["created_at"])
+    except (ValueError, TypeError) as exc:
+        raise ValueError(
+            f"token created_at not ISO-8601: {data.get('created_at')!r}"
+        ) from exc
+    if data.get("wake_at") is not None:
+        try:
+            _dt.fromisoformat(data["wake_at"])
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"token wake_at not ISO-8601: {data.get('wake_at')!r}"
+            ) from exc
+    for fld in ("pinned_executor_model", "pinned_reviewer_model"):
+        val = data.get(fld)
+        if not isinstance(val, str) or not val:
+            raise ValueError(f"token {fld} must be non-empty str, got {val!r}")
 
     return ResumeToken(**{k: data[k] for k in known})

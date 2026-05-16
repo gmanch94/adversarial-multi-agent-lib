@@ -344,6 +344,14 @@ class DurableWorkflow:
                             metadata=r.get("metadata", {}),
                         )
             except BudgetExceeded as exc:
+                # L-DUR-5: when BudgetExceeded raises mid-round (after executor
+                # call but before reviewer call), the partial round is NOT
+                # appended to rounds_history. On resume with a raised cap the
+                # inner workflow replays the round from start → caller will be
+                # billed twice for that round's executor tokens. This is
+                # acceptable POC behavior; production callers needing exactly-
+                # once billing should sub-checkpoint after each agent call
+                # (out of POC scope).
                 cp.status = "budget_exceeded"
                 cp.round = round_num if has_run_round else 0
                 cp.rounds_history = rounds_history
@@ -535,6 +543,9 @@ class DurableWorkflow:
                         metadata=r.get("metadata", {}),
                     )
             except BudgetExceeded as exc:
+                # L-DUR-5: see start() handler — same double-billing contract
+                # applies on resume. Partial mid-round work is not preserved;
+                # resume with raised cap will re-bill executor tokens.
                 cp.status = "budget_exceeded"
                 cp.rounds_history = rounds_history
                 cp.updated_at = _now_iso()

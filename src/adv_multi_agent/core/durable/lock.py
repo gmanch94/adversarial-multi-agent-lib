@@ -9,6 +9,7 @@ RedisRunLock (Redlock pattern), DynamoConditionalLock. Same Protocol.
 from __future__ import annotations
 
 import os
+import re as _re
 import sys
 import time
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ from .._internal import safe_resolve_path
 # M-DUR-3: TTL bounds for run-lock acquisition
 _MIN_TTL = 1
 _MAX_TTL = 86400
+
+# L-DUR-1: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
+_RUN_ID_RE = _re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 
 
 class RunLocked(RuntimeError):
@@ -154,8 +158,11 @@ class FileRunLock:
         self._base_dir = resolved
 
     def _path(self, run_id: str) -> Path:
-        if not run_id.replace("-", "").isalnum():
-            raise ValueError(f"invalid run_id charset: {run_id!r}")
+        if not _RUN_ID_RE.fullmatch(run_id):
+            raise ValueError(
+                f"invalid run_id: must match ^[a-zA-Z0-9][a-zA-Z0-9-]{{0,63}}$, "
+                f"got {run_id!r}"
+            )
         return self._base_dir / f"{run_id}.lock"
 
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:

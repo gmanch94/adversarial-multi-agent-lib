@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re as _re
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,9 @@ from typing import Any
 
 from .._internal import atomic_write_text, safe_resolve_path
 from .token import CURRENT_SCHEMA_VERSION, ResumeToken
+
+# L-DUR-1: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
+_RUN_ID_RE = _re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 
 _STATUS_VALUES = {
     "running", "paused", "completed", "vetoed", "budget_exceeded", "failed"
@@ -153,8 +157,11 @@ class FileCheckpointStore:
         self._base_dir = resolved
 
     def _path(self, run_id: str) -> Path:
-        if not run_id.replace("-", "").isalnum():
-            raise ValueError(f"invalid run_id charset: {run_id!r}")
+        if not _RUN_ID_RE.fullmatch(run_id):
+            raise ValueError(
+                f"invalid run_id: must match ^[a-zA-Z0-9][a-zA-Z0-9-]{{0,63}}$, "
+                f"got {run_id!r}"
+            )
         return self._base_dir / f"{run_id}.json"
 
     async def write(self, checkpoint: Checkpoint) -> None:

@@ -15,6 +15,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import unicodedata
 import warnings
@@ -96,6 +97,17 @@ def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None
             except OSError:
                 pass  # fsync not supported on every fs; replace is still atomic
         os.replace(tmp, path)
+        # L-DUR-3: on POSIX, fsync the parent directory so the rename is
+        # durable across power loss. Windows doesn't support dir fsync; skip.
+        if sys.platform != "win32":
+            try:
+                dir_fd = os.open(str(parent), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+            except OSError:
+                pass  # FS without dir-fsync support; best effort
     except Exception:
         try:
             tmp.unlink(missing_ok=True)
