@@ -1,15 +1,15 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 (Healthcare domain SHIPPED — MVP-8 + audit closed; HEAD `783208d` on `main`)
+Last updated: 2026-05-16 (Healthcare domain SHIPPED — MVP-8 + ALL audit findings closed; HEAD `66a3ab2` on `main`)
 
 ---
 
 ## Current state
 
-**Healthcare domain shipped — MVP-8 of 27-workflow catalog. Audit 0 CRIT / 0 HIGH / 1 MED (closed) / 4 LOW (backlog).**
+**Healthcare domain shipped — MVP-8 of 27-workflow catalog. Audit 0 CRIT / 0 HIGH / 1 MED / 4 LOW — ALL closed. 6 audit cycles cumulative, zero open findings.**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-**550 tests** · ruff + mypy clean.
+**558 tests** · ruff + mypy clean.
 
 **36 workflows total**: 4 research + 1 parole + 8 retail + 7 P&C + 8 industrial MVP + **8 healthcare MVP** (diagnosis_code_audit, discharge_planning_risk, prior_authorization_review, claims_appeal_review, drug_interaction_flagging [veto], adverse_event_triage [veto], treatment_plan_review [veto], clinical_trial_eligibility [veto+bias]). 19 healthcare Phase-2 designs locked in design doc (not built).
 
@@ -33,6 +33,10 @@ GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
 - `d482e1f` — Task 10: D-HEALTH-1..4 + scenarios.md healthcare section
 - `9d4912a` — Task 11: README + CLAUDE.md refresh for 6-domain state
 - `783208d` — Task 12: security audit + M-HEALTH-1 closed (tighten per-field cap assertions)
+- `7716757` — Task 13: NEXT_SESSION refresh
+- `f4119c2` — L-HEALTH-1 + L-HEALTH-2 closed (sanitize 7 metadata scalars + PHI handling note on first_draft in 4 veto workflows)
+- `76a6db2` — L-HEALTH-3 closed (8 score-threshold boundary tests; 550 → 558 tests)
+- `66a3ab2` — L-HEALTH-4 closed (SECURITY_MODEL.md consolidates 6 audit cycles; L-IND-2/4/5 + L-HEALTH-1..4 all marked closed)
 
 **Audit findings 2026-05-16 (`docs/security-audits/2026-05-16-healthcare-sweep.md`):**
 
