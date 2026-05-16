@@ -5,6 +5,7 @@ Unknown models warn + count as zero USD (tokens still tracked).
 """
 from __future__ import annotations
 
+import asyncio
 import warnings
 from dataclasses import dataclass
 from typing import Any
@@ -75,6 +76,8 @@ class BudgetTracker:
         self._tokens_in = 0
         self._tokens_out = 0
         self._usd_spent = 0.0
+        self._record_count = 0
+        self._lock = asyncio.Lock()
 
     @classmethod
     def from_snapshot(
@@ -91,25 +94,39 @@ class BudgetTracker:
         t._usd_spent = snap.usd_spent
         return t
 
-    def record(self, model: str, tokens_in: int, tokens_out: int) -> None:
-        new_in = self._tokens_in + tokens_in
-        new_out = self._tokens_out + tokens_out
-        new_usd = round(self._usd_spent + estimate_usd(model, tokens_in, tokens_out), 4)
-        if self._max_tokens_in is not None and new_in > self._max_tokens_in:
-            raise BudgetExceeded(
-                f"tokens_in cap exceeded: would be {new_in} > {self._max_tokens_in}"
+    async def record(self, model: str, tokens_in: int, tokens_out: int) -> None:
+        async with self._lock:
+            new_in = self._tokens_in + tokens_in
+            new_out = self._tokens_out + tokens_out
+            new_usd = round(self._usd_spent + estimate_usd(model, tokens_in, tokens_out), 4)
+            if self._max_tokens_in is not None and new_in > self._max_tokens_in:
+                raise BudgetExceeded(
+                    f"tokens_in cap exceeded: would be {new_in} > {self._max_tokens_in}"
+                )
+            if self._max_tokens_out is not None and new_out > self._max_tokens_out:
+                raise BudgetExceeded(
+                    f"tokens_out cap exceeded: would be {new_out} > {self._max_tokens_out}"
+                )
+            if self._max_usd is not None and new_usd > self._max_usd:
+                raise BudgetExceeded(
+                    f"usd cap exceeded: would be ${new_usd:.4f} > ${self._max_usd:.4f}"
+                )
+            self._tokens_in = new_in
+            self._tokens_out = new_out
+            self._usd_spent = new_usd
+            self._record_count += 1
+
+    def expect_increments(self, min_total_calls: int) -> None:
+        """Assert record() was invoked at least N times since construction.
+        Caller invokes this at end-of-run to detect inner workflows that
+        forgot to instrument (M-DUR-1 silent-pass failure mode).
+        """
+        if self._record_count < min_total_calls:
+            raise AssertionError(
+                f"BudgetTracker.record() called {self._record_count} times; "
+                f"expected >= {min_total_calls}. An inner workflow likely "
+                f"forgot to instrument token usage (M-DUR-1 silent-pass)."
             )
-        if self._max_tokens_out is not None and new_out > self._max_tokens_out:
-            raise BudgetExceeded(
-                f"tokens_out cap exceeded: would be {new_out} > {self._max_tokens_out}"
-            )
-        if self._max_usd is not None and new_usd > self._max_usd:
-            raise BudgetExceeded(
-                f"usd cap exceeded: would be ${new_usd:.4f} > ${self._max_usd:.4f}"
-            )
-        self._tokens_in = new_in
-        self._tokens_out = new_out
-        self._usd_spent = new_usd
 
     def snapshot(self) -> BudgetSnapshot:
         return BudgetSnapshot(
