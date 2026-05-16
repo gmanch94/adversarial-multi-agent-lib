@@ -55,6 +55,26 @@ class RunNotResumable(RuntimeError):
         self.current_status = current_status
 
 
+class RunHaltedByVeto(RunNotResumable):
+    """H-DUR-1: resume refused because a prior round emitted an unresolved veto.
+
+    A reviewer's VETO directive halts the workflow; durable runs persist that
+    state. Calling resume() on a checkpoint whose rounds_history carries
+    veto_pending=True is invalid — the run is terminally vetoed, not paused.
+    """
+
+    def __init__(self, run_id: str, veto_round: int, veto_directive: str) -> None:
+        # Bypass RunNotResumable's __init__ to set a clearer message
+        RuntimeError.__init__(
+            self,
+            f"run {run_id!r} halted by veto at round {veto_round}: {veto_directive}",
+        )
+        self.run_id = run_id
+        self.current_status = "vetoed"
+        self.veto_round = veto_round
+        self.veto_directive = veto_directive
+
+
 class ModelRetired(RuntimeError):
     """Raised when the pinned model is no longer available and force_model_upgrade=False."""
 
@@ -257,10 +277,20 @@ class DurableWorkflow:
                                 ctx=ctx,
                             )
                         except _PauseSignal as ps:
+                            # H-DUR-1: mark whether this pause fired mid-round
+                            # (before run_round appended its rounds_history entry)
+                            last_entry_round = (
+                                rounds_history[-1].get("round", 0)
+                                if rounds_history else 0
+                            )
+                            mid_round = last_entry_round < round_num
                             cp.status = "paused"
                             cp.round = round_num
                             cp.pause_reason = ps.reason
-                            cp.pause_context = ps.context
+                            cp.pause_context = {
+                                **ps.context,
+                                "_mid_round_pause": mid_round,
+                            }
                             cp.wake_at = ps.wake_at
                             cp.rounds_history = rounds_history
                             cp.updated_at = _now_iso()
@@ -358,6 +388,22 @@ class DurableWorkflow:
             if cp.status != "paused":
                 raise RunNotResumable(token.run_id, cp.status)
 
+            # H-DUR-1: refuse resume if prior round flagged a veto that was
+            # never enforced (e.g., pause raised before veto could halt the run)
+            pending_veto_entry = next(
+                (
+                    e for e in reversed(cp.rounds_history)
+                    if e.get("veto_pending") is True
+                ),
+                None,
+            )
+            if pending_veto_entry is not None:
+                raise RunHaltedByVeto(
+                    token.run_id,
+                    veto_round=int(pending_veto_entry.get("round", 0)),
+                    veto_directive=str(pending_veto_entry.get("veto_directive", "")),
+                )
+
             # Model-pin validation (M-DUR-5: validate both pinned models; re-check post-swap)
             if not _model_is_available(cp.pinned_executor_model):
                 if not force_model_upgrade:
@@ -437,10 +483,19 @@ class DurableWorkflow:
                             ctx=ctx,
                         )
                     except _PauseSignal as ps:
+                        # H-DUR-1: mark whether this pause fired mid-round
+                        last_entry_round = (
+                            rounds_history[-1].get("round", 0)
+                            if rounds_history else 0
+                        )
+                        mid_round = last_entry_round < round_num
                         cp.status = "paused"
                         cp.round = round_num
                         cp.pause_reason = ps.reason
-                        cp.pause_context = ps.context
+                        cp.pause_context = {
+                            **ps.context,
+                            "_mid_round_pause": mid_round,
+                        }
                         cp.wake_at = ps.wake_at
                         cp.rounds_history = rounds_history
                         cp.updated_at = _now_iso()

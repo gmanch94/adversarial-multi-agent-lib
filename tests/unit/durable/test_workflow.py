@@ -85,7 +85,9 @@ async def test_start_pauses_returns_pause_token(tmp_path: Path) -> None:
     assert outcome.pause_reason == "toy_pause"
     cp = await store.read(outcome.token.run_id)
     assert cp.status == "paused"
-    assert cp.pause_context == {"at_round": 1}
+    # H-DUR-1: pause_context now includes _mid_round_pause marker
+    assert cp.pause_context["at_round"] == 1
+    assert cp.pause_context["_mid_round_pause"] is True
 
 
 @pytest.mark.asyncio
@@ -327,3 +329,68 @@ async def test_resume_without_expected_type_skips_type_check(tmp_path: Path) -> 
         reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
     )
     assert outcome.status == "completed"
+
+
+# H-DUR-1 tests --------------------------------------------------------------
+from adv_multi_agent.core.durable.workflow import RunHaltedByVeto  # noqa: E402
+from adv_multi_agent.core.workflow import BaseWorkflow  # noqa: E402
+
+
+class VetoEmittingPausingWorkflow(BaseWorkflow):
+    """Emits veto-pending entry on round 1, then pauses on round 2.
+
+    Simulates the H-DUR-1 attack shape: a prior round's reviewer raised veto,
+    but a subsequent round paused before the durable layer could halt the run.
+    """
+
+    async def run_round(self, round_num, request, prior_state, ctx=None):  # type: ignore[override]
+        if round_num == 1:
+            return {
+                "output": "draft",
+                "score": 4.0,
+                "converged": False,
+                "rounds_history_entry": {
+                    "round": 1,
+                    "score": 4.0,
+                    "veto_pending": True,
+                    "veto_directive": "Reviewer raised regulatory veto per FDA 21 CFR 312",
+                },
+            }
+        if ctx is not None:
+            await ctx.pause(reason="post_veto_pause", context={}, wake_at=None)
+        return {
+            "output": "x", "score": 9.0, "converged": True,
+            "rounds_history_entry": {"round": round_num},
+        }
+
+    async def run(self, request, **_):  # type: ignore[override]
+        raise NotImplementedError
+
+
+@pytest.mark.asyncio
+async def test_resume_refuses_pending_veto(tmp_path: Path) -> None:
+    """H-DUR-1: prior round with veto_pending=True must block resume."""
+    config = make_test_config(tmp_path)
+    inner = VetoEmittingPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=None))
+    cp = await store.read(paused.token.run_id)
+    assert cp.status == "paused"
+    assert any(e.get("veto_pending") for e in cp.rounds_history)
+
+    with pytest.raises(RunHaltedByVeto, match="halted by veto"):
+        await dw.resume(paused.token)
+
+
+@pytest.mark.asyncio
+async def test_pause_context_marks_mid_round_when_no_entry(tmp_path: Path) -> None:
+    """H-DUR-1: pause raised before run_round appended its entry is tagged mid_round=True."""
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    cp = await store.read(paused.token.run_id)
+    # Round 1 pause: no entry was appended (ToyPausingWorkflow pauses before returning)
+    assert cp.pause_context.get("_mid_round_pause") is True
