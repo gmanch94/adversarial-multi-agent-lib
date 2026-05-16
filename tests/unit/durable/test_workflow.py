@@ -69,3 +69,40 @@ async def test_start_returned_token_has_workflow_class_set(tmp_path: Path) -> No
 
 # Reference RunOutcome to silence unused-import lint
 _ = RunOutcome
+
+
+from .fakes import ToyPausingRequest, ToyPausingWorkflow  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_start_pauses_returns_pause_token(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    assert outcome.status == "paused"
+    assert outcome.pause_reason == "toy_pause"
+    cp = await store.read(outcome.token.run_id)
+    assert cp.status == "paused"
+    assert cp.pause_context == {"at_round": 1}
+
+
+@pytest.mark.asyncio
+async def test_start_per_round_writes_checkpoint_each_round(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(
+        inner=inner, config=config, checkpoint_store=store,
+        checkpoint_cadence="per_round",
+    )
+    writes: list[tuple[str, int]] = []
+    real_write = store.write
+    async def spy(cp):  # type: ignore[no-untyped-def]
+        writes.append((cp.status, cp.round))
+        await real_write(cp)
+    store.write = spy  # type: ignore[method-assign]
+    await dw.start(ToyPausingRequest(payload="p", pause_on_round=None))
+    assert writes[0] == ("running", 0)
+    assert writes[-1][0] == "completed"

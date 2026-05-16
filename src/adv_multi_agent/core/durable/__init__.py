@@ -13,10 +13,11 @@ from __future__ import annotations
 from .hooks import ReconciliationHook
 from .protocols import BudgetExceeded
 from .token import ResumeToken
-from .workflow import DurableWorkflow, RunOutcome
+from .workflow import DurableWorkflow, PauseContext, RunOutcome
 
 __all__ = [
     "DurableWorkflow",
+    "PauseContext",
     "RunOutcome",
     "ResumeToken",
     "BudgetExceeded",

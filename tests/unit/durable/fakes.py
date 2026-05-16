@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from adv_multi_agent.core.config import Config, ReviewerProvider
+from adv_multi_agent.core.durable.workflow import PauseContext
 from adv_multi_agent.core.workflow import BaseWorkflow, WorkflowResult
 
 
@@ -26,6 +27,47 @@ class ToyConvergentWorkflow(BaseWorkflow):
             final_score=9.0,
             converged=True,
             metadata={"toy": True},
+        )
+
+
+@dataclass
+class ToyPausingRequest:
+    payload: str
+    pause_on_round: int | None = None
+
+    def to_prompt_text(self) -> str:
+        return f"Task: {self.payload}"
+
+
+class ToyPausingWorkflow(BaseWorkflow):
+    """Workflow that pauses at a specified round via ctx.pause(). Used to
+    validate the per-round orchestration + PauseContext."""
+
+    async def run_round(  # type: ignore[override]
+        self,
+        round_num: int,
+        request: "ToyPausingRequest",
+        prior_state: dict | None,
+        ctx: PauseContext | None = None,
+    ) -> dict:
+        if ctx is not None and request.pause_on_round == round_num:
+            await ctx.pause(
+                reason="toy_pause",
+                context={"at_round": round_num},
+                wake_at=None,
+            )
+        return {
+            "output": f"OK: {request.payload} (round {round_num})",
+            "score": 9.0,
+            "converged": True,
+            "rounds_history_entry": {"round": round_num, "score": 9.0},
+        }
+
+    async def run(self, request, **_):  # type: ignore[override]
+        r = await self.run_round(1, request, prior_state=None, ctx=None)
+        return WorkflowResult(
+            output=r["output"], rounds=1, final_score=r["score"],
+            converged=r["converged"], metadata={},
         )
 
 

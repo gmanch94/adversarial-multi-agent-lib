@@ -22,6 +22,29 @@ from .protocols import BudgetExceeded
 from .token import CURRENT_SCHEMA_VERSION, ResumeToken
 
 
+class _PauseSignal(Exception):
+    """Internal signal raised by PauseContext.pause(); caught by DurableWorkflow."""
+
+    def __init__(self, reason: str, context: dict[str, Any], wake_at: str | None) -> None:
+        super().__init__(f"pause: {reason}")
+        self.reason = reason
+        self.context = context
+        self.wake_at = wake_at
+
+
+class PauseContext:
+    """Injected into inner.run_round(); call `await ctx.pause(reason, context, wake_at)`
+    to halt the durable loop and persist the checkpoint."""
+
+    async def pause(
+        self,
+        reason: str,
+        context: dict[str, Any] | None = None,
+        wake_at: str | None = None,
+    ) -> None:
+        raise _PauseSignal(reason=reason, context=context or {}, wake_at=wake_at)
+
+
 @dataclass
 class RunOutcome:
     status: Literal["completed", "paused", "vetoed", "budget_exceeded", "failed"]
@@ -115,10 +138,91 @@ class DurableWorkflow:
             )
             await self._store.write(cp)
 
+            ctx = PauseContext()
+            prior_state: dict[str, Any] | None = None
+            rounds_history: list[dict[str, Any]] = []
+            final_result: WorkflowResult | None = None
+            round_num = 0
+            r: dict[str, Any] = {}
+            has_run_round = hasattr(self._inner, "run_round")
+
             try:
-                result = await self._inner.run(request=request)
+                if not has_run_round:
+                    final_result = await self._inner.run(request=request)
+                    rounds_history.append({
+                        "round": final_result.rounds,
+                        "score": final_result.final_score,
+                    })
+                else:
+                    for round_num in range(1, self._config.max_review_rounds + 1):
+                        try:
+                            r = await self._inner.run_round(  # type: ignore[attr-defined]
+                                round_num=round_num,
+                                request=request,
+                                prior_state=prior_state,
+                                ctx=ctx,
+                            )
+                        except _PauseSignal as ps:
+                            cp.status = "paused"
+                            cp.round = round_num
+                            cp.pause_reason = ps.reason
+                            cp.pause_context = ps.context
+                            cp.wake_at = ps.wake_at
+                            cp.rounds_history = rounds_history
+                            cp.updated_at = _now_iso()
+                            if self._budget is not None:
+                                cp.budget_used = self._budget.snapshot().to_dict()
+                            await self._store.write(cp)
+                            paused_token = ResumeToken(
+                                run_id=run_id,
+                                workflow_class=token.workflow_class,
+                                pinned_executor_model=token.pinned_executor_model,
+                                pinned_reviewer_model=token.pinned_reviewer_model,
+                                schema_version=token.schema_version,
+                                created_at=token.created_at,
+                                wake_at=ps.wake_at,
+                            )
+                            return RunOutcome(
+                                status="paused",
+                                token=paused_token,
+                                pause_reason=ps.reason,
+                            )
+
+                        entry = r.get("rounds_history_entry")
+                        if entry is not None:
+                            rounds_history.append(entry)
+                        prior_state = r.get("next_state", prior_state)
+
+                        if self._cadence in ("per_round", "per_call"):
+                            cp.round = round_num
+                            cp.rounds_history = rounds_history
+                            cp.updated_at = _now_iso()
+                            if self._budget is not None:
+                                cp.budget_used = self._budget.snapshot().to_dict()
+                            await self._store.write(cp)
+
+                        if r.get("converged"):
+                            final_result = WorkflowResult(
+                                output=r["output"],
+                                rounds=round_num,
+                                final_score=r.get("score", 0.0),
+                                converged=True,
+                                metadata=r.get("metadata", {}),
+                            )
+                            break
+
+                    if final_result is None:
+                        final_result = WorkflowResult(
+                            output=r.get("output", ""),
+                            rounds=self._config.max_review_rounds,
+                            final_score=r.get("score", 0.0),
+                            converged=False,
+                            metadata=r.get("metadata", {}),
+                        )
             except BudgetExceeded as exc:
                 cp.status = "budget_exceeded"
+                cp.round = round_num if has_run_round else 0
+                cp.rounds_history = rounds_history
                 cp.updated_at = _now_iso()
                 if self._budget is not None:
                     cp.budget_used = self._budget.snapshot().to_dict()
@@ -130,16 +234,15 @@ class DurableWorkflow:
                 await self._store.write(cp)
                 return RunOutcome(status="failed", token=token, error=str(exc))
 
-            new_status: Literal["completed", "vetoed"] = (
-                "vetoed" if result.metadata.get("vetoed") else "completed"
-            )
-            cp.status = new_status
-            cp.round = result.rounds
+            assert final_result is not None
+            cp.status = "vetoed" if final_result.metadata.get("vetoed") else "completed"
+            cp.round = final_result.rounds
+            cp.rounds_history = rounds_history
             cp.updated_at = _now_iso()
             if self._budget is not None:
                 cp.budget_used = self._budget.snapshot().to_dict()
             await self._store.write(cp)
-            return RunOutcome(status=new_status, token=token, result=result)
+            return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
         finally:
             if handle is not None:
                 await self._lock.release(handle)
