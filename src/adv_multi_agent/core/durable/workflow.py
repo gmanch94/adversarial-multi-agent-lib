@@ -7,8 +7,9 @@ shape, run_lock acquisition, and basic outcome reporting.
 from __future__ import annotations
 
 import json
+import re
 import uuid
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, fields as dataclass_fields, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -115,6 +116,51 @@ def _serialize_request(request: Any) -> str:
     )
 
 
+_CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _validate_request_shape(
+    request: Any,
+    expected_type: type | None,
+    max_field_chars: int = 1500,
+) -> None:
+    """Validate a request returned by a ReconciliationHook (H-DUR-2).
+
+    Enforces:
+    - type identity against expected_type (when provided)
+    - per-string-field length <= max_field_chars (matches the inherited
+      _MAX_FIELD_CHARS = 1500 cap used by all domain *Request dataclasses)
+    - no ASCII control chars (0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f) in string fields
+      (sanitize_for_prompt strips these at prompt time, but a hook returning a
+      raw-control-char field smuggles content through later checkpoint writes)
+
+    Raises TypeError on type mismatch, ValueError on cap or charset violation.
+    """
+    if expected_type is not None and not isinstance(request, expected_type):
+        raise TypeError(
+            f"reconciliation hook returned {type(request).__name__}; "
+            f"DurableWorkflow expected {expected_type.__name__}"
+        )
+    if not is_dataclass(request):
+        # Non-dataclass requests skip field-level validation (no fields to scan)
+        return
+    for fld in dataclass_fields(request):
+        value = getattr(request, fld.name)
+        if isinstance(value, str):
+            if len(value) > max_field_chars:
+                raise ValueError(
+                    f"reconciliation hook returned request with field "
+                    f"{fld.name!r} length {len(value)} > cap {max_field_chars}; "
+                    f"caller must truncate before resume (H-DUR-2)"
+                )
+            if _CTRL_RE.search(value):
+                raise ValueError(
+                    f"reconciliation hook returned request with control "
+                    f"characters in field {fld.name!r}; caller must sanitize "
+                    f"before resume (H-DUR-2)"
+                )
+
+
 class DurableWorkflow:
     def __init__(
         self,
@@ -125,6 +171,7 @@ class DurableWorkflow:
         budget_tracker: BudgetTracker | None = None,
         reconciliation_hook: ReconciliationHook | None = None,
         checkpoint_cadence: Literal["per_round", "per_pause", "per_call"] = "per_round",
+        expected_request_type: type | None = None,
     ) -> None:
         self._inner = inner
         self._config = config
@@ -133,6 +180,7 @@ class DurableWorkflow:
         self._budget = budget_tracker
         self._hook = reconciliation_hook
         self._cadence = checkpoint_cadence
+        self._expected_request_type = expected_request_type
 
     def _workflow_class_path(self) -> str:
         cls = type(self._inner)
@@ -360,6 +408,12 @@ class DurableWorkflow:
                     checkpoint=cp,
                     caller_supplied_fresh_inputs=fresh_inputs,
                 )
+            # H-DUR-2: validate hook return shape before any model call.
+            # No-op for dict branch (is_dataclass guard returns early).
+            _validate_request_shape(
+                request,
+                expected_type=self._expected_request_type,
+            )
 
             ctx = PauseContext()
             rounds_history = list(cp.rounds_history)

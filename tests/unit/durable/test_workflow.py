@@ -242,3 +242,88 @@ async def test_budget_exceeded_persists_checkpoint_and_reports(tmp_path: Path) -
     assert outcome.status == "budget_exceeded"
     cp = await store.read(outcome.token.run_id)
     assert cp.status == "budget_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_resume_validates_hook_returns_oversized_field_raises(tmp_path: Path) -> None:
+    """H-DUR-2: hook returns request with field > _MAX_FIELD_CHARS -> ValueError."""
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(
+        inner=inner, config=config, checkpoint_store=store,
+        expected_request_type=ToyPausingRequest,
+    )
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    oversized = ToyPausingRequest(payload="x" * 5000, pause_on_round=None)
+    with pytest.raises(ValueError, match="length"):
+        await dw.resume(
+            paused.token,
+            fresh_inputs=oversized,
+            reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
+        )
+
+
+@pytest.mark.asyncio
+async def test_resume_validates_hook_returns_control_chars_raises(tmp_path: Path) -> None:
+    """H-DUR-2: hook returns request with control chars in string field -> ValueError."""
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(
+        inner=inner, config=config, checkpoint_store=store,
+        expected_request_type=ToyPausingRequest,
+    )
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    bad = ToyPausingRequest(payload="hello\x01\x02world", pause_on_round=None)
+    with pytest.raises(ValueError, match="control char"):
+        await dw.resume(
+            paused.token,
+            fresh_inputs=bad,
+            reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
+        )
+
+
+@pytest.mark.asyncio
+async def test_resume_validates_hook_returns_wrong_type_raises(tmp_path: Path) -> None:
+    """H-DUR-2: hook returns different dataclass type -> TypeError."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class OtherRequest:
+        x: str
+
+    class WrongTypeHook:
+        async def on_resume(self, run_id, checkpoint, caller_supplied_fresh_inputs):
+            return OtherRequest(x="x")
+
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(
+        inner=inner, config=config, checkpoint_store=store,
+        expected_request_type=ToyPausingRequest,
+    )
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    with pytest.raises(TypeError, match="ToyPausingRequest"):
+        await dw.resume(
+            paused.token,
+            reconciliation_hook_override=WrongTypeHook(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_resume_without_expected_type_skips_type_check(tmp_path: Path) -> None:
+    """H-DUR-2: expected_request_type=None preserves backward compat."""
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    # No expected_request_type -- should not raise on type mismatch
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    outcome = await dw.resume(
+        paused.token,
+        fresh_inputs=ToyPausingRequest(payload="p", pause_on_round=None),
+        reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
+    )
+    assert outcome.status == "completed"
