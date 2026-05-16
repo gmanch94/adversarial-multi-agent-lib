@@ -93,7 +93,7 @@ class TestRequestToPromptText:
         request = make_request(patient_summary=oversized)
         text = request.to_prompt_text()
         patient_section = text.split("Patient summary:")[1].split("\n")[0]
-        assert len(patient_section.strip()) <= _MAX_FIELD_CHARS + 5  # +5 for whitespace
+        assert len(patient_section.strip()) == _MAX_FIELD_CHARS
 
 
 @pytest.mark.asyncio

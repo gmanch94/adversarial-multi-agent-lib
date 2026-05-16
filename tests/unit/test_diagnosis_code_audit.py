@@ -76,7 +76,7 @@ class TestRequestToPromptText:
         text = request.to_prompt_text()
         # The truncated field appears at most _MAX_FIELD_CHARS x's after the label
         encounter_section = text.split("Encounter summary:")[1].split("\n")[0]
-        assert len(encounter_section.strip()) <= _MAX_FIELD_CHARS + 5  # +5 for whitespace
+        assert len(encounter_section.strip()) == _MAX_FIELD_CHARS
 
 
 @pytest.mark.asyncio
