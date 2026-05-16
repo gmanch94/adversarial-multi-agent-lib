@@ -46,8 +46,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated promo plan is not a published "
@@ -219,17 +223,18 @@ class PromoRequest:
     magnitude if known."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"SKU: {self.sku}",
-            f"Category: {self.category}",
-            f"Current price: {self.current_price}",
-            f"Inventory on hand: {self.inventory_on_hand}",
-            f"Weeks of supply: {self.weeks_of_supply}",
-            f"Competitor pricing: {self.competitor_pricing}",
-            f"Elasticity estimate: {self.elasticity_estimate}",
-            f"Margin floor: {self.margin_floor}",
-            f"Promo window: {self.promo_window}",
-            f"Cannibalization risk: {self.cannibalization_risk}",
+            f"SKU: {self.sku[:cap]}",
+            f"Category: {self.category[:cap]}",
+            f"Current price: {self.current_price[:cap]}",
+            f"Inventory on hand: {self.inventory_on_hand[:cap]}",
+            f"Weeks of supply: {self.weeks_of_supply[:cap]}",
+            f"Competitor pricing: {self.competitor_pricing[:cap]}",
+            f"Elasticity estimate: {self.elasticity_estimate[:cap]}",
+            f"Margin floor: {self.margin_floor[:cap]}",
+            f"Promo window: {self.promo_window[:cap]}",
+            f"Cannibalization risk: {self.cannibalization_risk[:cap]}",
         ])
 
 
@@ -354,7 +359,8 @@ class PromoMarkdownWorkflow(BaseWorkflow):
             if not items:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(items)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

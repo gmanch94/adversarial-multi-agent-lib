@@ -38,6 +38,10 @@ from typing import Any
 from ...core._internal import sanitize_for_prompt
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
+
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated schedule is not a published roster. "
     "A store manager must review for compliance, fairness, and operational fit "
@@ -178,15 +182,16 @@ class SchedulingRequest:
     """Local unemployment rate and trend — staffing pool and wage pressure signal."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Store: {self.store_id}",
-            f"Week starting: {self.week_start}",
-            f"Projected traffic: {self.projected_traffic}",
-            f"Staff roster: {self.staff_roster}",
-            f"Labor budget: {self.labor_budget}",
-            f"Local events: {self.local_events}",
-            f"Labor law (stated): {self.state_labor_law_notes}",
-            f"Unemployment rate: {self.unemployment_rate}",
+            f"Store: {self.store_id[:cap]}",
+            f"Week starting: {self.week_start[:cap]}",
+            f"Projected traffic: {self.projected_traffic[:cap]}",
+            f"Staff roster: {self.staff_roster[:cap]}",
+            f"Labor budget: {self.labor_budget[:cap]}",
+            f"Local events: {self.local_events[:cap]}",
+            f"Labor law (stated): {self.state_labor_law_notes[:cap]}",
+            f"Unemployment rate: {self.unemployment_rate[:cap]}",
         ])
 
 

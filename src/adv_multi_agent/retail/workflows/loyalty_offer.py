@@ -44,7 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 _DISCLAIMER = (
@@ -179,6 +179,8 @@ that creates the exploit path.
 # prompt. Per-element string sanitisation is via sanitize_for_prompt.
 _MAX_ATTRIBUTE_ENTRIES = 64
 _MAX_ATTRIBUTE_CHARS = 200
+# L-PC-3: per-field cap for str fields in to_prompt_text.
+_MAX_FIELD_CHARS = 1500
 
 
 def _render_attribute_list(label: str, items: list[str]) -> str:
@@ -223,15 +225,16 @@ class LoyaltyOfferRequest:
     """Caller-identified gaming paths (do not rely on this alone; reviewer challenges further)."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Customer segment: {self.customer_segment}",
-            f"Offer proposal: {self.offer_proposal}",
-            f"Historical response: {self.historical_response}",
-            f"Margin floor: {self.margin_floor}",
+            f"Customer segment: {self.customer_segment[:cap]}",
+            f"Offer proposal: {self.offer_proposal[:cap]}",
+            f"Historical response: {self.historical_response[:cap]}",
+            f"Margin floor: {self.margin_floor[:cap]}",
             _render_attribute_list("Allowed attributes", self.allowed_attributes),
             _render_attribute_list("Disallowed attributes (incl. proxies)", self.disallowed_attributes),
-            f"Competing offers: {self.competing_offers}",
-            f"Known gaming risks: {self.gaming_risk}",
+            f"Competing offers: {self.competing_offers[:cap]}",
+            f"Known gaming risks: {self.gaming_risk[:cap]}",
         ])
 
 
@@ -352,7 +355,8 @@ class LoyaltyOfferWorkflow(BaseWorkflow):
             if not items:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(items)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

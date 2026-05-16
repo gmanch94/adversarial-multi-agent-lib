@@ -50,8 +50,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated negotiation brief is not a "
@@ -222,16 +226,17 @@ class SupplierBriefRequest:
     """Corporate policies, ESG, compliance, MOQ floors that constrain tactics."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Supplier name: {self.supplier_name}",
-            f"Category: {self.category}",
-            f"Current terms: {self.current_terms}",
-            f"Target terms: {self.target_terms}",
-            f"Volume history: {self.volume_history}",
-            f"Alternatives: {self.alternatives}",
-            f"Cost drivers: {self.cost_drivers}",
-            f"Relationship context: {self.relationship_context}",
-            f"Negotiation constraints: {self.negotiation_constraints}",
+            f"Supplier name: {self.supplier_name[:cap]}",
+            f"Category: {self.category[:cap]}",
+            f"Current terms: {self.current_terms[:cap]}",
+            f"Target terms: {self.target_terms[:cap]}",
+            f"Volume history: {self.volume_history[:cap]}",
+            f"Alternatives: {self.alternatives[:cap]}",
+            f"Cost drivers: {self.cost_drivers[:cap]}",
+            f"Relationship context: {self.relationship_context[:cap]}",
+            f"Negotiation constraints: {self.negotiation_constraints[:cap]}",
         ])
 
 
@@ -358,7 +363,8 @@ class SupplierBriefWorkflow(BaseWorkflow):
             if not items:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(items)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

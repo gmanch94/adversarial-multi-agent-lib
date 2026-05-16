@@ -57,8 +57,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated replenishment schedule is not "
@@ -221,15 +225,16 @@ class InventoryReplenishmentRequest:
     """MOQ, case pack, ship-day windows per supplier."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"DC: {self.dc_id}",
-            f"SKU list (on-hand + on-order): {self.sku_list}",
-            f"Demand forecast: {self.demand_forecast}",
-            f"Lead times: {self.lead_times}",
-            f"Safety stock policy: {self.safety_stock_policy}",
-            f"DC capacity: {self.dc_capacity}",
-            f"Truck economics: {self.truck_economics}",
-            f"Supplier constraints: {self.supplier_constraints}",
+            f"DC: {self.dc_id[:cap]}",
+            f"SKU list (on-hand + on-order): {self.sku_list[:cap]}",
+            f"Demand forecast: {self.demand_forecast[:cap]}",
+            f"Lead times: {self.lead_times[:cap]}",
+            f"Safety stock policy: {self.safety_stock_policy[:cap]}",
+            f"DC capacity: {self.dc_capacity[:cap]}",
+            f"Truck economics: {self.truck_economics[:cap]}",
+            f"Supplier constraints: {self.supplier_constraints[:cap]}",
         ])
 
 
@@ -355,7 +360,8 @@ class InventoryReplenishmentWorkflow(BaseWorkflow):
             if not items:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(items)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

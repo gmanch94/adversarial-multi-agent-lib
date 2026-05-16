@@ -268,10 +268,11 @@ output = await executor.run(prompt)
 ### MCP server
 
 ```bash
-# Register research skills as Claude Code tools (default)
+# Default registration (research skills loaded when SKILLS_DOMAIN unset)
 claude mcp add adv-multi-agent-skills -- python -m adv_multi_agent.core.skills.mcp_server
 
 # Per-domain registrations
+SKILLS_DOMAIN=research   claude mcp add adv-multi-agent-research   -- python -m adv_multi_agent.core.skills.mcp_server
 SKILLS_DOMAIN=parole     claude mcp add adv-multi-agent-parole     -- python -m adv_multi_agent.core.skills.mcp_server
 SKILLS_DOMAIN=retail     claude mcp add adv-multi-agent-retail     -- python -m adv_multi_agent.core.skills.mcp_server
 SKILLS_DOMAIN=pc         claude mcp add adv-multi-agent-pc         -- python -m adv_multi_agent.core.skills.mcp_server

@@ -402,6 +402,12 @@ class ProductLiabilityRootCauseWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2: surface the clean executor draft from the vetoed round
+            # so the safety committee sees what the AI produced before the
+            # REVIEWER VETO banner was prepended. The ledger + wiki also
+            # preserve this via _register_claims / add_feedback, but
+            # metadata['first_draft'] makes it directly queryable on the result.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

@@ -50,8 +50,13 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated recall plan is not an authorised "
@@ -109,6 +114,10 @@ if and only if at least one of the following holds:
   • Recall plan proposes downgrading scope below primary evidence (e.g.
     plan recalls one lot when lab match covers multiple).
 Otherwise: "REVIEWER VETO: None".
+
+FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
+  "Overall", "Key issues", or a "#" markdown header — the parser uses those
+  as stop markers. Write all continuation lines in free prose.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero SCOPE FLAGS AND zero EVIDENCE FLAGS AND no VETO:
@@ -231,15 +240,16 @@ class RecallRequest:
     explanations) that the reviewer must weigh against the primary signal."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Contamination signal: {self.contamination_signal}",
-            f"Supplier lot: {self.supplier_lot}",
-            f"Product SKUs: {self.product_skus}",
-            f"Distribution window: {self.distribution_window}",
-            f"Stores in scope: {self.stores_in_scope}",
-            f"Consumer exposure: {self.consumer_exposure}",
-            f"Regulatory context: {self.regulatory_context}",
-            f"Competing evidence: {self.competing_evidence}",
+            f"Contamination signal: {self.contamination_signal[:cap]}",
+            f"Supplier lot: {self.supplier_lot[:cap]}",
+            f"Product SKUs: {self.product_skus[:cap]}",
+            f"Distribution window: {self.distribution_window[:cap]}",
+            f"Stores in scope: {self.stores_in_scope[:cap]}",
+            f"Consumer exposure: {self.consumer_exposure[:cap]}",
+            f"Regulatory context: {self.regulatory_context[:cap]}",
+            f"Competing evidence: {self.competing_evidence[:cap]}",
         ])
 
 
@@ -380,7 +390,8 @@ class RecallScopeWorkflow(BaseWorkflow):
         parts: list[str] = []
         if scope_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in scope_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(scope_flags)
             )
             parts.append(
                 "⚠️  SCOPE FLAGS (expand or contract scope to match evidence):\n"
@@ -388,7 +399,8 @@ class RecallScopeWorkflow(BaseWorkflow):
             )
         if evidence_flags:
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in evidence_flags
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(evidence_flags)
             )
             parts.append(
                 "⚠️  EVIDENCE FLAGS (cite primary evidence or remove the scope decision):\n"

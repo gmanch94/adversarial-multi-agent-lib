@@ -402,6 +402,11 @@ class RecallScopeManufacturingWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2: surface the clean executor draft from the vetoed round
+            # so the safety officer sees what the AI produced before the
+            # REVIEWER VETO banner was prepended. Ledger + wiki also preserve
+            # this, but metadata['first_draft'] makes it directly queryable.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

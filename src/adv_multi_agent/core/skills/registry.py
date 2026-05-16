@@ -331,13 +331,29 @@ class SkillRegistry:
         self._skills.clear()
         self._load()
 
+    # L-IND-4: allowlist prevents confusing importlib errors on typos and
+    # blocks path-traversal attempts (e.g. domain="research..").
+    _KNOWN_DOMAINS: frozenset[str] = frozenset(
+        {"research", "parole", "retail", "pc", "industrial"}
+    )
+
     @staticmethod
     def bundled_skills_path(domain: str = "research") -> Path:
         """Return the path to the bundled skill templates for the given domain.
 
         Args:
-            domain: Use-case domain — ``"research"`` (default) or ``"parole"``.
-                    Maps to ``adv_multi_agent.<domain>.skills.templates``.
+            domain: Use-case domain — one of ``"research"``, ``"parole"``,
+                    ``"retail"``, ``"pc"``, or ``"industrial"`` (default:
+                    ``"research"``). Maps to
+                    ``adv_multi_agent.<domain>.skills.templates``.
+
+        Raises:
+            ValueError: If *domain* is not a recognised domain name.
         """
+        if domain not in SkillRegistry._KNOWN_DOMAINS:
+            raise ValueError(
+                f"Unknown domain {domain!r}. "
+                f"Must be one of: {sorted(SkillRegistry._KNOWN_DOMAINS)}"
+            )
         pkg = f"adv_multi_agent.{domain}.skills"
         return Path(str(importlib.resources.files(pkg).joinpath("templates")))

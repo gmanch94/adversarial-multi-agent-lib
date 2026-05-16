@@ -49,8 +49,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
+
+# L-PC-3: per-field cap — prevents a single oversized field crowding out
+# later fields when the concatenated prompt is trimmed by sanitize_for_prompt.
+_MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated private-label recommendation "
@@ -228,16 +232,17 @@ class PrivateLabelRequest:
     """Co-manufacturer vendor + audit status + stated capacity."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Proposed SKU: {self.proposed_sku}",
-            f"Target price: {self.target_price}",
-            f"Target cost: {self.target_cost}",
-            f"National-brand baseline: {self.national_brand_baseline}",
-            f"Category margin: {self.category_margin}",
-            f"Cannibalization estimate: {self.cannibalization_estimate}",
-            f"Brand positioning: {self.brand_positioning}",
-            f"Quality assurance: {self.quality_assurance}",
-            f"Co-manufacturer: {self.co_manufacturer}",
+            f"Proposed SKU: {self.proposed_sku[:cap]}",
+            f"Target price: {self.target_price[:cap]}",
+            f"Target cost: {self.target_cost[:cap]}",
+            f"National-brand baseline: {self.national_brand_baseline[:cap]}",
+            f"Category margin: {self.category_margin[:cap]}",
+            f"Cannibalization estimate: {self.cannibalization_estimate[:cap]}",
+            f"Brand positioning: {self.brand_positioning[:cap]}",
+            f"Quality assurance: {self.quality_assurance[:cap]}",
+            f"Co-manufacturer: {self.co_manufacturer[:cap]}",
         ])
 
 
@@ -366,7 +371,8 @@ class PrivateLabelWorkflow(BaseWorkflow):
             if not items:
                 continue
             flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}" for f in items
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(items)
             )
             parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"

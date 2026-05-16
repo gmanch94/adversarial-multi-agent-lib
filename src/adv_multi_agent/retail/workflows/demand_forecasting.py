@@ -38,6 +38,11 @@ from typing import Any
 from ...core._internal import sanitize_for_prompt
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
+# L-PC-3: per-field cap on Request.to_prompt_text. Bounds any single
+# free-text field so one oversized field cannot crowd out later fields
+# when the concatenated prompt is trimmed by sanitize_for_prompt(max_chars=6000).
+_MAX_FIELD_CHARS = 1500
+
 _DISCLAIMER = (
     "⚠️  ADVISORY ONLY — This AI-generated forecast is not a purchase order. "
     "A human buyer must review all assumptions independently and approve any "
@@ -178,17 +183,18 @@ class ForecastRequest:
     """Local unemployment rate and trend — used as consumer spending signal."""
 
     def to_prompt_text(self) -> str:
+        cap = _MAX_FIELD_CHARS
         return "\n".join([
-            f"Store: {self.store_id}",
-            f"SKU: {self.sku}",
-            f"Category: {self.product_category}",
-            f"Historical sales (8 wk): {self.historical_sales}",
-            f"Current inventory: {self.current_inventory}",
-            f"Lead time: {self.lead_time_days} days",
-            f"Upcoming events: {self.upcoming_events}",
-            f"Seasonality: {self.seasonality_notes}",
-            f"Weather forecast: {self.weather_forecast}",
-            f"Unemployment rate: {self.unemployment_rate}",
+            f"Store: {self.store_id[:cap]}",
+            f"SKU: {self.sku[:cap]}",
+            f"Category: {self.product_category[:cap]}",
+            f"Historical sales (8 wk): {self.historical_sales[:cap]}",
+            f"Current inventory: {self.current_inventory[:cap]}",
+            f"Lead time: {self.lead_time_days[:cap]} days",
+            f"Upcoming events: {self.upcoming_events[:cap]}",
+            f"Seasonality: {self.seasonality_notes[:cap]}",
+            f"Weather forecast: {self.weather_forecast[:cap]}",
+            f"Unemployment rate: {self.unemployment_rate[:cap]}",
         ])
 
 
