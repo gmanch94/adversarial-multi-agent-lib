@@ -21,10 +21,6 @@ class BudgetExceeded(Exception):
     """
 
 
-class ReconciliationHook:
-    """Stub protocol class; replaced with typing.Protocol in Task 6."""
-
-
 class CheckpointStore(Protocol):
     """Pluggable durable store for Checkpoint objects.
 
