@@ -11,9 +11,9 @@ See docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md.
 from __future__ import annotations
 
 from .protocols import BudgetExceeded, ReconciliationHook
+from .token import ResumeToken
 
 DurableWorkflow = None
-ResumeToken = None
 
 __all__ = [
     "DurableWorkflow",
