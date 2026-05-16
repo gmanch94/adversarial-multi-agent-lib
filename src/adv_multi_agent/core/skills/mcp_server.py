@@ -14,7 +14,7 @@ Run (stdio, for use with Claude Code):
 Custom skills directory:
     SKILLS_DIR=/path/to/skills python -m adv_multi_agent.core.skills.mcp_server
 
-Custom domain (research, parole, or retail):
+Custom domain (research, parole, retail, pc, industrial, or healthcare):
     SKILLS_DOMAIN=parole python -m adv_multi_agent.core.skills.mcp_server
 
 Register with Claude Code:
@@ -53,7 +53,7 @@ _registry: SkillRegistry | None = None
 # L5: explicit allowlist of bundled-skill domains. An arbitrary SKILLS_DOMAIN
 # string is fed to importlib.resources; bounding to known domains avoids
 # surprises if a future caller types an unexpected value.
-_ALLOWED_DOMAINS = frozenset({"research", "parole", "retail"})
+_ALLOWED_DOMAINS = frozenset({"research", "parole", "retail", "pc", "industrial", "healthcare"})
 
 
 def _get_registry() -> SkillRegistry:

@@ -64,6 +64,7 @@ where = ["src"]
 "adv_multi_agent.retail.skills" = ["templates/*.md"]
 "adv_multi_agent.pc.skills" = ["templates/*.md"]
 "adv_multi_agent.industrial.skills" = ["templates/*.md"]
+"adv_multi_agent.healthcare.skills" = ["templates/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
