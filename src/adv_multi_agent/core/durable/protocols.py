@@ -56,3 +56,21 @@ class SchedulerBackend(Protocol):
 
     async def schedule_wake(self, token: "ResumeToken", wake_at: datetime) -> None: ...
     async def poll_ready(self, batch_size: int) -> "list[ResumeToken]": ...
+
+
+class Cipher(Protocol):
+    """Symmetric cipher used by EncryptedCheckpointStore to protect
+    Checkpoint.last_request_json at rest. Caller-supplied.
+
+    Implementations: callers wrap cryptography.fernet.Fernet, AWS KMS,
+    HashiCorp Vault transit, GCP KMS, etc. Library ships no built-in
+    cipher to keep the dependency footprint minimal.
+    """
+
+    def encrypt(self, plaintext: str) -> str:
+        """Return base64-encoded ciphertext (must be JSON-string-safe)."""
+        ...
+
+    def decrypt(self, ciphertext: str) -> str:
+        """Reverse of encrypt; raises ValueError if tampered/invalid."""
+        ...

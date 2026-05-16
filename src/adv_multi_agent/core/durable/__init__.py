@@ -10,8 +10,9 @@ See docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md.
 """
 from __future__ import annotations
 
+from .encryption import EncryptedCheckpointStore
 from .hooks import ReconciliationHook
-from .protocols import BudgetExceeded
+from .protocols import BudgetExceeded, Cipher
 from .token import ResumeToken
 from .workflow import (
     DurableWorkflow,
@@ -30,4 +31,6 @@ __all__ = [
     "ReconciliationHook",
     "RunNotResumable",
     "RunHaltedByVeto",
+    "EncryptedCheckpointStore",
+    "Cipher",
 ]
