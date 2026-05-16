@@ -196,3 +196,49 @@ async def test_resume_force_model_upgrade_swaps_and_logs(tmp_path: Path) -> None
         e.get("event") == "model_upgrade" for e in final_cp.rounds_history
     )
     assert swap_logged
+
+
+from adv_multi_agent.core.durable.lock import RunLocked  # noqa: E402
+
+from .fakes import BudgetExceededInner  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_cancel_marks_failed_idempotent(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    await dw.cancel(paused.token, reason="user_aborted")
+    cp = await store.read(paused.token.run_id)
+    assert cp.status == "failed"
+    await dw.cancel(paused.token, reason="user_aborted_again")
+    cp2 = await store.read(paused.token.run_id)
+    assert cp2.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_resume_second_caller_raises_run_locked(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    lock = MemoryRunLock()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store, run_lock=lock)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    # Manually hold the lock for the same run_id
+    await lock.acquire(paused.token.run_id, ttl_seconds=60)
+    with pytest.raises(RunLocked):
+        await dw.resume(paused.token)
+
+
+@pytest.mark.asyncio
+async def test_budget_exceeded_persists_checkpoint_and_reports(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = BudgetExceededInner(config=config, fail_on_round=1)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyRequest(payload="x"))
+    assert outcome.status == "budget_exceeded"
+    cp = await store.read(outcome.token.run_id)
+    assert cp.status == "budget_exceeded"

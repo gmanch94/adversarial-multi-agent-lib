@@ -71,6 +71,30 @@ class ToyPausingWorkflow(BaseWorkflow):
         )
 
 
+from adv_multi_agent.core.durable.protocols import BudgetExceeded  # noqa: E402
+
+
+class BudgetExceededInner(BaseWorkflow):
+    """Inner workflow that raises BudgetExceeded on the Nth run_round call."""
+
+    def __init__(self, config: Config, fail_on_round: int) -> None:
+        super().__init__(config=config)
+        self._fail_on_round = fail_on_round
+
+    async def run_round(  # type: ignore[override]
+        self, round_num: int, request, prior_state, ctx=None,
+    ) -> dict:
+        if round_num >= self._fail_on_round:
+            raise BudgetExceeded(f"forced at round {round_num}")
+        return {
+            "output": f"r{round_num}", "score": 5.0, "converged": False,
+            "rounds_history_entry": {"round": round_num},
+        }
+
+    async def run(self, request, **_):  # type: ignore[override]
+        raise NotImplementedError
+
+
 def make_test_config(tmp_path: Any) -> Config:
     return Config(
         anthropic_api_key="test-key",

@@ -401,3 +401,20 @@ class DurableWorkflow:
             return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
         finally:
             await self._lock.release(handle)
+
+    async def cancel(self, token: ResumeToken, reason: str) -> None:
+        """Mark the run as failed with the given reason. Idempotent: calling
+        on an already-terminal checkpoint is a no-op."""
+        try:
+            cp = await self._store.read(token.run_id)
+        except Exception:
+            return  # idempotent on missing checkpoint
+        if cp.status in ("completed", "vetoed", "failed", "budget_exceeded"):
+            return  # already terminal
+        cp.status = "failed"
+        cp.updated_at = _now_iso()
+        if not any(e.get("event") == "cancel" for e in cp.rounds_history):
+            cp.rounds_history.append({
+                "event": "cancel", "reason": reason, "at": cp.updated_at,
+            })
+        await self._store.write(cp)
