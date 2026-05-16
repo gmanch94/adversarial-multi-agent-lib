@@ -1,6 +1,30 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 PM (final — Durable POC: ALL audit findings closed; zero open across repo)
+Last updated: 2026-05-16 PM (final — Durable POC runbooks shipped)
+
+---
+
+## 2026-05-16 PM (later) — Durable runbooks + slide deck shipped
+
+LinkedIn audience pulled engg + mgmt; runbook ask followed.
+
+**Shipped:**
+- `docs/slides/durable_slides.md` — marp deck, 17 slides (problem → wedge → architecture → 3 Protocols → reconciliation hook → healthcare integration → failure modes → encryption → audit closure → status → next actions → who-it-is-for)
+- `docs/runbooks/durable-integration.md` — engg-IC adoption guide (prerequisites · wrap workflow · pause gates · choose `*Store` / `*Lock` / `Scheduler` · `ReconciliationHook` · `Cipher` wiring · smoke tests · graduation checklist)
+- `docs/runbooks/durable-operations.md` — SRE / Eng Mgr (SLOs · log→alert mapping · failure-mode response matrix · capacity sizing · operational procedures · `SchedulerDaemon` process mgmt · backup/restore · schema migration · health checks · on-call entry points)
+- `docs/runbooks/durable-compliance.md` — Product / Compliance / Privacy (PHI posture · encryption at rest · audit-log integrity · key rotation · retention · access control · breach response · HIPAA / 21 CFR Part 11 / SOC2 / GDPR mapping · 15-row pre-prod sign-off checklist)
+
+**Status legend used throughout:** `LIBRARY-GUARANTEED` / `SHIPPED` · `CALLER-OWNED` · `OPERATOR-OWNED` · `REFERENCE-IMPL-PENDING` · `OPERATIONAL`.
+
+Surfaces the same gaps as the slide deck "What's NOT in This POC" section but role-anchored. Anti-aspirational-rot via status tags on every row.
+
+### Next likely
+
+- `PostgresCheckpointStore` + `PostgresAdvisoryLock` impls — first row of integration-runbook §4 + §5 to flip from REFERENCE-IMPL-PENDING to SHIPPED
+- Schema migration tool (operations runbook §8 currently REFERENCE-IMPL-PENDING)
+- `MetricsBackend` Protocol (operations runbook §9)
+- Phase-2 industrial `PartsDemandForecastWorkflow` promotion
+- New domains: finance / legal / HR per `scenarios.md`
 
 ---
 
