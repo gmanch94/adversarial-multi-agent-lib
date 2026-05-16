@@ -187,7 +187,7 @@ SPECIFIC ISSUES:
 {wiki_context}
 
 Revise using the same section structure.
-⚠️  For any SEVERITY FLAG: rgrade against the supplied formulary reference;
+⚠️  For any SEVERITY FLAG: re-grade against the supplied formulary reference;
 do not use training-data severity assumptions.
 ⚠️  For any EVIDENCE FLAG: cite the specific monograph or guideline entry;
 do not paraphrase severity.
