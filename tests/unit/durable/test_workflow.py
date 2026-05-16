@@ -106,3 +106,93 @@ async def test_start_per_round_writes_checkpoint_each_round(tmp_path: Path) -> N
     await dw.start(ToyPausingRequest(payload="p", pause_on_round=None))
     assert writes[0] == ("running", 0)
     assert writes[-1][0] == "completed"
+
+
+from adv_multi_agent.core.durable.hooks import MergeFreshInputsHook  # noqa: E402
+from adv_multi_agent.core.durable.workflow import (  # noqa: E402
+    ModelRetired,
+    RunNotResumable,
+)
+from adv_multi_agent.core.durable.checkpoint import RunNotFound  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    assert paused.status == "paused"
+    resumed = await dw.resume(
+        paused.token,
+        fresh_inputs=ToyPausingRequest(payload="p", pause_on_round=None),
+        reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
+    )
+    assert resumed.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_resume_unknown_run_id_raises(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    dw = DurableWorkflow(
+        inner=inner, config=config, checkpoint_store=MemoryCheckpointStore(),
+    )
+    from adv_multi_agent.core.durable.token import CURRENT_SCHEMA_VERSION, ResumeToken
+    fake_token = ResumeToken(
+        run_id="nonexistent", workflow_class="x", pinned_executor_model="m",
+        pinned_reviewer_model="r", schema_version=CURRENT_SCHEMA_VERSION,
+        created_at="2026-05-16T00:00:00+00:00", wake_at=None,
+    )
+    with pytest.raises(RunNotFound):
+        await dw.resume(fake_token)
+
+
+@pytest.mark.asyncio
+async def test_resume_rejects_non_paused_status(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyConvergentWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyRequest(payload="x"))
+    with pytest.raises(RunNotResumable, match="completed"):
+        await dw.resume(outcome.token)
+
+
+@pytest.mark.asyncio
+async def test_resume_pinned_model_retired_without_override_raises(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    cp = await store.read(paused.token.run_id)
+    cp.pinned_executor_model = "claude-opus-3-9-retired"
+    await store.write(cp)
+    with pytest.raises(ModelRetired):
+        await dw.resume(paused.token, force_model_upgrade=False)
+
+
+@pytest.mark.asyncio
+async def test_resume_force_model_upgrade_swaps_and_logs(tmp_path: Path) -> None:
+    config = make_test_config(tmp_path)
+    inner = ToyPausingWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    cp = await store.read(paused.token.run_id)
+    cp.pinned_executor_model = "claude-opus-3-9-retired"
+    await store.write(cp)
+    outcome = await dw.resume(
+        paused.token,
+        fresh_inputs=ToyPausingRequest(payload="p", pause_on_round=None),
+        force_model_upgrade=True,
+        reconciliation_hook_override=MergeFreshInputsHook(request_type=ToyPausingRequest),
+    )
+    assert outcome.status == "completed"
+    final_cp = await store.read(paused.token.run_id)
+    swap_logged = any(
+        e.get("event") == "model_upgrade" for e in final_cp.rounds_history
+    )
+    assert swap_logged

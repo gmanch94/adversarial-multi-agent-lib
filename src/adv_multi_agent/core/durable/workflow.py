@@ -15,7 +15,7 @@ from typing import Any, Literal
 from ..config import Config
 from ..workflow import BaseWorkflow, WorkflowResult
 from .budget import BudgetSnapshot, BudgetTracker
-from .checkpoint import Checkpoint, MemoryCheckpointStore
+from .checkpoint import Checkpoint, MemoryCheckpointStore, SchemaVersionMismatch
 from .hooks import ReconciliationHook
 from .lock import LockHandle, MemoryRunLock
 from .protocols import BudgetExceeded
@@ -43,6 +43,38 @@ class PauseContext:
         wake_at: str | None = None,
     ) -> None:
         raise _PauseSignal(reason=reason, context=context or {}, wake_at=wake_at)
+
+
+class RunNotResumable(RuntimeError):
+    """Raised when resume() is called on a checkpoint whose status is not 'paused'."""
+
+    def __init__(self, run_id: str, current_status: str) -> None:
+        super().__init__(f"run {run_id!r} not resumable: status={current_status!r}")
+        self.run_id = run_id
+        self.current_status = current_status
+
+
+class ModelRetired(RuntimeError):
+    """Raised when the pinned model is no longer available and force_model_upgrade=False."""
+
+    def __init__(self, pinned: str, current_default: str) -> None:
+        super().__init__(
+            f"pinned model {pinned!r} is retired; current default {current_default!r}; "
+            f"call resume(force_model_upgrade=True) to swap"
+        )
+        self.pinned = pinned
+        self.current_default = current_default
+
+
+# Hardcoded for POC; production reads from a refresh-able registry
+_KNOWN_MODELS: frozenset[str] = frozenset({
+    "claude-opus-4-7", "claude-opus-4-8", "claude-sonnet-4-7",
+    "gpt-4o", "gpt-4o-mini", "gemini-2.5-pro",
+})
+
+
+def _model_is_available(model: str) -> bool:
+    return model in _KNOWN_MODELS
 
 
 @dataclass
@@ -246,3 +278,126 @@ class DurableWorkflow:
         finally:
             if handle is not None:
                 await self._lock.release(handle)
+
+    async def resume(
+        self,
+        token: ResumeToken,
+        fresh_inputs: Any | None = None,
+        force_model_upgrade: bool = False,
+        reconciliation_hook_override: ReconciliationHook | None = None,
+    ) -> RunOutcome:
+        handle = await self._lock.acquire(token.run_id, ttl_seconds=300)
+        try:
+            cp = await self._store.read(token.run_id)  # raises RunNotFound
+            if cp.schema_version != CURRENT_SCHEMA_VERSION:
+                raise SchemaVersionMismatch(
+                    f"checkpoint schema {cp.schema_version} != lib {CURRENT_SCHEMA_VERSION}"
+                )
+            if cp.status != "paused":
+                raise RunNotResumable(token.run_id, cp.status)
+
+            # Model-pin validation
+            if not _model_is_available(cp.pinned_executor_model):
+                if not force_model_upgrade:
+                    raise ModelRetired(
+                        cp.pinned_executor_model, self._config.executor_model
+                    )
+                cp.rounds_history.append({
+                    "event": "model_upgrade",
+                    "from": cp.pinned_executor_model,
+                    "to": self._config.executor_model,
+                    "at": _now_iso(),
+                })
+                cp.pinned_executor_model = self._config.executor_model
+
+            # Resolve reconciliation hook
+            hook = reconciliation_hook_override or self._hook
+            request: Any
+            if hook is None:
+                request = json.loads(cp.last_request_json)
+            else:
+                request = await hook.on_resume(
+                    run_id=token.run_id,
+                    checkpoint=cp,
+                    caller_supplied_fresh_inputs=fresh_inputs,
+                )
+
+            ctx = PauseContext()
+            rounds_history = list(cp.rounds_history)
+            prior_state: dict[str, Any] | None = cp.pause_context
+            final_result: WorkflowResult | None = None
+            has_run_round = hasattr(self._inner, "run_round")
+            if not has_run_round:
+                raise RuntimeError(
+                    f"inner workflow {type(self._inner).__name__} does not implement "
+                    f"run_round; cannot resume mid-loop"
+                )
+
+            r: dict[str, Any] = {}
+            try:
+                for round_num in range(cp.round + 1, self._config.max_review_rounds + 1):
+                    try:
+                        r = await self._inner.run_round(  # type: ignore[attr-defined]
+                            round_num=round_num,
+                            request=request,
+                            prior_state=prior_state,
+                            ctx=ctx,
+                        )
+                    except _PauseSignal as ps:
+                        cp.status = "paused"
+                        cp.round = round_num
+                        cp.pause_reason = ps.reason
+                        cp.pause_context = ps.context
+                        cp.wake_at = ps.wake_at
+                        cp.rounds_history = rounds_history
+                        cp.updated_at = _now_iso()
+                        await self._store.write(cp)
+                        paused_token = ResumeToken(
+                            run_id=token.run_id,
+                            workflow_class=token.workflow_class,
+                            pinned_executor_model=cp.pinned_executor_model,
+                            pinned_reviewer_model=cp.pinned_reviewer_model,
+                            schema_version=token.schema_version,
+                            created_at=token.created_at,
+                            wake_at=ps.wake_at,
+                        )
+                        return RunOutcome(
+                            status="paused", token=paused_token, pause_reason=ps.reason
+                        )
+
+                    entry = r.get("rounds_history_entry")
+                    if entry is not None:
+                        rounds_history.append(entry)
+                    prior_state = r.get("next_state", prior_state)
+                    if r.get("converged"):
+                        final_result = WorkflowResult(
+                            output=r["output"],
+                            rounds=round_num,
+                            final_score=r.get("score", 0.0),
+                            converged=True,
+                            metadata=r.get("metadata", {}),
+                        )
+                        break
+                if final_result is None:
+                    final_result = WorkflowResult(
+                        output=r.get("output", ""),
+                        rounds=self._config.max_review_rounds,
+                        final_score=r.get("score", 0.0),
+                        converged=False,
+                        metadata=r.get("metadata", {}),
+                    )
+            except BudgetExceeded as exc:
+                cp.status = "budget_exceeded"
+                cp.rounds_history = rounds_history
+                cp.updated_at = _now_iso()
+                await self._store.write(cp)
+                return RunOutcome(status="budget_exceeded", token=token, error=str(exc))
+
+            cp.status = "vetoed" if final_result.metadata.get("vetoed") else "completed"
+            cp.round = final_result.rounds
+            cp.rounds_history = rounds_history
+            cp.updated_at = _now_iso()
+            await self._store.write(cp)
+            return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
+        finally:
+            await self._lock.release(handle)
