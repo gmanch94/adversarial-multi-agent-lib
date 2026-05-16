@@ -2,7 +2,7 @@
 
 Single-page picture of where every byte of the library runs, in caller deployments and in local dev. Companion to [`architecture.md`](architecture.md) (which owns components + flows) and the example at [`../examples/research/basic_review_loop.py`](../examples/research/basic_review_loop.py) (which owns the canonical caller-side wiring).
 
-Updated through the 2026-05-14 PM industrial-domain ship + H-IND-1 closure ([`security-audits/2026-05-14-industrial-sweep.md`](security-audits/2026-05-14-industrial-sweep.md)). Prior cycles: 2026-05-14 AM PC sweep ([`security-audits/2026-05-14-pc-sweep.md`](security-audits/2026-05-14-pc-sweep.md)); 2026-05-12 initial sweep ([`security-audits/2026-05-12.md`](security-audits/2026-05-12.md)).
+Updated through the 2026-05-16 healthcare-domain ship + L-HEALTH-1..4 closure ([`security-audits/2026-05-16-healthcare-sweep.md`](security-audits/2026-05-16-healthcare-sweep.md)). Prior cycles: 2026-05-14 PM industrial sweep; 2026-05-14 AM PC sweep; 2026-05-12 initial sweep.
 
 ---
 
@@ -45,10 +45,13 @@ flowchart TB
             subgraph IndDom["industrial/ (8 MVP · 27 catalog)"]
                 IndWf["make_vs_buy · supplier_qualification<br/>engineering_change_order · quality_incident_root_cause<br/>product_liability_root_cause (veto)<br/>recall_scope_manufacturing (veto)<br/>supply_chain_resilience · telematics_anomaly_triage"]:::lib
             end
+            subgraph HealthDom["healthcare/ (8 MVP · 27 catalog)"]
+                HD["diagnosis_code_audit · discharge_planning_risk<br/>prior_authorization_review · claims_appeal_review<br/>drug_interaction_flagging (veto) · adverse_event_triage (veto)<br/>treatment_plan_review (veto) · clinical_trial_eligibility (veto+bias)"]:::lib
+            end
             subgraph CorePkg["core/"]
                 Agents["Agents<br/>ExecutorAgent (Anthropic or Gemini)<br/>ReviewerAgent (OpenAI or Anthropic)"]:::lib
                 Stores["Stores<br/>ClaimLedger · ResearchWiki"]:::lib
-                SkillsReg["SkillRegistry · MCP server<br/>(107 bundled templates · SKILLS_DOMAIN)"]:::lib
+                SkillsReg["SkillRegistry · MCP server<br/>(139 bundled templates · SKILLS_DOMAIN)"]:::lib
             end
 
             Caller --> Cfg
@@ -98,7 +101,7 @@ flowchart TB
 | `GEMINI_API_KEY` | Caller's env / `.env` | Required iff `executor_provider=gemini`. Same redaction invariant. |
 | `EXECUTOR_PROVIDER` | Caller's env / `.env` (default `anthropic`) | `anthropic` \| `gemini`. Selects `_AnthropicExecutor` or `_GeminiExecutor` backend. |
 | `REVIEWER_PROVIDER` | Caller's env / `.env` (default `openai`) | `openai` \| `anthropic`. Same-family pairing raises `UserWarning`. |
-| `SKILLS_DOMAIN` | Caller's env (default `research`) | `research` \| `parole` \| `retail` \| `pc` \| `industrial`. Selects which bundled template set the MCP server loads. Cf. L-IND-4 (allowlist as defence-in-depth — open). |
+| `SKILLS_DOMAIN` | Caller's env (default `research`) | `research` \| `parole` \| `retail` \| `pc` \| `industrial` \| `healthcare`. Selects which bundled template set the MCP server loads. Cf. L-IND-4 (allowlist closed 2026-05-16; `_KNOWN_DOMAINS` frozenset rejects typos via `ValueError`). |
 | `EFFORT_LEVEL` | Caller's env / `.env` (default `high`) | Validated via `_effort_from_env`. Invalid value raises with named env var. |
 | `MAX_REVIEW_ROUNDS` | Caller's env / `.env` (default 5) | Range-checked `[1, 50]` at construction. |
 | `SCORE_THRESHOLD` | Caller's env / `.env` (default 8.0) | Range-checked `[0.0, 10.0]` at construction. |
@@ -118,8 +121,8 @@ flowchart TB
 | Caller runs `ParoleAssessmentWorkflow` | `sanitize_for_prompt(case fields)` → per round: `Executor.run` (advisory brief) → `Ledger.add` (claims) → `Reviewer.review` (quality score + bias_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not bias_flags` → inject disclaimer + board checklist |
 | Caller runs `DemandForecastWorkflow` | `sanitize_for_prompt(request fields)` → per round: `Executor.run` (forecast + recommendation) → `Ledger.add` (claims) → `Reviewer.review` (quality score + assumption_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not assumption_flags` → inject disclaimer + buyer checklist |
 | Caller runs `LaborSchedulingWorkflow` | `sanitize_for_prompt(request fields)` → per round: `Executor.run` (weekly schedule) → `Ledger.add` (claims) → `Reviewer.review` (quality score + compliance_flags) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND not compliance_flags` → inject disclaimer + manager checklist |
-| Caller runs any retail / pc / industrial **triple-flag** workflow | `sanitize_for_prompt(request fields, per-field cap 1500, post-concat cap 6000)` → per round: `Executor.run` → `Ledger.add` (claims, 200/round cap) → `Reviewer.review` (quality + 3 flag classes) → `extract_flags(critique, header)` per class (line-anchored + hyphen-tolerant sibling-stop) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND every flag list empty` → inject `_DISCLAIMER` + approver checklist |
-| Caller runs any **veto-using** workflow (`retail.recall_scope`, `pc.claims_reserve / coverage_decision / environmental_impairment / gig_platform_liability`, `industrial.product_liability_root_cause / recall_scope_manufacturing`) | Same as triple-flag, PLUS: after flag extraction → `Wiki.add_feedback` (audit-trail write **before** veto check, regulator-defensible) → `extract_veto_directive(critique)` (shared helper, M-PC-1 / M2 / L5 / H-IND-1 hardened) → break loop on any veto · `_compose_output` prepends `_VETO_BANNER` to draft (draft preserved, not replaced) → metadata captures `veto_reason` + `vetoed=True` + flags from vetoed round |
+| Caller runs any retail / pc / industrial / healthcare **triple-flag** workflow | `sanitize_for_prompt(request fields, per-field cap 1500, post-concat cap 6000)` → per round: `Executor.run` → `Ledger.add` (claims, 200/round cap) → `Reviewer.review` (quality + 3 flag classes) → `extract_flags(critique, header)` per class (line-anchored + hyphen-tolerant sibling-stop) → `Wiki.add_feedback` → converge iff `score ≥ threshold AND every flag list empty` → inject `_DISCLAIMER` + approver checklist |
+| Caller runs any **veto-using** workflow (`retail.recall_scope`, `pc.claims_reserve / coverage_decision / environmental_impairment / gig_platform_liability`, `industrial.product_liability_root_cause / recall_scope_manufacturing`, `healthcare.drug_interaction_flagging / adverse_event_triage / treatment_plan_review / clinical_trial_eligibility`) | Same as triple-flag, PLUS: after flag extraction → `Wiki.add_feedback` (audit-trail write **before** veto check, regulator-defensible) → `extract_veto_directive(critique)` (shared helper, M-PC-1 / M2 / L5 / H-IND-1 hardened) → break loop on any veto · `_compose_output` prepends `_VETO_BANNER` to draft (draft preserved, not replaced) → metadata captures `veto_reason` + `vetoed=True` + flags from vetoed round. Healthcare veto workflows use score threshold 8.0 (D-HEALTH-2); reviewer criteria cite specific regulatory references — FDA 21 CFR 312, ICH E2A, JAMA 2019 demographic-bias literature (D-HEALTH-4) — not generic phrasing. |
 | Caller approves improvement | Caller inspects `result.metadata["pending_improvement_ids"]` → `workflow.wiki.get(id)` → human review → `workflow.wiki.approve_improvement(id)` (atomic write) |
 | Caller reloads skills after editing `.md` files | `workflow.skills.reload()` (if SkillRegistry attached) → non-recursive glob → frontmatter parse → name/identifier/size validation → in-memory dict swap |
 | Process receives SIGINT mid-write | `atomic_write_text` writes to `.{name}.{pid}.tmp` → fsync → `os.replace` → never leaves a torn JSON file; on next start `_load()` sees either the prior version or the new one |
@@ -137,7 +140,7 @@ flowchart TB
     classDef user fill:#f3f4f6,stroke:#374151,color:#000
 
     Dev([Maintainer terminal]):::user
-    Pyt([pytest + pytest-asyncio<br/>481 tests · mypy strict · ruff clean]):::user
+    Pyt([pytest + pytest-asyncio<br/>558 tests · mypy strict · ruff clean]):::user
 
     subgraph Host["Host machine — Windows / macOS / Linux"]
         direction TB
@@ -147,9 +150,9 @@ flowchart TB
 
         subgraph Pkg["adv-multi-agent (pip install -e .)"]
             direction TB
-            Src["src/adv_multi_agent/<br/>core/ · research/ · parole/ · retail/ · pc/ · industrial/"]:::lib
-            Examples["examples/research/ · examples/parole/<br/>examples/retail/ · examples/pc/ · examples/industrial/"]:::lib
-            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole + 25 retail + 29 pc + 32 industrial = 107"]:::lib
+            Src["src/adv_multi_agent/<br/>core/ · research/ · parole/ · retail/ · pc/ · industrial/ · healthcare/"]:::lib
+            Examples["examples/research/ · examples/parole/<br/>examples/retail/ · examples/pc/ · examples/industrial/ · examples/healthcare/"]:::lib
+            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole + 25 retail + 29 pc + 32 industrial + 32 healthcare = 139"]:::lib
         end
     end
 
@@ -174,9 +177,9 @@ flowchart TB
 | Install | `pip install -e .` against this repo | `pip install adv-multi-agent` (PyPI publish pending credentials) |
 | API keys | Real keys in `.env` (gitignored) | Caller's secret manager / CI variable |
 | Workspace | Repo root (`./ledger.json`, `./wiki.json` auto-created and sandboxed there) | Caller-controlled (`Config(workspace_dir="/var/lib/research")`) |
-| Skill files | Bundled in wheel (107 templates across 5 domains); local override via `Config(skills_dir=...)` | Same |
+| Skill files | Bundled in wheel (139 templates across 6 domains); local override via `Config(skills_dir=...)` | Same |
 | Network | Live API calls — costs real money per run | Same — there is no mock mode |
-| Tests | **481 tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 5 domains | Caller writes their own tests against their workflows |
+| Tests | **558 tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 6 domains | Caller writes their own tests against their workflows |
 
 ### How to run the canonical example
 

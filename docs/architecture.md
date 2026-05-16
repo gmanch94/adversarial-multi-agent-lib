@@ -22,7 +22,7 @@ The library has two activation modes. Every section below applies to both unless
 | Process model | Caller's Python process | Multi-tenant server with per-session sandboxes |
 | Persistence | Local JSON (`ledger.json`, `wiki.json`) via atomic writes | Postgres / SQLite per workspace |
 | Concurrency | Single-process; document the limit | File-locked or DB-backed; multi-process safe |
-| Skills | **107 bundled templates** (15 research + 6 parole + 25 retail + 29 pc + 32 industrial) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
+| Skills | **139 bundled templates** (15 research + 6 parole + 25 retail + 29 pc + 32 industrial + 32 healthcare) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
 | Executor surface | Anthropic API direct | Anthropic + Bedrock + Vertex (per decision matrix in [decisions.md](decisions.md)) |
 | Observability | Caller wires their own logging | Built-in audit log + OpenTelemetry exporter |
 | Self-improvement adoption | Pending-only; caller approves out of band | Same, but approval is an authenticated UI action |
@@ -60,6 +60,9 @@ flowchart LR
         subgraph IndustrialDomain["industrial/ (8 MVP · 27 catalog)"]
             IndWf[Mfg Ops: make_vs_buy · supplier_qualification<br/>engineering_change_order · quality_incident_root_cause<br/><br/>Safety/Recall: product_liability_root_cause (veto)<br/>recall_scope_manufacturing (veto)<br/><br/>Strategic: supply_chain_resilience<br/>IoT: telematics_anomaly_triage]
         end
+        subgraph HealthcareDomain["healthcare/ (8 MVP · 27 catalog)"]
+            HW["Clinical Decisions: diagnosis_code_audit · discharge_planning_risk<br/>prior_authorization_review · claims_appeal_review<br/><br/>Pharma/Safety: drug_interaction_flagging (veto)<br/>adverse_event_triage (veto)<br/><br/>Clinical: treatment_plan_review (veto)<br/>Research: clinical_trial_eligibility (veto + bias)"]
+        end
         Workflows --> Agents
         Workflows --> Stores
         Assurance --> Agents
@@ -72,6 +75,8 @@ flowchart LR
         PCWf --> Stores
         IndWf --> Agents
         IndWf --> Stores
+        HW --> Agents
+        HW --> Stores
     end
 
     subgraph Third["Third-party APIs"]
@@ -123,8 +128,9 @@ The library is a thin Python package over two external APIs and the local filesy
 | **`retail/` (8 workflows)** | demand, labor, recall (veto + scope/evidence/regulatory triple-flag), loyalty, promo, supplier, inventory, private_label. Each with domain-specific FLAGS convergence gate; advisory output with approver checklist. | [`retail/workflows/*.py`](../src/adv_multi_agent/retail/workflows/) |
 | **`pc/` (7 workflows · Foundational + Specialty)** | Foundational: `ClaimsReserveWorkflow` (veto + triple-flag) · `CoverageDecisionWorkflow` (veto + dual-flag) · `CommercialUnderwritingWorkflow` (triple-flag) · `CyberUnderwritingWorkflow` (triple-flag). Specialty (D-PC-6): `EnvironmentalImpairmentWorkflow` (veto + triple-flag) · `ParametricCropWorkflow` (triple-flag) · `GigPlatformLiabilityWorkflow` (veto + triple-flag). 29 skill templates. | [`pc/workflows/*.py`](../src/adv_multi_agent/pc/workflows/) |
 | **`industrial/` (8 MVP of 27-workflow catalog)** | Manufacturing Ops: `MakeVsBuyWorkflow` · `SupplierQualificationWorkflow` · `EngineeringChangeOrderWorkflow` · `QualityIncidentRootCauseWorkflow`. Safety / Recall: `ProductLiabilityRootCauseWorkflow` (veto + triple-flag) · `RecallScopeManufacturingWorkflow` (veto + triple-flag, mirrors `retail.recall_scope`). Strategic Capital: `SupplyChainResilienceWorkflow`. Industrial IoT: `TelematicsAnomalyTriageWorkflow`. 32 skill templates. 19 Phase-2 designs locked in [design doc](superpowers/specs/2026-05-14-industrial-domain-design.md). | [`industrial/workflows/*.py`](../src/adv_multi_agent/industrial/workflows/) |
+| **`healthcare/` (8 MVP of 27-workflow catalog)** | Clinical Decision Support: `DiagnosisCodeAuditWorkflow` · `DischargePlanningRiskWorkflow` · `PriorAuthorizationReviewWorkflow` · `ClaimsAppealReviewWorkflow`. Safety/Pharma: `DrugInteractionFlaggingWorkflow` (veto on absolute contraindication / QTc / NTI / cross-allergy) · `AdverseEventTriageWorkflow` (veto on serious-unexpected ADR, FDA 21 CFR 312 / ICH E2A clocks). Clinical: `TreatmentPlanReviewWorkflow` (veto on drug-allergy / drug-organ / procedure contraindication). Research: `ClinicalTrialEligibilityWorkflow` (veto on safety exclusion or protected-class bias, parole bias-gate pattern + JAMA 2019 demographic-bias cite). 32 skill templates. 19 Phase-2 designs locked in [design doc](superpowers/specs/2026-05-16-healthcare-domain-design.md). PHI is caller's responsibility (D-HEALTH-3); score threshold 8.0 for veto (D-HEALTH-2). | [`healthcare/workflows/*.py`](../src/adv_multi_agent/healthcare/workflows/) |
 | **`Config`** | Single source of truth for model IDs, API keys, paths, bounds. Validates + sandboxes at construction; redacts secrets in repr. | [`core/config.py`](../src/adv_multi_agent/core/config.py) |
-| **`_internal`** | Shared utilities: JSON parser, atomic write, redaction, score coercion, path sandboxing, prompt sanitization, `extract_flags` (M1 line-anchored + H-IND-1 hyphen-tolerant sibling-stop), `extract_veto_directive` (M-PC-1 line-anchored + M2/L5 + H-IND-1), `truncate_flag_display` (L-PC-5), `_is_sibling_header_lhs` (shared sibling-stop helper). Used by every flag-gated + veto-using workflow across all 5 domains. | [`core/_internal.py`](../src/adv_multi_agent/core/_internal.py) |
+| **`_internal`** | Shared utilities: JSON parser, atomic write, redaction, score coercion, path sandboxing, prompt sanitization, `extract_flags` (M1 line-anchored + H-IND-1 hyphen-tolerant sibling-stop), `extract_veto_directive` (M-PC-1 line-anchored + M2/L5 + H-IND-1), `truncate_flag_display` (L-PC-5), `_is_sibling_header_lhs` (shared sibling-stop helper). Used by every flag-gated + veto-using workflow across all 6 domains. | [`core/_internal.py`](../src/adv_multi_agent/core/_internal.py) |
 
 The boundary between us and the model providers is the most consequential: **the model providers hold the IP that makes the library useful** (cross-model adversarial pairing only works if we can call two different families). We never hold model weights or do any inference ourselves. See [decisions.md](decisions.md) #1 and #2.
 
@@ -376,7 +382,7 @@ Tracked here so they don't slip. Each one has either a planned mitigation or an 
 | A8 | Adaptive thinking is non-deterministic. The same task with the same Config produces different outputs run-to-run. Reproducibility is not a guaranteed property. | Accepted | Any user requiring deterministic outputs (deterministic seed support is upstream model work) |
 | A9 | No structured audit log of model inputs/outputs. Caller running in a regulated context cannot prove what was sent to a third-party API. | Accepted-for-V0 | First user in healthcare / finance / legal domain |
 | A10 | Bedrock / Vertex AI executor support absent. Decision #1 locks 1P-only for V0. | Accepted-for-V0 | First user blocked by an enterprise procurement requiring Bedrock |
-| A11 | ~~No test coverage yet.~~ **481 tests passing** (pytest + pytest-asyncio) across research + parole + retail + pc + industrial + shared; mypy strict; ruff clean. | ✅ Resolved — Phase 2 complete + sustained through 5 domain ships | — |
+| A11 | ~~No test coverage yet.~~ **558 tests passing** (pytest + pytest-asyncio) across research + parole + retail + pc + industrial + healthcare + shared; mypy strict; ruff clean. | ✅ Resolved — Phase 2 complete + sustained through 6 domain ships | — |
 | A13 | Convention-level error compounding in the shared parser. Identified twice (M-PC-1 opening-anchor, H-IND-1 closing-sibling-stop) and closed via shared-helper hoisting both times. Any new flag-header naming convention (hyphen, digit, punctuation) must be confirmed against `_is_sibling_header_lhs` regex before merge. | **Mitigated, recurring pattern** | Next new domain adopts a peer-header naming convention not yet covered — re-audit the parser |
 | A14 | Pre-veto round-1 draft preserved only via ledger + wiki, not in `WorkflowResult.output` (L-IND-2). Discovery defensibility holds via ledger/wiki, but `WorkflowResult.output` returns LAST draft. | **Documented gap** | Regulator-facing deployment — add `metadata['first_draft']` so the surface matches the substance |
 | A12 | The self-improvement-approval gate is _outside_ the loop, but there is no UI / CLI for caller to approve. Approval requires `wiki.approve_improvement(id)` in code. | Accepted-for-V0 | First user complaint that pending list is unreviewable |
