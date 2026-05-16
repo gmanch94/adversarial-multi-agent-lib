@@ -50,6 +50,29 @@ class Checkpoint:
             raise ValueError(
                 f"invalid status={self.status!r}; must be one of {sorted(_STATUS_VALUES)}"
             )
+        # M-DUR-5: field-type validation
+        if not isinstance(self.run_id, str) or not self.run_id:
+            raise ValueError(
+                f"run_id must be non-empty str, got {type(self.run_id).__name__}"
+            )
+        if not isinstance(self.round, int) or isinstance(self.round, bool) or self.round < 0:
+            raise ValueError(f"round must be non-negative int, got {self.round!r}")
+        if not isinstance(self.rounds_history, list):
+            raise ValueError(
+                f"rounds_history must be list, got {type(self.rounds_history).__name__}"
+            )
+        if not isinstance(self.pause_context, dict):
+            raise ValueError(
+                f"pause_context must be dict, got {type(self.pause_context).__name__}"
+            )
+        if not isinstance(self.budget_used, dict):
+            raise ValueError(
+                f"budget_used must be dict, got {type(self.budget_used).__name__}"
+            )
+        if not isinstance(self.pinned_executor_model, str) or not self.pinned_executor_model:
+            raise ValueError("pinned_executor_model must be non-empty str")
+        if not isinstance(self.pinned_reviewer_model, str) or not self.pinned_reviewer_model:
+            raise ValueError("pinned_reviewer_model must be non-empty str")
 
     def to_token(self) -> ResumeToken:
         return ResumeToken(
@@ -197,6 +220,7 @@ class MemoryCheckpointStore:
         return _checkpoint_from_json(_checkpoint_to_json(self._store[run_id]))
 
     async def list_paused(self, wake_before: datetime) -> list[ResumeToken]:
+        # M-DUR-6 verified: wake_before filter applied identically to FileCheckpointStore
         out: list[ResumeToken] = []
         for cp in self._store.values():
             if cp.status != "paused" or cp.wake_at is None:

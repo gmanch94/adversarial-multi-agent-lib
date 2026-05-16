@@ -91,10 +91,24 @@ def _now_iso() -> str:
 
 
 def _serialize_request(request: Any) -> str:
+    # M-DUR-4: strict JSON — no default=str silent stringification.
     if is_dataclass(request) and not isinstance(request, type):
-        return json.dumps(asdict(request), sort_keys=True, default=str)
+        try:
+            return json.dumps(asdict(request), sort_keys=True)
+        except TypeError as exc:
+            raise TypeError(
+                f"request {type(request).__name__} contains non-JSON-serializable "
+                f"field; pre-serialize to str/int/float/bool/list/dict before passing "
+                f"to DurableWorkflow.start(). Original error: {exc}"
+            ) from exc
     if isinstance(request, dict):
-        return json.dumps(request, sort_keys=True, default=str)
+        try:
+            return json.dumps(request, sort_keys=True)
+        except TypeError as exc:
+            raise TypeError(
+                f"request dict contains non-JSON-serializable value; "
+                f"pre-serialize before passing. Original error: {exc}"
+            ) from exc
     raise TypeError(
         f"cannot serialize request of type {type(request).__name__}; "
         f"pass a dataclass or dict"
@@ -296,7 +310,7 @@ class DurableWorkflow:
             if cp.status != "paused":
                 raise RunNotResumable(token.run_id, cp.status)
 
-            # Model-pin validation
+            # Model-pin validation (M-DUR-5: validate both pinned models; re-check post-swap)
             if not _model_is_available(cp.pinned_executor_model):
                 if not force_model_upgrade:
                     raise ModelRetired(
@@ -304,11 +318,36 @@ class DurableWorkflow:
                     )
                 cp.rounds_history.append({
                     "event": "model_upgrade",
+                    "field": "executor",
                     "from": cp.pinned_executor_model,
                     "to": self._config.executor_model,
                     "at": _now_iso(),
                 })
                 cp.pinned_executor_model = self._config.executor_model
+                # Re-check after swap — Config.executor_model could be misconfigured
+                if not _model_is_available(cp.pinned_executor_model):
+                    raise ModelRetired(
+                        cp.pinned_executor_model,
+                        f"swap target {cp.pinned_executor_model!r} also not in allowlist",
+                    )
+            if not _model_is_available(cp.pinned_reviewer_model):
+                if not force_model_upgrade:
+                    raise ModelRetired(
+                        cp.pinned_reviewer_model, self._reviewer_model_name()
+                    )
+                cp.rounds_history.append({
+                    "event": "model_upgrade",
+                    "field": "reviewer",
+                    "from": cp.pinned_reviewer_model,
+                    "to": self._reviewer_model_name(),
+                    "at": _now_iso(),
+                })
+                cp.pinned_reviewer_model = self._reviewer_model_name()
+                if not _model_is_available(cp.pinned_reviewer_model):
+                    raise ModelRetired(
+                        cp.pinned_reviewer_model,
+                        f"swap target {cp.pinned_reviewer_model!r} also not in allowlist",
+                    )
 
             # Resolve reconciliation hook
             hook = reconciliation_hook_override or self._hook

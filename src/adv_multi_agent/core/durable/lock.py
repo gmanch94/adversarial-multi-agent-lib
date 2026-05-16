@@ -15,6 +15,10 @@ from pathlib import Path
 
 from .._internal import safe_resolve_path
 
+# M-DUR-3: TTL bounds for run-lock acquisition
+_MIN_TTL = 1
+_MAX_TTL = 86400
+
 
 class RunLocked(RuntimeError):
     """Raised when an already-held lock is requested."""
@@ -40,6 +44,10 @@ class MemoryRunLock:
         return (now - h.acquired_at) >= h.ttl_seconds
 
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:
+        if not (_MIN_TTL <= ttl_seconds <= _MAX_TTL):
+            raise ValueError(
+                f"ttl_seconds={ttl_seconds} out of range [{_MIN_TTL}, {_MAX_TTL}]"
+            )
         now = time.monotonic()
         existing = self._locks.get(run_id)
         if existing is not None and not self._is_stale(existing, now):
@@ -120,6 +128,10 @@ class FileRunLock:
             return None
 
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:
+        if not (_MIN_TTL <= ttl_seconds <= _MAX_TTL):
+            raise ValueError(
+                f"ttl_seconds={ttl_seconds} out of range [{_MIN_TTL}, {_MAX_TTL}]"
+            )
         path = self._path(run_id)
         now = time.time()
         if path.exists():
