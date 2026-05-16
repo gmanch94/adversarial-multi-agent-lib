@@ -264,7 +264,9 @@ class DischargePlanningRiskWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "proposed_discharge_plan": request.proposed_discharge_plan[:200],
+                "proposed_discharge_plan": sanitize_for_prompt(
+                    request.proposed_discharge_plan, max_chars=200
+                ),
                 "readmission_flags": list(dict.fromkeys(accumulated["READMISSION FLAGS:"])),
                 "care_gap_flags": list(dict.fromkeys(accumulated["CARE-GAP FLAGS:"])),
                 "social_determinant_flags": list(

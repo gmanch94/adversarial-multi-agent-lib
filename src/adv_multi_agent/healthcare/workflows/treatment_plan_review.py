@@ -360,6 +360,10 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2: preserve clean pre-veto draft for attending physician.
+            # L-HEALTH-1: this field may echo sanitized PHI from prompt-supplied
+            # caller data (patient_summary, current_medications, lab_values).
+            # Callers must apply downstream PHI handling before logging.
             metadata["first_draft"] = output
 
         return WorkflowResult(

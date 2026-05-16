@@ -269,7 +269,9 @@ class DiagnosisCodeAuditWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "provider_specialty": request.provider_specialty,
+                "provider_specialty": sanitize_for_prompt(
+                    request.provider_specialty, max_chars=200
+                ),
                 "accuracy_flags": list(dict.fromkeys(accumulated["ACCURACY FLAGS:"])),
                 "compliance_flags": list(dict.fromkeys(accumulated["COMPLIANCE FLAGS:"])),
                 "specificity_flags": list(dict.fromkeys(accumulated["SPECIFICITY FLAGS:"])),

@@ -285,7 +285,9 @@ class PriorAuthorizationReviewWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "requested_service": request.requested_service[:200],
+                "requested_service": sanitize_for_prompt(
+                    request.requested_service, max_chars=200
+                ),
                 "medical_necessity_flags": list(
                     dict.fromkeys(accumulated["MEDICAL-NECESSITY FLAGS:"])
                 ),

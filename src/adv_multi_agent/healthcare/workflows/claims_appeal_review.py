@@ -267,7 +267,9 @@ class ClaimsAppealReviewWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "denied_service": request.denied_service[:200],
+                "denied_service": sanitize_for_prompt(
+                    request.denied_service, max_chars=200
+                ),
                 "evidence_flags": list(
                     dict.fromkeys(accumulated["EVIDENCE FLAGS:"])
                 ),

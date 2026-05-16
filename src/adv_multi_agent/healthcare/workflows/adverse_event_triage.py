@@ -356,7 +356,9 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "product_name": request.product_name[:200],
+            "product_name": sanitize_for_prompt(
+                request.product_name, max_chars=200
+            ),
             "severity_flags": list(dict.fromkeys(all_severity_flags)),
             "causality_flags": list(dict.fromkeys(all_causality_flags)),
             "regulatory_flags": list(dict.fromkeys(all_regulatory_flags)),
@@ -370,6 +372,9 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
             # L-IND-2: surface the clean executor draft from the vetoed round
             # so the pharmacovigilance officer sees what the AI produced before
             # the REVIEWER VETO banner was prepended.
+            # L-HEALTH-1: this field may echo sanitized PHI from prompt-supplied
+            # caller data (patient_demographics, event_description). Callers
+            # must apply downstream PHI handling before logging or sharing.
             metadata["first_draft"] = output
 
         return WorkflowResult(

@@ -356,7 +356,9 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "new_medication": request.new_medication[:200],
+            "new_medication": sanitize_for_prompt(
+                request.new_medication, max_chars=200
+            ),
             "severity_flags": list(dict.fromkeys(all_severity_flags)),
             "evidence_flags": list(dict.fromkeys(all_evidence_flags)),
             "contraindication_flags": list(dict.fromkeys(all_contraindication_flags)),
@@ -370,6 +372,9 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
             # L-IND-2: surface the clean executor draft from the vetoed round
             # so the clinical pharmacist sees what the AI produced before the
             # REVIEWER VETO banner was prepended.
+            # L-HEALTH-1: this field may echo sanitized PHI from prompt-supplied
+            # caller data (medication_list, allergy_history). Callers must
+            # apply downstream PHI handling before logging or sharing.
             metadata["first_draft"] = output
 
         return WorkflowResult(

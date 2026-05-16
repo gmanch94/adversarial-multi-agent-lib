@@ -385,7 +385,7 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "trial_id": request.trial_id,
+            "trial_id": sanitize_for_prompt(request.trial_id, max_chars=200),
             "bias_flags": list(dict.fromkeys(all_bias_flags)),
             "eligibility_flags": list(dict.fromkeys(all_eligibility_flags)),
             "evidence_flags": list(dict.fromkeys(all_evidence_flags)),
@@ -397,6 +397,10 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2: preserve clean pre-veto draft for IRB/PI review.
+            # L-HEALTH-1: this field may echo sanitized PHI from prompt-supplied
+            # caller data (patient_profile, biomarker_status). Callers must
+            # apply downstream PHI handling before logging or sharing.
             metadata["first_draft"] = output
 
         return WorkflowResult(
