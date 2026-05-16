@@ -79,6 +79,8 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 
 ## 5. Last security review
 
+**2026-05-16 PM (final closure)** — Durable-POC LOW drain. All 5 L-DUR-* findings closed in commit `a7f1d84`: strict run_id regex (L-DUR-1), `deserialize_token` shape validation (L-DUR-2), POSIX directory fsync (L-DUR-3), `SchedulerDaemon` quarantine after `max_retries` (L-DUR-4), `BudgetExceeded` mid-round contract documented (L-DUR-5). **Durable surface now 0 CRIT / 0 HIGH / 0 MEDIUM / 0 LOW.** 657 tests pass. All 7 audit cycles closed — cumulative posture zero open findings across 36 workflows + durable subpackage.
+
 **2026-05-16 PM (continued)** — Durable-POC backlog drain. All HIGH + MEDIUM findings from cycle 7 closed: H-DUR-1 (commit `a9d3e0e`), H-DUR-2 (`28fb2bf`), H-DUR-4 (`dc1c70d`), M-DUR-1 (`c633cc1`), M-DUR-2 (`b9751ce`), M-DUR-3/4/5/6 (`f711a07`). 5 LOW remain tracked (L-DUR-1..5). Durable surface now zero CRIT / zero HIGH / zero MEDIUM. 646 tests pass.
 
 **2026-05-16 PM** — Focused durable-POC sweep on `core/durable/*`: 4 HIGH / 6 MEDIUM / 5 LOW / 15 CLEAN. H-DUR-3 closed same-session via `workspace_dir` confinement on `FileCheckpointStore`/`FileRunLock`. H-DUR-1, H-DUR-2, H-DUR-4 documented as posture in §3 with caller-responsibility / production-store remediation paths. MED/LOW tracked for follow-up. All inherited cycle-1..6 mitigations remain intact; durable layer does not widen prior surfaces.

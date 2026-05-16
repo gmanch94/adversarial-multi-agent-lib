@@ -4,7 +4,7 @@
 
 **Posture:** 0 CRIT · 4 HIGH · 6 MED · 5 LOW · 15 CLEAN.
 
-**H-DUR-3 closed same-session** via `workspace_dir` kwarg on `FileCheckpointStore` + `FileRunLock` (commit `4ad2776`). H-DUR-1, H-DUR-2, H-DUR-4 documented as posture in `SECURITY_MODEL.md` §3 (commit `906fe2c`). MED/LOW tracked for follow-up.
+**Status: ALL 15 FINDINGS CLOSED** (2026-05-16 PM). H-DUR-3 closed inline (`4ad2776`); H-DUR-1/2/4 closed in same-session drain (`a9d3e0e`, `28fb2bf`, `dc1c70d`); M-DUR-1/2/3/4/5/6 closed (`c633cc1`, `b9751ce`, `f711a07`); L-DUR-1/2/3/4/5 closed (`a7f1d84`). Durable surface: zero open findings.
 
 ---
 
@@ -160,11 +160,15 @@ Window between `path.unlink()` (stale eviction) and `os.open(O_CREAT|O_EXCL)` (r
 
 **Fix:** tighten to `re.fullmatch(r"[a-zA-Z0-9-]{1,64}", run_id)`.
 
+**Status:** CLOSED 2026-05-16 PM (commit `a7f1d84`) — strict ASCII regex `^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$` replaces `str.isalnum` in both `FileCheckpointStore._path` and `FileRunLock._path`.
+
 ### L-DUR-2 — `deserialize_token` validates schema but not field shape
 
 Tampered `wake_at` (non-ISO) crashes `datetime.fromisoformat` later. Tampered `run_id` (path-traversal) caught by downstream `_path` charset, but defense-in-depth desirable.
 
 **Fix:** validate `run_id` charset, ISO timestamps parseable, models in allowlist at deserialize time.
+
+**Status:** CLOSED 2026-05-16 PM (commit `a7f1d84`) — `deserialize_token` validates run_id charset, ISO-8601 timestamps, non-empty pinned model strings.
 
 ### L-DUR-3 — `atomic_write_text` lacks directory fsync on POSIX
 
@@ -172,17 +176,23 @@ File-content fsync happens, but directory-entry fsync after `os.replace` does no
 
 **Fix:** add directory fsync on POSIX after replace. Document Windows semantics.
 
+**Status:** CLOSED 2026-05-16 PM (commit `a7f1d84`) — `atomic_write_text` performs POSIX directory fsync after `os.replace`; Windows skipped (no dir-fsync support); OSError swallowed.
+
 ### L-DUR-4 — `SchedulerDaemon` lacks per-token error isolation
 
 Factory raises → may crash daemon (starve remaining runs) or retry-spam (log DoS).
 
 **Fix:** wrap per-token in try/except; quarantine after N retries.
 
+**Status:** CLOSED 2026-05-16 PM (commit `a7f1d84`) — `SchedulerDaemon` tracks `_failures` per run_id; quarantines after `max_retries` (default 3) consecutive failures; quarantined tokens skip subsequent polls.
+
 ### L-DUR-5 — `BudgetExceeded` mid-round → double-billing on resume
 
 If raised after executor call but before reviewer call, partial round not in `rounds_history`. Resume with higher cap replays executor call → double-billing.
 
 **Fix:** document contract OR sub-checkpoint after executor call.
+
+**Status:** CLOSED 2026-05-16 PM (commit `a7f1d84`) — contract documented inline in both `start()` and `resume()` `except BudgetExceeded` blocks: mid-round budget exhaustion may bill executor tokens twice on resume; production callers needing exactly-once billing should sub-checkpoint after each agent call (out of POC scope).
 
 ---
 
@@ -222,11 +232,11 @@ A researcher would expect to find these broken; they are not:
 | M-DUR-4 | MEDIUM | `_serialize_request` `default=str` lossy + injection | `core/durable/workflow.py` | **CLOSED `f711a07`** |
 | M-DUR-5 | MEDIUM | Checkpoint field types unvalidated; swap re-check missing | `core/durable/checkpoint.py`, `workflow.py` | **CLOSED `f711a07`** |
 | M-DUR-6 | MEDIUM | `MemoryCheckpointStore.list_paused` Protocol-fidelity gap | `core/durable/checkpoint.py` | **CLOSED `f711a07`** (verified parity) |
-| L-DUR-1 | LOW | `run_id` charset accepts Unicode | `core/durable/checkpoint.py`, `lock.py` | OPEN |
-| L-DUR-2 | LOW | `deserialize_token` shape validation | `core/durable/token.py` | OPEN |
-| L-DUR-3 | LOW | `atomic_write_text` lacks directory fsync POSIX | `core/_internal.py` | OPEN |
-| L-DUR-4 | LOW | `SchedulerDaemon` per-token error isolation | `core/durable/scheduler.py` | OPEN |
-| L-DUR-5 | LOW | `BudgetExceeded` mid-round double-billing on resume | `core/durable/workflow.py` | OPEN |
+| L-DUR-1 | LOW | `run_id` charset accepts Unicode | `core/durable/checkpoint.py`, `lock.py` | **CLOSED `a7f1d84`** |
+| L-DUR-2 | LOW | `deserialize_token` shape validation | `core/durable/token.py` | **CLOSED `a7f1d84`** |
+| L-DUR-3 | LOW | `atomic_write_text` lacks directory fsync POSIX | `core/_internal.py` | **CLOSED `a7f1d84`** |
+| L-DUR-4 | LOW | `SchedulerDaemon` per-token error isolation | `core/durable/scheduler.py` | **CLOSED `a7f1d84`** |
+| L-DUR-5 | LOW | `BudgetExceeded` mid-round double-billing on resume | `core/durable/workflow.py` | **CLOSED `a7f1d84`** |
 
 ---
 
@@ -238,6 +248,6 @@ Cycle 3 (2026-05-14 AM, PC): 0C/0H/1M/5L all closed.
 Cycle 4 (2026-05-14 PM, industrial): 0C/1H/0M/5L all closed.
 Cycle 5 (2026-05-16, healthcare): 0C/0H/1M/4L all closed.
 Cycle 6 (2026-05-16, healthcare follow-up): all carried forward closed.
-**Cycle 7 (2026-05-16 PM, durable POC):** 0C/4H/6M/5L initial → drained same-session to 0C/0H/0M/5L. 4 HIGH + 6 MEDIUM closed; 5 LOW remain tracked. Recurring lesson confirmed (H-DUR-3 was the third instance of "load-bearing comment without enforcement at the call site" — same shape as M-PC-1 and H-IND-1).
+**Cycle 7 (2026-05-16 PM, durable POC):** 0C/4H/6M/5L initial → drained same-session to 0C/0H/0M/0L. All 15 findings closed. Recurring lesson confirmed (H-DUR-3 was the third instance of "load-bearing comment without enforcement at the call site" — same shape as M-PC-1 and H-IND-1).
 
 **Recurring lesson:** convention-level error compounding remains the top failure mode. M-PC-1 (opening anchor) and H-IND-1 (closing sibling-stop) were the prior examples; H-DUR-3 (decorative `safe_resolve_path` call without `must_be_under=`) is the cycle-7 instance of the same shape. Shared helpers + load-bearing safety claims need enforcement at the call site, not in the docstring.

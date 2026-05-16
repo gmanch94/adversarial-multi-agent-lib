@@ -1,6 +1,24 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 PM (Durable POC backlog drain complete — all HIGH + MEDIUM closed; pushed to `origin/main`)
+Last updated: 2026-05-16 PM (final — Durable POC: ALL audit findings closed; zero open across repo)
+
+---
+
+## 2026-05-16 PM (final) — Durable POC: ALL audit findings closed
+
+L-DUR-1..5 closed in commit `a7f1d84` (final drain pass). Durable surface posture is now **0 CRIT / 0 HIGH / 0 MEDIUM / 0 LOW**.
+
+**Final state:**
+- 7 audit cycles complete · cumulative zero open findings across the repo
+- 657 tests pass · mypy strict clean · ruff clean
+- 36 workflows + durable subpackage shipped
+
+### Next likely
+
+- PostgresCheckpointStore + PostgresAdvisoryLock impls (production storage path — Protocol-ready)
+- Phase-2 industrial PartsDemandForecastWorkflow promotion (retail-parity prereq cleared)
+- New domains: finance / legal / HR per `scenarios.md`
+- PyPI publish (still blocked on credentials)
 
 ---
 
