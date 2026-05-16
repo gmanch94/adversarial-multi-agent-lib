@@ -4,7 +4,7 @@ A reusable Python library implementing the adversarial multi-agent collaboration
 
 Pair an **executor** (Claude Opus 4.7 or Gemini 2.5 Pro) with a **reviewer from a different model family** (GPT-4o by default). Cross-model pairing prevents the echo-chamber effect: the reviewer cannot reuse the executor's reasoning shortcuts. The loop runs until the reviewer's score exceeds a threshold **and** every domain-specific FLAGS class is clear (and, for veto-using workflows, no reviewer veto fires) — or the round cap is reached.
 
-**23 workflows across 5 domains** — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog). 7 workflows use the reviewer-veto pattern for irreversible-class decisions (recall, claims reserve, coverage decision, environmental impairment, gig platform liability, product-liability root-cause, recall-scope manufacturing). **481 tests** passing; ruff + mypy clean.
+**36 workflows across 6 domains** — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog), healthcare (8 MVP of 27-workflow catalog). 11 workflows use the reviewer-veto pattern for irreversible-class decisions (recall, claims reserve, coverage decision, environmental impairment, gig platform liability, product-liability root-cause, recall-scope manufacturing, clinical trial risk, treatment exception, care protocol, patient safety). **550 tests** passing; ruff + mypy clean.
 
 ```
 Task → Executor generates → Reviewer scores + critiques
@@ -60,6 +60,14 @@ src/adv_multi_agent/
                                 #   IoT: telematics_anomaly_triage
     skills/templates/           #   32 bundled industrial skill templates
                                 #   (19 Phase-2 workflow designs locked in design doc)
+  healthcare/                   # clinical decision support (8 MVP of 27 catalog)
+    workflows/                  #   Safety/Quality: adverse_event_triage · care_protocol_deviation
+                                #     clinical_trial_risk_assessment (veto)
+                                #   Compliance: treatment_exception (veto) · patient_safety_review
+                                #   Referral: specialist_recommendation · medication_review
+                                #   Capacity: provider_credentialing
+    skills/templates/           #   32 bundled healthcare skill templates
+                                #   (19 Phase-2 workflow designs locked in design doc)
 
 examples/
   research/{basic_review_loop, gemini_executor, manuscript_assurance}.py
@@ -67,6 +75,7 @@ examples/
   retail/{demand_forecasting, labor_scheduling, recall_scope, loyalty_offer, ...}.py
   pc/{claims_reserve, coverage_decision, commercial_underwriting, ...}.py
   industrial/{make_vs_buy, supplier_qualification, product_liability_root_cause, ...}.py
+  healthcare/{clinical_trial_risk_assessment, adverse_event_triage, care_protocol_deviation, ...}.py
 ```
 
 ---
@@ -277,6 +286,7 @@ SKILLS_DOMAIN=parole     claude mcp add adv-multi-agent-parole     -- python -m 
 SKILLS_DOMAIN=retail     claude mcp add adv-multi-agent-retail     -- python -m adv_multi_agent.core.skills.mcp_server
 SKILLS_DOMAIN=pc         claude mcp add adv-multi-agent-pc         -- python -m adv_multi_agent.core.skills.mcp_server
 SKILLS_DOMAIN=industrial claude mcp add adv-multi-agent-industrial -- python -m adv_multi_agent.core.skills.mcp_server
+SKILLS_DOMAIN=healthcare claude mcp add adv-multi-agent-healthcare -- python -m adv_multi_agent.core.skills.mcp_server
 ```
 
 ---
@@ -287,7 +297,7 @@ SKILLS_DOMAIN=industrial claude mcp add adv-multi-agent-industrial -- python -m 
 - **Reviewer** — GPT-4o by default. Set `REVIEWER_PROVIDER=anthropic` for a same-family pairing (less adversarial, no OpenAI key required). Same-family raises a `UserWarning` at construction.
 - **Claim ledger** — append-only JSON, persisted after each mutation. 3-stage verifier resolves `PENDING → SUPPORTED / DISPUTED / RETRACTED`.
 - **Wiki** — shared knowledge store across workflow runs. Self-improvement proposals require explicit human approval: `wiki.approve_improvement(id, human_reviewer_id="alice")` (M1: name persisted as audit trail).
-- **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). **107 bundled templates** (15 research + 6 parole + 25 retail + 29 pc + 32 industrial). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
+- **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). **148 bundled templates** (15 research + 6 parole + 34 retail + 29 pc + 32 industrial + 32 healthcare). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
 - **Convergence patterns** — `BaseWorkflow` subclasses use one of three patterns: (1) score-only (`research/*` early workflows), (2) score + domain FLAGS conjunction gate (most retail / pc / industrial), (3) score + FLAGS + reviewer-veto (7 workflows where decisions are irreversible-class). Shared helpers in `core/_internal.py`: `extract_flags` (M1 line-anchored + H-IND-1 hyphen-tolerant sibling-stop), `extract_veto_directive` (M-PC-1 line-anchored + M2/L5/H-IND-1), `truncate_flag_display` (L-PC-5 re-injection cap of 16), `sanitize_for_prompt` (control-char strip + length cap), `_is_sibling_header_lhs` (shared sibling-stop helper).
 - **Security model** — see [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md). 5 audit cycles completed (2026-05-12 / 13 / 14 AM / 14 PM); zero CRIT/HIGH currently open. Latest closure: H-IND-1 (shared-parser hyphen-tolerant sibling-stop).
 
@@ -319,7 +329,7 @@ class MyWorkflow(BaseWorkflow):
 ## Tests
 
 ```bash
-python -m pytest tests/          # 481 tests
+python -m pytest tests/          # 550 tests
 python -m mypy src/ tests/ --strict
 python -m ruff check src/ tests/
 ```
@@ -347,4 +357,4 @@ BibTeX:
 
 Project page: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
 
-All workflows in this library — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog) — are domain adaptations of the executor + cross-family-reviewer loop introduced in the ARIS paper. See `CITATION.cff` for machine-readable citation metadata.
+All workflows in this library — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog), healthcare (8 MVP of 27-workflow catalog) — are domain adaptations of the executor + cross-family-reviewer loop introduced in the ARIS paper. See `CITATION.cff` for machine-readable citation metadata.

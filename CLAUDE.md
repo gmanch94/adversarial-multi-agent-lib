@@ -8,7 +8,7 @@ Auto-loaded each session. Repo posture for Claude Code. Keep lean — append onl
 
 **adv-multi-agent-products** — reusable Python library implementing the adversarial multi-agent collaboration pattern from the ARIS paper (Yang, Li, Li — SJTU, May 2026). Executor agent (Claude Opus 4.7, adaptive thinking) paired with a cross-model reviewer (GPT-4o by default) to prevent echo chambers.
 
-Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server, shared helpers `extract_flags` / `extract_veto_directive` / `truncate_flag_display` / `sanitize_for_prompt` / `_is_sibling_header_lhs`), `research/` (4 research workflows + assurance pipeline), `parole/` (1 workflow), `retail/` (8 workflows), `pc/` (7 workflows · Foundational + Specialty tracks), `industrial/` (8 MVP of 27-workflow catalog · 19 Phase-2 designs locked). **23 workflows · 481 tests · 107 skill templates.** The pattern is domain-agnostic; `core/` is the extension point.
+Package layout: `core/` (shared infra — agents, config, ledger, wiki, skills, MCP server, shared helpers `extract_flags` / `extract_veto_directive` / `truncate_flag_display` / `sanitize_for_prompt` / `_is_sibling_header_lhs`), `research/` (4 research workflows + assurance pipeline), `parole/` (1 workflow), `retail/` (8 workflows), `pc/` (7 workflows · Foundational + Specialty tracks), `industrial/` (8 MVP of 27-workflow catalog · 19 Phase-2 designs locked), `healthcare/` (8 MVP of 27-workflow catalog · 19 Phase-2 designs locked). **36 workflows · 550 tests · 148 skill templates.** The pattern is domain-agnostic; `core/` is the extension point.
 
 Solo project. Goal: a production-ready, pip-installable template that researchers and domain engineers can drop into their own pipelines.
 
@@ -67,7 +67,7 @@ If a design decision is undocumented, surface it and add a row to `decisions.md`
 ## Things to avoid
 
 - Don't add abstractions, generalizations, or flexibility this template doesn't require. Three similar lines beats a premature helper.
-- Don't add new workflows to `research/` or new domains beyond current scope without a decision entry. **Currently-shipped domains: research, parole, retail, pc, industrial.** Phase-2 industrial workflow promotion = fill-in against locked design, not new design — see [industrial design doc](docs/superpowers/specs/2026-05-14-industrial-domain-design.md).
+- Don't add new workflows to `research/` or new domains beyond current scope without a decision entry. **Currently-shipped domains: research, parole, retail, pc, industrial, healthcare.** Phase-2 industrial + healthcare workflow promotion = fill-in against locked design, not new design — see [industrial design doc](docs/superpowers/specs/2026-05-14-industrial-domain-design.md) and [healthcare design doc](docs/superpowers/specs/2026-05-16-healthcare-domain-design.md).
 - Don't add a web UI, database backend, or deployment infra before the core library is stable.
 - Don't expose raw Anthropic or OpenAI client objects outside `agents.py`. All model calls go through `ExecutorAgent` / `ReviewerAgent`.
 - Don't use `--no-verify`, `--force`, or `git reset --hard` without explicit user instruction.
