@@ -65,12 +65,57 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 ---
 
+## Property & Casualty (`src/adv_multi_agent/pc/`)
+> Commercial insurance underwriting and claims
+
+| Scenario | Status | Notes |
+|---|---|---|
+| Claims reserve estimation | **built** | ClaimsReserveWorkflow — reviewer-veto gate (D-PC-2); RESERVE + PRECEDENT + LITIGATION flags; SOX-auditable decision |
+| Coverage & bad-faith assessment | **built** | CoverageDecisionWorkflow — COVERAGE + PROCEDURE + DENIAL flags; policy-language-anchored |
+| Commercial underwriting | **built** | CommercialUnderwritingWorkflow — RISK + RATE + EXCLUSION flags; no veto (renewals are reversible) |
+| Cyber risk assessment | **built** | CyberUnderwritingWorkflow — CONTROL + BREACH-HISTORY + ATTESTATION flags; control-gap anchored |
+| Environmental impairment liability | **built** | EnvironmentalImpairmentWorkflow — reviewer-veto (D-PC-6); KNOWN-CONDITION + TAIL + REGULATORY-OVERLAP flags; CERCLA-anchored |
+| Parametric crop insurance | **built** | ParametricCropWorkflow — PERIL-MATCH + BASIS + ATTACHMENT flags; no veto (commodity-futures-tied); synthetic corn-grower example |
+| Gig platform liability | **built** | GigPlatformLiabilityWorkflow — reviewer-veto (D-PC-6); CLASSIFICATION + COVERAGE-GAP + REGULATORY-PATCHWORK flags; state-labor-law-anchored |
+
+---
+
+## Industrial Manufacturing & IoT (`src/adv_multi_agent/industrial/`)
+> Manufacturing operations, safety, and supply chain
+
+| Scenario | Status | Notes |
+|---|---|---|
+| Make vs. buy analysis | **built** | MakeVsBuyWorkflow — CAPEX + SUPPLY + QUALITY flags; financial-model-anchored |
+| Supplier qualification | **built** | SupplierQualificationWorkflow — AUDIT + CAPACITY + RISK flags; audit-findings-anchored |
+| Engineering change order review | **built** | EngineeringChangeOrderWorkflow — SAFETY + COST + SCHEDULE flags; functional-safety-re-cert-anchored |
+| Quality incident root cause | **built** | QualityIncidentRootCauseWorkflow — ROOT + SCOPE + CORRECTIVE flags; FMEA-anchored |
+| Product liability root cause | **built** | ProductLiabilityRootCauseWorkflow — reviewer-veto (D-IND-1); PROXIMATE + DESIGN + DUTY flags; SOX warranty-reserve-anchored |
+| Recall scope (manufacturing) | **built** | RecallScopeManufacturingWorkflow — reviewer-veto (D-IND-1); SCOPE + EVIDENCE + CPSC flags; reuses retail.recall_scope shape |
+| Supply chain resilience | **built** | SupplyChainResilienceWorkflow — CONCENTRATION + GEOPOLITICAL + FINANCIAL flags; Crown InfoLink telematics example |
+| Telematics anomaly triage | **built** | TelematicsAnomalyTriageWorkflow — ANOMALY + PATTERN + RELIABILITY flags; InfoLink fleet-health-anchored |
+
+---
+
+## Healthcare (`src/adv_multi_agent/healthcare/`)
+> Clinical decision support + payer operations + drug safety
+
+| Scenario | Status | Notes |
+|---|---|---|
+| Diagnosis code audit | **built** | DiagnosisCodeAuditWorkflow — ACCURACY + COMPLIANCE + SPECIFICITY flags; ICD-10 code-selection-anchored |
+| Discharge planning risk | **built** | DischargePlanningRiskWorkflow — READMISSION + CARE-GAP + SOCIAL-DETERMINANT flags; risk-stratification-anchored |
+| Prior authorization review | **built** | PriorAuthorizationReviewWorkflow — MEDICAL-NECESSITY + COVERAGE + DOCUMENTATION flags; payer-policy-anchored |
+| Claims appeal review | **built** | ClaimsAppealReviewWorkflow — EVIDENCE + COVERAGE + PROCEDURE flags; denial-rationale-anchored |
+| Drug interaction flagging | **built** | DrugInteractionFlaggingWorkflow — reviewer-veto (D-HEALTH-1); SEVERITY + EVIDENCE + CONTRAINDICATION flags; FDA Orange Book + DrugBank-anchored |
+| Adverse event triage | **built** | AdverseEventTriageWorkflow — reviewer-veto (D-HEALTH-1); SEVERITY + CAUSALITY + REGULATORY flags; FDA 7/15-day expedited-report-anchored; ICH E2A serious-unexpected ADR |
+| Treatment plan review | **built** | TreatmentPlanReviewWorkflow — reviewer-veto (D-HEALTH-1); GUIDELINE + CONTRAINDICATION + RISK flags; clinical-practice-guideline-anchored |
+| Clinical trial eligibility | **built** | ClinicalTrialEligibilityWorkflow — reviewer-veto + bias-gate (D-HEALTH-1); BIAS + ELIGIBILITY + EVIDENCE flags; parole bias-gate pattern applied clinically; JAMA 2019 demographic-bias anchored |
+
+---
+
 ## Other Domains (future)
 
 | Domain | Scenario | Status | Notes |
 |---|---|---|---|
-| Healthcare | Clinical trial eligibility | candidate | Bias-gate pattern from parole applies |
-| Healthcare | Drug interaction flagging | candidate | Reviewer = cross-model safety check |
 | Finance | Loan underwriting | candidate | Adversarial reviewer catches protected-class proxies |
 | Finance | Fraud alert triage | candidate | Executor flags; reviewer challenges false-positive rate |
 | Legal | Contract risk review | candidate | Executor summarizes risk; reviewer stress-tests omissions |
@@ -78,4 +123,4 @@ Grouped by domain. Status: **built** | **planned** | **candidate**
 
 ---
 
-*Last updated: 2026-05-13*
+*Last updated: 2026-05-16*
