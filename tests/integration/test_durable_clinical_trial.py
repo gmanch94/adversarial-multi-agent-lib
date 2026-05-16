@@ -66,7 +66,7 @@ async def test_pause_on_labs_pending_then_resume_converges(tmp_path: Path) -> No
     inner = ClinicalTrialEligibilityDurableWorkflow(
         executor=executor, reviewer=reviewer, config=config,
     )
-    store = FileCheckpointStore(base_dir=tmp_path / "checkpoints")
+    store = FileCheckpointStore(base_dir=tmp_path / "checkpoints", workspace_dir=tmp_path)
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
 
     paused = await dw.start(
@@ -100,7 +100,7 @@ async def test_phi_not_written_to_checkpoint_in_raw_form(tmp_path: Path) -> None
     )
     dw = DurableWorkflow(
         inner=inner, config=config,
-        checkpoint_store=FileCheckpointStore(base_dir=tmp_path / "ckpt"),
+        checkpoint_store=FileCheckpointStore(base_dir=tmp_path / "ckpt", workspace_dir=tmp_path),
     )
     bad_input = make_request(patient_profile="62yo NSCLC\x01\x02\x03patient")
     await dw.start(bad_input)
@@ -124,7 +124,7 @@ async def test_full_lifecycle_start_pause_resume_complete(tmp_path: Path) -> Non
     inner = ClinicalTrialEligibilityDurableWorkflow(
         executor=executor, reviewer=reviewer, config=config,
     )
-    store = FileCheckpointStore(base_dir=tmp_path / "ckpt")
+    store = FileCheckpointStore(base_dir=tmp_path / "ckpt", workspace_dir=tmp_path)
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
 
     paused = await dw.start(make_request(biomarker_status="labs pending"))

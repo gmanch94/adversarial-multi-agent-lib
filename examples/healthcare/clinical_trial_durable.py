@@ -55,8 +55,8 @@ async def main() -> None:
         score_threshold=8.0,
     )
     inner = ClinicalTrialEligibilityDurableWorkflow(config=config)
-    store = FileCheckpointStore(base_dir=workspace / "checkpoints")
-    lock = FileRunLock(base_dir=workspace / "locks")
+    store = FileCheckpointStore(base_dir=workspace / "checkpoints", workspace_dir=workspace)
+    lock = FileRunLock(base_dir=workspace / "locks", workspace_dir=workspace)
     dw = DurableWorkflow(
         inner=inner,
         config=config,

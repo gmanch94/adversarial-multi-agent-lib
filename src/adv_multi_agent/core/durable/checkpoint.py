@@ -95,12 +95,37 @@ class FileCheckpointStore:
 
     Mirrors ClaimLedger persistence posture: atomic_write_text (temp+rename),
     JSON shape stable across writes. safe_resolve_path normalizes ~ expansion
-    and resolves base_dir relative to the caller's working directory; the
-    caller is responsible for placing base_dir under a sandboxed workspace_dir.
+    and resolves base_dir relative to the caller's working directory.
+
+    Args:
+        base_dir: directory under which per-run checkpoint files land.
+        workspace_dir: if provided, base_dir is confined under it via
+            safe_resolve_path; an attempt to escape raises ValueError.
+            If None, base_dir is resolved without confinement and a
+            UserWarning is emitted. Production deploys SHOULD pass
+            workspace_dir to prevent arbitrary-write via untrusted
+            base_dir input (H-DUR-3).
     """
 
-    def __init__(self, base_dir: Path | str) -> None:
-        resolved = safe_resolve_path(Path(base_dir))
+    def __init__(
+        self,
+        base_dir: Path | str,
+        *,
+        workspace_dir: Path | str | None = None,
+    ) -> None:
+        if workspace_dir is None:
+            import warnings
+            warnings.warn(
+                "FileCheckpointStore constructed without workspace_dir; "
+                "base_dir is not sandboxed. Pass workspace_dir=<trusted root> "
+                "to confine checkpoint files (security finding H-DUR-3).",
+                UserWarning,
+                stacklevel=2,
+            )
+            resolved = safe_resolve_path(Path(base_dir))
+        else:
+            workspace = safe_resolve_path(Path(workspace_dir))
+            resolved = safe_resolve_path(Path(base_dir), must_be_under=workspace)
         resolved.mkdir(parents=True, exist_ok=True)
         self._base_dir = resolved
 

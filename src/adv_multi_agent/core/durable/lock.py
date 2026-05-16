@@ -65,8 +65,37 @@ class MemoryRunLock:
 
 
 class FileRunLock:
-    def __init__(self, base_dir: Path | str) -> None:
-        resolved = safe_resolve_path(Path(base_dir))
+    """Atomic-rename file-lock store rooted at base_dir/<run_id>.lock.
+
+    Args:
+        base_dir: directory under which per-run lock files land.
+        workspace_dir: if provided, base_dir is confined under it via
+            safe_resolve_path; an attempt to escape raises ValueError.
+            If None, base_dir is resolved without confinement and a
+            UserWarning is emitted. Production deploys SHOULD pass
+            workspace_dir to prevent arbitrary-write via untrusted
+            base_dir input (H-DUR-3).
+    """
+
+    def __init__(
+        self,
+        base_dir: Path | str,
+        *,
+        workspace_dir: Path | str | None = None,
+    ) -> None:
+        if workspace_dir is None:
+            import warnings
+            warnings.warn(
+                "FileRunLock constructed without workspace_dir; "
+                "base_dir is not sandboxed. Pass workspace_dir=<trusted root> "
+                "to confine lock files (security finding H-DUR-3).",
+                UserWarning,
+                stacklevel=2,
+            )
+            resolved = safe_resolve_path(Path(base_dir))
+        else:
+            workspace = safe_resolve_path(Path(workspace_dir))
+            resolved = safe_resolve_path(Path(base_dir), must_be_under=workspace)
         resolved.mkdir(parents=True, exist_ok=True)
         self._base_dir = resolved
 

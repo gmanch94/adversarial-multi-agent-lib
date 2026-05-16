@@ -43,7 +43,7 @@ def make_checkpoint(
 @pytest_asyncio.fixture(params=["file", "memory"])
 async def store(request, tmp_path: Path) -> AsyncIterator:
     if request.param == "file":
-        s = FileCheckpointStore(base_dir=tmp_path / "checkpoints")
+        s = FileCheckpointStore(base_dir=tmp_path / "checkpoints", workspace_dir=tmp_path)
     else:
         s = MemoryCheckpointStore()
     yield s
@@ -100,3 +100,8 @@ class TestCheckpointStoreContract:
         await store.write(cp2_v2)
         loaded = await store.read("run-0001")
         assert loaded.round == 5
+
+
+def test_file_store_warns_without_workspace_dir(tmp_path: Path) -> None:
+    with pytest.warns(UserWarning, match="without workspace_dir"):
+        FileCheckpointStore(base_dir=tmp_path / "no-confine")

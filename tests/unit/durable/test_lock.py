@@ -20,7 +20,7 @@ from adv_multi_agent.core.durable.lock import (
 async def lock(request, tmp_path: Path) -> AsyncIterator:
     impl: FileRunLock | MemoryRunLock
     if request.param == "file":
-        impl = FileRunLock(base_dir=tmp_path / "locks")
+        impl = FileRunLock(base_dir=tmp_path / "locks", workspace_dir=tmp_path)
     else:
         impl = MemoryRunLock()
     yield impl
@@ -61,3 +61,8 @@ class TestRunLockContract:
         await asyncio.sleep(0.7)
         with pytest.raises(RunLocked):
             await lock.acquire("run-1", ttl_seconds=60)
+
+
+def test_file_lock_warns_without_workspace_dir(tmp_path: Path) -> None:
+    with pytest.warns(UserWarning, match="without workspace_dir"):
+        FileRunLock(base_dir=tmp_path / "no-confine")
