@@ -1,15 +1,15 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-14 (Industrial domain SHIPPED — MVP-8 + H-IND-1 closed same-session; pushed `e0b725a` on `main`)
+Last updated: 2026-05-16 (Backlog closed — L-PC-2/3/5 retail parity + L-IND-2/4/5 all closed; pushed `4e3f561` on `main`)
 
 ---
 
 ## Current state
 
-**Industrial domain shipped — MVP-8 of 27-workflow catalog. H-IND-1 closed pre-commit. Pushed `e0b725a` on `main`.**
+**All backlog items closed. Clean `main` at `4e3f561`. 481 tests pass.**
 
 GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
-**481 tests** (409 pre-industrial → +72: 8 industrial workflow test files at ~8 tests each = 67, plus 5 H-IND-1 regression tests in `test_extract_flags.py` + `test_extract_veto_directive.py`). ruff + mypy clean.
+**481 tests** · ruff + mypy clean.
 
 **23 workflows total**: 4 research + 1 parole + 8 retail + 7 P&C + **8 industrial MVP** (make_vs_buy, supplier_qualification, engineering_change_order, quality_incident_root_cause, product_liability_root_cause [veto], recall_scope_manufacturing [veto], supply_chain_resilience, telematics_anomaly_triage). 19 industrial Phase-2 designs locked in the design doc (not built).
 
@@ -20,9 +20,21 @@ GitHub: https://github.com/gmanch94/adv-multi-agent (default branch: `main`)
 - 8 MVP workflows + 32 skill templates + 8 examples + 8 unit-test files
 - D-IND-1 decision row + design doc (27-workflow catalog with MVP-8 marked + 19 Phase-2 designs)
 - **H-IND-1 (HIGH)** + **L-IND-1 (LOW)** closed same-session by single regex fix in `core/_internal.py`: sibling-stop now accepts hyphens (`_SIBLING_HEADER_LHS_RE = re.compile(r"^[A-Z][A-Z\s\-]*[A-Z]$|^[A-Z]$")`). Was a Karpathy convention-level error compounded across 8 industrial + 3 latent PC workflows (environmental KNOWN-CONDITION, gig-platform COVERAGE-GAP, parametric-crop PERIL-MATCH). 5 regression tests added.
-- Audit report: [docs/security-audits/2026-05-14-industrial-sweep.md](security-audits/2026-05-14-industrial-sweep.md). L-IND-2..5 documented as LOW backlog (pre-veto draft preservation, banner gating documented OK, bundled_skills_path allowlist, per-field silent truncation).
+- Audit report: [docs/security-audits/2026-05-14-industrial-sweep.md](security-audits/2026-05-14-industrial-sweep.md). L-IND-2..5 documented LOW. All closed 2026-05-16 (see below).
 - Exec brief + Marp slides: `docs/slides/industrial-executive-brief.md`, `docs/slides/industrial_slides.md`.
 - 8 compounding lessons appended to `docs/LESSONS_LEARNED.md`.
+
+### 2026-05-16 — Backlog sweep: L-PC-2/3/5 retail parity + L-IND-2/4/5
+
+**Commit:** `4e3f561` (direct to main, pushed). 13 files changed.
+
+- **L-PC-3 retail parity** — `_MAX_FIELD_CHARS = 1500` constant + `[:cap]` slicing added to `to_prompt_text` in all 8 retail Request dataclasses (demand, labor, recall, loyalty, promo, supplier, inventory, private_label). Matches the L-PC-3 pattern already in all 7 PC and 8 industrial workflows.
+- **L-PC-2 retail parity** — FORMAT NOTE added to `recall_scope.py` VETO CRITERIA block. Prevents continuation-line parser false-negatives when veto text starts with "Overall" / "Key issues" / "#". Matches the L-PC-2 pattern in 4 PC veto-using workflows.
+- **L-PC-5 retail parity** — `truncate_flag_display` imported and applied in `_format_flag_section` of 6 retail workflows (recall_scope, loyalty_offer, promo_markdown, supplier_brief, inventory_replenishment, private_label). demand + labor have no flag section (score-only convergence).
+- **L-IND-2** — `metadata['first_draft'] = output` added in the veto branch of both industrial veto workflows (`product_liability_root_cause.py`, `recall_scope_manufacturing.py`). Surfaces the clean executor draft directly on `WorkflowResult.metadata` without banner; regulator-queryable without digging into ledger/wiki.
+- **L-IND-4** — `SkillRegistry._KNOWN_DOMAINS` frozenset (research, parole, retail, pc, industrial) added; `bundled_skills_path` raises `ValueError` on unknown domain instead of confusing importlib error. Path-traversal via `domain="research.."` now rejected cleanly.
+- **L-IND-5** — `cap_field(value, max_chars, field_name="") -> str` helper added to `core/_internal.py`. Emits `UserWarning` when per-field truncation fires (L-IND-5 was "silent" — now observable). Existing `[:cap]` slicing in all workflows remains; new workflows should call `cap_field` instead of bare slice.
+- **README.md** — research domain added to MCP per-domain registration block (was missing; all 5 domains now listed).
 
 ### Prior 2026-05-14 (earlier in day) — P&C domain ship + audit closure (preserved for reference)
 
@@ -260,12 +272,10 @@ GitHub Actions runs the same on PR (`.github/workflows/ci.yml`).
 
 ## Likely next-session work (suggested, not committed)
 
-1. **Retail parity for L-PC-2 / L-PC-3** — `recall_scope.py` criteria FORMAT NOTE; per-field `_MAX_FIELD_CHARS = 1500` in 8 retail Request dataclasses. ~30 min.
-2. **Retail parity for L-PC-5** — `truncate_flag_display` applied in 6 retail `_format_flag_section` methods (recall, loyalty, promo, supplier, inventory, private_label). ~20 min.
-3. **PyPI publish** — rebuild dist (`python -m build`), `twine upload dist/*`. Blocked on credentials only. All pre-release blockers closed.
-4. **Group captive allocation + equine mortality** — deferred specialty per D-PC-6. Build only on user trigger.
-5. **Cross-domain L-PC-4 verification** — `Skill.render` brace strip is global. Verify no existing test relies on `{xyz}` smuggling through input values.
-6. **Test count audit** — verify `git grep -c "def test_"` matches pytest's 409 (sanity check that no test was orphaned during the rename / move of `_extract_veto`).
+1. **PyPI publish** — rebuild dist (`python -m build`), `twine upload dist/*`. Blocked on credentials only. All pre-release blockers closed.
+2. **Group captive allocation + equine mortality** — deferred specialty per D-PC-6. Build only on user trigger.
+3. **19 industrial Phase-2 promotions** — fill-in against locked designs in the industrial design doc. Likely-first: FunctionalSafetyCase [veto], PredictiveMaintenanceRUL, AutomationCommissioning [veto], PartsDemandForecast.
+4. **Future domains** — healthcare, finance, legal, HR (per scenarios.md). Design first, build second.
 
 ---
 
