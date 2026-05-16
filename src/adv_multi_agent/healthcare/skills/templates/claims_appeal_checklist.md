@@ -1,3 +1,9 @@
+---
+name: claims_appeal_checklist
+description: Approval checklist for claims appeal; routes to appropriate reviewer tier and documents decision
+inputs: [flag_items]
+---
+
 # Claims Appeal Review — Coordinator Checklist
 
 [OWNER: Appeals Coordinator / Medical Director]

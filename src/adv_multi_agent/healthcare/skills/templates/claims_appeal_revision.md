@@ -1,3 +1,9 @@
+---
+name: claims_appeal_revision
+description: Revise claims appeal review based on reviewer critique and flagged issues
+inputs: [previous, critique, flag_section, suggestions]
+---
+
 # Claims Appeal Review — Revision
 
 Revise the claims appeal review based on reviewer critique.

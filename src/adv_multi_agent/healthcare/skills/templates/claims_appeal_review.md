@@ -1,3 +1,9 @@
+---
+name: claims_appeal_review
+description: Review claims appeal on evidence strength, coverage alignment, procedural compliance, consistency, and decision clarity
+inputs: [output]
+---
+
 # Claims Appeal Review — Reviewer Criteria
 
 Evaluate the claims appeal review below on five dimensions (score each 0–10):
