@@ -1,0 +1,93 @@
+# GCP KMS cipher deployment. Hardened per cycle-8 spec §5.2.
+# - internal network for DB; scheduler uses egress for HTTPS to *.googleapis.com
+# - ADC mounted read-only from host gcloud config dir
+# - no host ports for scheduler; healthcheck via docker exec
+# - read-only rootfs, all caps dropped, no-new-privileges, no core dumps
+#
+# ADC mount:
+#   Linux/macOS (default): ~/.config/gcloud
+#   Windows: set GCLOUD_CONFIG_DIR=$env:APPDATA\gcloud
+#
+# Usage:
+#   docker compose -f examples/production/cipher_gcp_kms/docker-compose.yml up
+
+networks:
+  internal:
+    internal: true
+  egress:
+    internal: false
+
+services:
+  postgres:
+    # A8-M-07: digest-pinned (pulled 2026-05-17). Refresh cadence: quarterly
+    # or on Postgres-team CVE alert. To rotate:
+    #   docker pull postgres:16-alpine
+    #   docker inspect postgres:16-alpine --format='{{index .RepoDigests 0}}'
+    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+    networks: [internal]
+    environment:
+      POSTGRES_DB: cipher
+      POSTGRES_USER: daemon
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    # A8-M-06: hardening parity with durable_postgres scheduler service.
+    # Postgres on alpine needs CHOWN/DAC_OVERRIDE/FOWNER/SETGID/SETUID for
+    # initdb + data dir. read_only NOT enabled — postgres writes to
+    # /var/lib/postgresql/data (named volume) and /var/run/postgresql.
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "daemon", "-d", "cipher"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  scheduler:
+    build:
+      context: ../../..
+      dockerfile: examples/production/cipher_gcp_kms/Dockerfile
+    networks: [internal, egress]
+    env_file: .env
+    # A8-H-01: no POSTGRES_DSN override here. compose environment: blocks
+    # override env_file: values. Operator MUST set POSTGRES_DSN in .env.
+    # No GOOGLE_APPLICATION_CREDENTIALS set here — ADC is resolved from the
+    # mounted gcloud config dir; the SDK discovers it automatically.
+    volumes:
+      # ADC mount: read-only. Host path is configurable via GCLOUD_CONFIG_DIR.
+      # Windows: set GCLOUD_CONFIG_DIR=$env:APPDATA\gcloud before compose up.
+      - ${GCLOUD_CONFIG_DIR:-~/.config/gcloud}:/home/appuser/.config/gcloud:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  postgres_data:
+
+secrets:
+  postgres_password:
+    file: ./.secrets/postgres_password
