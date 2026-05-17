@@ -195,6 +195,7 @@ class DurableWorkflow:
         reconciliation_hook: ReconciliationHook | None = None,
         checkpoint_cadence: Literal["per_round", "per_pause", "per_call"] = "per_round",
         expected_request_type: type | None = None,
+        metrics: Any | None = None,
     ) -> None:
         self._inner = inner
         self._config = config
@@ -204,6 +205,12 @@ class DurableWorkflow:
         self._hook = reconciliation_hook
         self._cadence = checkpoint_cadence
         self._expected_request_type = expected_request_type
+        # Tier 1.1 scaffold: caller-supplied MetricsBackend; default Noop swallows
+        # everything. See src/adv_multi_agent/core/durable/metrics.py.
+        if metrics is None:
+            from .metrics import NoopMetricsBackend
+            metrics = NoopMetricsBackend()
+        self._metrics = metrics
 
     def _workflow_class_path(self) -> str:
         cls = type(self._inner)
@@ -280,10 +287,18 @@ class DurableWorkflow:
     async def start(self, request: Any) -> RunOutcome:
         run_id = uuid.uuid4().hex[:16]
         token = self._new_token(run_id)
+        wf_class = type(self._inner).__name__
+        self._metrics.counter(
+            "durable.workflow.start", tags={"workflow": wf_class}
+        )
         handle: LockHandle | None = None
         try:
             handle = await self._lock.acquire(run_id, ttl_seconds=300)
         except Exception as exc:
+            self._metrics.counter(
+                "durable.lock.acquire_failed",
+                tags={"workflow": wf_class, "phase": "start"},
+            )
             return RunOutcome(status="failed", token=token, error=f"lock acquire failed: {exc}")
 
         try:
@@ -340,6 +355,13 @@ class DurableWorkflow:
                                 if rounds_history else 0
                             )
                             mid_round = last_entry_round < round_num
+                            self._metrics.counter(
+                                "durable.workflow.pause",
+                                tags={
+                                    "workflow": wf_class,
+                                    "pause_reason": str(ps.reason),
+                                },
+                            )
                             cp.status = "paused"
                             cp.round = round_num
                             cp.pause_reason = ps.reason
