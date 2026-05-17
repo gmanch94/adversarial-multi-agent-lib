@@ -22,9 +22,9 @@ flowchart TB
     Gemini(["Google Gemini API<br/>generativelanguage.googleapis.com:443<br/>gemini-2.5-pro"]):::ext
     OpenAI(["OpenAI Chat Completions<br/>api.openai.com:443<br/>gpt-4o"]):::ext
 
-    subgraph Process["Caller's Python process (asyncio event loop)"]
+    subgraph Process["Caller Python process - asyncio event loop"]
         direction TB
-        Caller["Caller code<br/>asyncio.run(workflow.run(...))"]:::proc
+        Caller["Caller code<br/>asyncio.run workflow.run"]:::proc
 
         subgraph Lib["adv-multi-agent library"]
             direction TB
@@ -75,15 +75,15 @@ flowchart TB
         end
     end
 
-    subgraph WS["workspace_dir/ (sandboxed by Config)"]
+    subgraph WS["workspace_dir - sandboxed by Config"]
         direction TB
-        Ledger[("ledger.json<br/>atomic temp+fsync+rename")]:::fs
-        Wiki[("wiki.json<br/>atomic temp+fsync+rename")]:::fs
-        Skills[("bundled templates (wheel)<br/>+ local skills_dir override")]:::fs
+        Ledger[("ledger.json - atomic temp fsync rename")]:::fs
+        Wiki[("wiki.json - atomic temp fsync rename")]:::fs
+        Skills[("bundled templates wheel - local skills_dir override")]:::fs
     end
 
     Researcher -- "configures + invokes" --> Caller
-    Env -. read at Config.__post_init__ .-> Cfg
+    Env -- "read at Config post_init" --> Cfg
     Agents -- "HTTPS streaming<br/>(adaptive thinking)" --> Anthropic
     Agents -- "HTTPS<br/>(thinking_budget)" --> Gemini
     Agents -- "HTTPS<br/>(temperature=0.3)" --> OpenAI
@@ -177,7 +177,7 @@ flowchart TB
 | Install | `pip install -e .` against this repo | `pip install adv-multi-agent` (PyPI publish pending credentials) |
 | API keys | Real keys in `.env` (gitignored) | Caller's secret manager / CI variable |
 | Workspace | Repo root (`./ledger.json`, `./wiki.json` auto-created and sandboxed there) | Caller-controlled (`Config(workspace_dir="/var/lib/research")`) |
-| Skill files | Bundled in wheel (139 templates across 6 domains); local override via `Config(skills_dir=...)` | Same |
+| Skill files | Bundled in wheel (148 templates across 6 domains); local override via `Config(skills_dir=...)` | Same |
 | Network | Live API calls — costs real money per run | Same — there is no mock mode |
 | Tests | **657 tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 6 domains + durable subpackage | Caller writes their own tests against their workflows |
 
