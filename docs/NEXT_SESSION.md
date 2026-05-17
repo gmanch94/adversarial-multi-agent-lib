@@ -1,6 +1,38 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-17 PM (post-advisor fold-in for GCP KMS cipher v2 plan)
+Last updated: 2026-05-17 PM (Tasks 10-12 of GCP KMS cipher plan SHIPPED)
+
+---
+
+## 2026-05-17 PM (later) — GCP KMS cipher SHIPPED (Tasks 10-12 docs complete)
+
+Tasks 10, 11, 12 of `docs/superpowers/plans/2026-05-17-gcp-kms-cipher.md` shipped as a
+3-commit docs-only chain on `main`. Task 13 (cycle-9 security audit on the full
+`examples/production/cipher_gcp_kms/` surface) is the remaining open item.
+
+**Commits (this session):**
+- `docs(cipher-gcp-kms): README with threat model + cost model + setup [skip ci]`
+- `docs(runbooks): GcpKmsCipher cipher selection + ops + compliance content [skip ci]`
+- `docs: D-CIPHER-GCP-1..4 + NEXT_SESSION + SECURITY_MODEL updates [skip ci]`
+
+**Final state:**
+- `examples/production/cipher_gcp_kms/` — full implementation complete (Tasks 0-9) + docs (Tasks 10-12)
+- 27+ unit tests pass (20 cipher + 7 dek_cache); 3 live integration tests (env-gated)
+- D-CIPHER-GCP-1..4 locked in `docs/decisions.md`
+- Runbooks updated: cipher selection guide (integration), KMS rotation runbook + alert thresholds (operations), GCP KMS evidence path §5.3 (compliance)
+- `docs/SECURITY_MODEL.md` — wrap/unwrap DEK row added to sensitive-op table
+
+**Pending — Task 13 (cycle-9 audit):**
+- Run `/security-audit` on `examples/production/cipher_gcp_kms/` full surface
+- Verify cycle-8 Dockerfile hardening carries forward (non-root, read-only-rootfs, cap_drop, digest pin)
+- Watch-items: B2-shape recurrences (narrow except clauses), B5-shape regex laxity in KMS key name validator, P4-shape `__cause__` leakage in KmsDecryptError
+- Triage CRITICAL/HIGH pre-push; MEDIUM/LOW can be in-sprint
+
+**Resume instructions:**
+1. Read this file.
+2. Check `git log --oneline -5` — verify 3 docs commits landed.
+3. Dispatch cycle-9 security audit subagent on `examples/production/cipher_gcp_kms/`.
+4. Fix any CRITICAL/HIGH findings before pushing.
 
 ---
 
