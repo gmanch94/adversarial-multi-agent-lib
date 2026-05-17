@@ -52,7 +52,7 @@ class DekCache:
         if inflight is not None:
             return await inflight
 
-        future: asyncio.Future[bytes] = asyncio.get_event_loop().create_future()
+        future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
         self._inflight[key] = future
         try:
             value = await loader()
