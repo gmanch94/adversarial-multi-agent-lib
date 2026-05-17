@@ -2,7 +2,9 @@
 last_request_json at rest (H-DUR-4)."""
 from __future__ import annotations
 
+import asyncio
 import base64
+import time
 
 import pytest
 
@@ -116,13 +118,14 @@ async def test_legacy_unencrypted_checkpoint_warns_on_read() -> None:
 
 @pytest.mark.asyncio
 async def test_concurrent_writes_do_not_block_loop() -> None:
-    """100 parallel writes with a 30ms-slow sync cipher must not serialize.
+    """100 parallel writes/reads with a 30ms-slow sync cipher must not serialize.
 
-    If asyncio.to_thread bridge works, total wall time well under 100*30ms=3s.
+    Serial baseline = 100 × 30ms = 3s.  2.0s ceiling gives 1.5× margin which
+    still proves non-serialization while tolerating shared-runner jitter
+    (default ThreadPoolExecutor on 2-core CI = 6 workers,
+    ceil(100/6)*30ms ≈ 500ms expected).
     """
-    import asyncio as _aio
     import dataclasses
-    import time
 
     class SlowCipher:
         def encrypt(self, s: str) -> str:
@@ -140,10 +143,24 @@ async def test_concurrent_writes_do_not_block_loop() -> None:
         dataclasses.replace(base_cp, run_id=f"run-conc-{i}", last_request_json=f'{{"i":{i}}}')
         for i in range(100)
     ]
+
+    # Phase 1: write-side asyncio.to_thread bridge must not serialize
     t0 = time.perf_counter()
-    await _aio.gather(*[store.write(cp) for cp in cps])
+    await asyncio.gather(*[store.write(cp) for cp in cps])
     elapsed = time.perf_counter() - t0
-    assert elapsed < 1.0, f"writes serialized: {elapsed:.2f}s (expected <1s; serial would be 3s)"
+    assert elapsed < 2.0, (
+        f"writes serialized: {elapsed:.2f}s "
+        "(serial=3s; 2.0s ceiling = 1.5× margin for CI jitter)"
+    )
+
+    # Phase 2: read-side asyncio.to_thread bridge must also not serialize
+    t1 = time.perf_counter()
+    await asyncio.gather(*[store.read(cp.run_id) for cp in cps])
+    elapsed_r = time.perf_counter() - t1
+    assert elapsed_r < 2.0, (
+        f"reads serialized: {elapsed_r:.2f}s "
+        "(serial=3s; 2.0s ceiling = 1.5× margin for CI jitter)"
+    )
 
 
 @pytest.mark.asyncio

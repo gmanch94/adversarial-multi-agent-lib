@@ -65,6 +65,11 @@ class Cipher(Protocol):
     Implementations: callers wrap cryptography.fernet.Fernet, AWS KMS,
     HashiCorp Vault transit, GCP KMS, etc. Library ships no built-in
     cipher to keep the dependency footprint minimal.
+
+    Thread-safety contract: implementations must be thread-safe.
+    ``encrypt``/``decrypt`` may be called concurrently from multiple threads.
+    ``EncryptedCheckpointStore`` invokes them via ``asyncio.to_thread``, which
+    dispatches to the default thread pool.
     """
 
     def encrypt(self, plaintext: str) -> str:
