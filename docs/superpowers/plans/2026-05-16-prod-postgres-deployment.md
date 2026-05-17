@@ -20,6 +20,8 @@
 
 **v2 (2026-05-17):** Independent pre-implementation security review rejected v1 (see `docs/security-audits/2026-05-16-prod-postgres-plan-review.md` — 3 CRIT / 9 HIGH / 9 MED / 8 LOW). Plan revised inline to address all CRIT + HIGH + MED findings. LOW items folded into NEXT_SESSION as in-sprint. Each fix tagged with finding code (F-C-NN / F-H-NN / F-M-NN) where it appears.
 
+**v3 (2026-05-17):** Second independent reviewer returned APPROVED WITH FIXES (see `docs/security-audits/2026-05-17-prod-postgres-plan-review-v2.md` — 6 of 9 HIGH fully closed, 3 partial; all MED closed; 11 NEW findings: 1 HIGH, 5 MED, 5 LOW). Three blocking new findings applied inline (N-H-01 healthcheck timeout, N-M-01 decrypt ASCII catch, N-M-05 asyncpg parse). Partial HIGH closures tightened (F-H-04 shutdown hook via `_ActiveLockRegistry`, F-H-05 instance-level namespace test, F-H-09 → N-M-02 dict-shape DSN regex). N-L-01 (empty namespace) + N-L-02 (class-alias drift) folded inline. N-M-04, N-L-03, N-L-04, N-L-05 deferred to NEXT_SESSION as in-sprint.
+
 ---
 
 ## Task 1: Directory skeleton + .dockerignore + initial commit
@@ -422,8 +424,20 @@ class FernetCipher:
         return token_bytes.decode("ascii")
 
     def decrypt(self, ciphertext: str) -> str:
-        """Decrypt a Fernet token string; return the original str plaintext."""
-        plaintext_bytes = self._multi.decrypt(ciphertext.encode("ascii"))
+        """Decrypt a Fernet token string; return the original str plaintext.
+
+        N-M-01: catch UnicodeEncodeError (corruption: non-ASCII byte in stored
+        row from mojibake / truncation / BOM merge) and re-raise as InvalidToken
+        so the library's EncryptedCheckpointStore.read converts it to
+        CheckpointCorrupt rather than propagating an unhandled encoding error.
+        """
+        from cryptography.fernet import InvalidToken
+
+        try:
+            ct_bytes = ciphertext.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise InvalidToken(f"ciphertext contains non-ASCII bytes: {exc}") from exc
+        plaintext_bytes = self._multi.decrypt(ct_bytes)
         return plaintext_bytes.decode("utf-8")
 
     def key_fingerprint(self) -> str:
@@ -993,8 +1007,20 @@ class PostgresCheckpointStore:
                 payload_bytes,
                 expected_updated_at,
             )
-        # asyncpg execute returns "UPDATE N"; 0 = no rows matched the CAS
-        if result.endswith(" 0"):
+        # N-M-05: asyncpg execute returns "UPDATE N" string. Parse defensively
+        # against future asyncpg format changes; endswith(" 0") would silently
+        # break if asyncpg ever returns "UPDATE N M" (psql-style OID-count form).
+        if not result.startswith("UPDATE "):
+            raise RuntimeError(
+                f"unexpected asyncpg status string for UPDATE: {result!r}"
+            )
+        try:
+            rows_affected = int(result.split()[1])
+        except (IndexError, ValueError) as exc:
+            raise RuntimeError(
+                f"could not parse asyncpg status string {result!r}: {exc}"
+            ) from exc
+        if rows_affected == 0:
             raise CompareAndSwapFailed(
                 f"run_id={checkpoint.run_id!r} updated_at moved during sweep"
             )
@@ -1274,6 +1300,38 @@ def test_namespace_default_when_unset(monkeypatch):
     assert default_ns == explicit_ns
 
 
+async def test_namespace_caching_at_instance_level(pg_pool, monkeypatch):
+    """N-M-03: verify the cached `self._namespace` path through _ns_split_key
+    actually differs by namespace, not just the module-level function.
+    """
+    from examples.production.durable_postgres.lock import PostgresAdvisoryLock
+
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "app-A")
+    lock_a = PostgresAdvisoryLock(pg_pool)
+
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "app-B")
+    lock_b = PostgresAdvisoryLock(pg_pool)
+
+    key_a_split = lock_a._ns_split_key("same-run")
+    key_b_split = lock_b._ns_split_key("same-run")
+    assert key_a_split != key_b_split, (
+        "instance-cached namespace must differ; cache path not exercised"
+    )
+
+
+def test_namespace_empty_env_uses_default(monkeypatch):
+    """N-L-01: DURABLE_APP_NAMESPACE='' must NOT silently hash empty string."""
+    from examples.production.durable_postgres.lock import _namespace_key
+
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "")
+    empty_ns = _namespace_key()
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "durable-checkpoints")
+    default_ns = _namespace_key()
+    assert empty_ns == default_ns, (
+        "empty namespace must fall back to default, not hash('')"
+    )
+
+
 def _get_dsn_from_env() -> str:
     import os
     dsn = os.environ.get("POSTGRES_DSN")
@@ -1392,8 +1450,14 @@ def _namespace_key() -> int:
 
     F-H-05: prevents keyspace collision with co-resident advisory-lock
     apps like pg_boss. Default 'durable-checkpoints' if unset.
+
+    N-L-01: empty string env var falls back to default (not hash of '').
+    Operators sometimes template `.env` files with empty values; without
+    this guard, all such deploys would share SHA-256(''), defeating
+    namespacing across organizations.
     """
-    ns = os.environ.get("DURABLE_APP_NAMESPACE", "durable-checkpoints")
+    # `or` falls through on both unset (None) and empty string ""
+    ns = os.environ.get("DURABLE_APP_NAMESPACE") or "durable-checkpoints"
     digest = hashlib.sha256(ns.encode("utf-8")).digest()
     return int.from_bytes(digest[0:8], "big", signed=True)
 
@@ -1401,10 +1465,18 @@ def _namespace_key() -> int:
 class PostgresAdvisoryLock:
     """RunLock via pg_try_advisory_lock with two-key SHA-256 split + namespace."""
 
-    def __init__(self, lock_pool: asyncpg.Pool, default_ttl: int = 300) -> None:
+    def __init__(
+        self,
+        lock_pool: asyncpg.Pool,
+        default_ttl: int = 300,
+        registry: "_ActiveLockRegistry | None" = None,
+    ) -> None:
         self._pool = lock_pool
         self._default_ttl = default_ttl
         self._namespace = _namespace_key()  # cached at construction
+        # F-H-04 v2: optional registry for daemon-level shutdown force-close.
+        # When None (tests, ad-hoc use), lock works exactly as before.
+        self._registry = registry
 
     @staticmethod
     def _split_key(run_id: str) -> tuple[int, int]:
@@ -1465,6 +1537,9 @@ class PostgresAdvisoryLock:
             finally:
                 await self._pool.release(conn)
             raise
+        # F-H-04 v2: register for daemon-shutdown force-close
+        if self._registry is not None:
+            self._registry.register(handle)
         return handle
 
     async def release(self, handle: LockHandle) -> None:
@@ -1472,6 +1547,8 @@ class PostgresAdvisoryLock:
         if handle.released:
             return  # idempotent
         handle.released = True
+        if self._registry is not None:
+            self._registry.unregister(handle)
 
         # F-H-02-style cancel-and-await for the watchdog
         watchdog = handle.watchdog
@@ -1556,6 +1633,41 @@ class PostgresAdvisoryLock:
                 await self._pool.release(handle.conn)
             except Exception:
                 pass
+
+
+# F-H-04 follow-up (review v2): daemon-level shutdown hook
+class _ActiveLockRegistry:
+    """Tracks active LockHandles for force-close on daemon shutdown.
+
+    Without this, SIGTERM during a long-held lock leaves the asyncpg
+    connection holding the advisory lock server-side until TCP timeout.
+    The pool's close() awaits in-flight queries but does not close
+    connections that are merely held (idle).
+
+    Used by daemon.py's main() shutdown path: walk every handle in the
+    registry, force-close its asyncpg connection (auto-releases the
+    server-side advisory lock), then drain the pool.
+    """
+
+    def __init__(self) -> None:
+        self._handles: set[_PgLockHandle] = set()
+
+    def register(self, handle: _PgLockHandle) -> None:
+        self._handles.add(handle)
+
+    def unregister(self, handle: _PgLockHandle) -> None:
+        self._handles.discard(handle)
+
+    async def force_close_all(self) -> None:
+        for handle in list(self._handles):
+            if handle.released:
+                continue
+            handle.released = True
+            try:
+                await handle.conn.close()
+            except Exception:
+                pass
+            self._handles.discard(handle)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1805,7 +1917,9 @@ class DaemonConfig:
             ")"
         ).replace("{nkeys}", str(len(self.fernet_keys)))
 
-    __str__ = __repr__
+    def __str__(self) -> str:
+        # N-L-02: explicit method, not class-level alias (consistent with cipher.py)
+        return self.__repr__()
 
 
 def load_config_from_env() -> DaemonConfig:
@@ -1857,6 +1971,9 @@ class HealthcheckServer:
     # F-M-09: bound any single header line at 8KB; total request bytes via this cap
     _MAX_LINE_BYTES = 8192
     _MAX_HEADERS = 32
+    # N-H-01: hard timeout on the entire request. F-M-09 caps SIZE; this caps TIME.
+    # Slow-loris attackers that send one byte / no \r\n at all blocked at this layer.
+    _REQUEST_TIMEOUT_SECONDS = 5.0
 
     async def start(self) -> None:
         # F-M-01: bind to 127.0.0.1 only; docker compose healthcheck uses localhost
@@ -1865,6 +1982,28 @@ class HealthcheckServer:
         )
 
     async def _handle(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        # N-H-01: enforce request-level timeout around the entire handler body.
+        try:
+            await asyncio.wait_for(
+                self._handle_inner(reader, writer),
+                timeout=self._REQUEST_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            try:
+                writer.write(b"HTTP/1.1 408 Request Timeout\r\n\r\n")
+                await writer.drain()
+            except Exception:
+                pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    async def _handle_inner(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         try:
@@ -1906,16 +2045,11 @@ class HealthcheckServer:
                 writer.write(b"HTTP/1.1 404 Not Found\r\n\r\n")
             await writer.drain()
         except Exception:
-            # Never let a healthcheck handler error take down the daemon
+            # Never let a healthcheck handler error take down the daemon.
+            # Outer _handle() owns writer.close() in its finally.
             try:
                 writer.write(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
                 await writer.drain()
-            except Exception:
-                pass
-        finally:
-            writer.close()
-            try:
-                await writer.wait_closed()
             except Exception:
                 pass
 
@@ -1974,7 +2108,10 @@ async def main() -> None:
     logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
     inner_store = PostgresCheckpointStore(query_pool)
     store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
-    lock = PostgresAdvisoryLock(lock_pool)
+    # F-H-04 v2: registry tracks active lock handles for shutdown force-close
+    from .lock import _ActiveLockRegistry
+    lock_registry = _ActiveLockRegistry()
+    lock = PostgresAdvisoryLock(lock_pool, registry=lock_registry)
 
     def workflow_factory(workflow_class: str) -> DurableWorkflow:
         assert workflow_class.endswith("ClinicalTrialEligibilityDurableWorkflow")
@@ -2016,6 +2153,12 @@ async def main() -> None:
     try:
         await daemon.run_forever()
     finally:
+        # F-H-04 v2: force-close any still-held lock handles BEFORE pool teardown.
+        # asyncpg pool.close() does NOT close idle connections that are merely
+        # held (an advisory lock holder is "idle" from the pool's perspective).
+        # Without this, SIGTERM leaves advisory locks held server-side until
+        # TCP timeout closes the orphaned connections.
+        await lock_registry.force_close_all()
         await healthcheck.close()
         await lock_pool.close()
         await query_pool.close()
@@ -3247,14 +3390,26 @@ def test_11b_daemon_logs_clean_of_secrets():
         "Found 'gAAAAA' in daemon logs — possible Fernet key or payload leak"
     )
 
-    # DSN-with-password pattern: postgresql://USER:PASS@HOST
-    dsn_password_pattern = re.compile(
+    # DSN-with-password pattern (URL shape): postgresql://USER:PASS@HOST
+    dsn_password_url_pattern = re.compile(
         rb"postgresql://[^\s:]+:[^@\s]+@", re.MULTILINE,
     )
-    matches = dsn_password_pattern.findall(haystack)
+    matches = dsn_password_url_pattern.findall(haystack)
     assert not matches, (
-        f"Found DSN-with-password pattern in logs: {matches[:3]} "
+        f"Found DSN-with-password URL pattern in logs: {matches[:3]} "
         "(asyncpg DEBUG logging?)"
+    )
+
+    # N-M-02: asyncpg sometimes logs ConnectionParameters(... password='...' ...)
+    # at DEBUG level — dict/dataclass shape, not URL. The URL regex above
+    # misses this. Add an explicit password=... pattern.
+    dsn_password_kv_pattern = re.compile(
+        rb"password=['\"][^'\"]+['\"]", re.IGNORECASE,
+    )
+    kv_matches = dsn_password_kv_pattern.findall(haystack)
+    assert not kv_matches, (
+        f"Found password=... kv pattern in logs: {kv_matches[:3]} "
+        "(asyncpg ConnectionParameters DEBUG logging?)"
     )
 
     # API key prefixes
