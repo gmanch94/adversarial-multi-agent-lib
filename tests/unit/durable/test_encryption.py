@@ -115,6 +115,38 @@ async def test_legacy_unencrypted_checkpoint_warns_on_read() -> None:
 
 
 @pytest.mark.asyncio
+async def test_concurrent_writes_do_not_block_loop() -> None:
+    """100 parallel writes with a 30ms-slow sync cipher must not serialize.
+
+    If asyncio.to_thread bridge works, total wall time well under 100*30ms=3s.
+    """
+    import asyncio as _aio
+    import dataclasses
+    import time
+
+    class SlowCipher:
+        def encrypt(self, s: str) -> str:
+            time.sleep(0.03)
+            return f"SLOW:{s}"
+
+        def decrypt(self, s: str) -> str:
+            time.sleep(0.03)
+            return s[len("SLOW:"):]
+
+    inner = MemoryCheckpointStore()
+    store = EncryptedCheckpointStore(inner, SlowCipher())
+    base_cp = make_checkpoint('{"i": 0}')
+    cps = [
+        dataclasses.replace(base_cp, run_id=f"run-conc-{i}", last_request_json=f'{{"i":{i}}}')
+        for i in range(100)
+    ]
+    t0 = time.perf_counter()
+    await _aio.gather(*[store.write(cp) for cp in cps])
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 1.0, f"writes serialized: {elapsed:.2f}s (expected <1s; serial would be 3s)"
+
+
+@pytest.mark.asyncio
 async def test_delete_passes_through() -> None:
     inner = MemoryCheckpointStore()
     enc_store = EncryptedCheckpointStore(inner=inner, cipher=XORCipher())

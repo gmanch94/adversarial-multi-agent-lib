@@ -17,6 +17,7 @@ encryption of just last_request_json is the proportional response.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -99,11 +100,12 @@ class EncryptedCheckpointStore:
         )
 
     async def write(self, checkpoint: Checkpoint) -> None:
-        await self._inner.write(self._encrypt_request_json(checkpoint))
+        encrypted = await asyncio.to_thread(self._encrypt_request_json, checkpoint)
+        await self._inner.write(encrypted)
 
     async def read(self, run_id: str) -> Checkpoint:
         cp = await self._inner.read(run_id)
-        return self._decrypt_request_json(cp)
+        return await asyncio.to_thread(self._decrypt_request_json, cp)
 
     async def list_paused(self, wake_before: datetime) -> list[ResumeToken]:
         # list_paused returns ResumeToken (not Checkpoint), and ResumeToken
