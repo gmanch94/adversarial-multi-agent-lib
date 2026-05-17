@@ -1,6 +1,43 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-17 PM (cycle-8 full drain — 0/0/0/0 posture)
+Last updated: 2026-05-17 PM (post-advisor fold-in for GCP KMS cipher v2 plan)
+
+---
+
+## 2026-05-17 PM (later) — GCP KMS cipher spec + plan v2 (post-advisor)
+
+Tier 1.3 from `docs/production-readiness-gaps.md`. Spec + plan written and revised after advisor review.
+
+**Resume instructions for next session:**
+
+1. Read `docs/superpowers/specs/2026-05-17-gcp-kms-cipher-design.md` — note §9.5 (advisor revisions).
+2. Read `docs/superpowers/plans/2026-05-17-gcp-kms-cipher.md` — v2; Task 0 is the library async-bridge.
+3. Verify library state: `core/durable/encryption.py` `write/read` should still be `async def` calling `_encrypt_request_json` / `_decrypt_request_json` synchronously — that's the bridge Task 0 fixes.
+4. Dispatch subagent on Task 0 (library change). Land BEFORE any cipher task.
+5. Then dispatch sequentially on Tasks 1–14. Mini-audit checkpoints after Tasks 3, 6, 7 (per P1).
+
+**Locked design choices (spec §1-9):**
+- Envelope encryption, per-run DEK
+- ADC for credentials (no JSON in repo)
+- `GKMSv1:<wrapped_dek>:<nonce>:<ciphertext>` storage format
+- AES-256-GCM local; KMS only wraps/unwraps DEK
+- DEK cache: TTL=5min, LRU bounded, asyncio single-flight
+- IAM: `cryptoKeyEncrypterDecrypter` for daemon-SA, `cloudkms.admin` for admin-SA, key-scoped
+- `CIPHER_BACKEND=fernet|gcp_kms` env var; single image supports both
+- Key destroy protection enabled in provisioning script
+- `from None` everywhere KMS errors are wrapped (no project-name leak via __cause__)
+
+**Gap-doc additions (Tier 1.6/1.7/1.8):**
+- 1.6 workflow-version pinning in checkpoints (D1)
+- 1.7 PII redaction in OTel exports (D2)
+- 1.8 KMS-key-destroyed recovery — destroy protection, multi-region, project lien (D3)
+
+**Cycle-9 audit scope (Task 13 of GCP KMS plan):**
+- `examples/production/cipher_gcp_kms/` full surface
+- Verify cycle-8 fixes carry forward (Dockerfile hardening, compose hardening, conftest test-DSN guard, build-system block)
+- Specific watch-items: B2-shape recurrences, B5-shape regex laxity, P4-shape __cause__ leakage
+
+---
 
 ---
 

@@ -97,6 +97,51 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 **Effort:** 1 week.
 
+### 1.6 Workflow-version pinning in checkpoints (advisor D1)
+
+**Gap.** Today `Checkpoint` pins `pinned_executor_model` and `pinned_reviewer_model` strings. It does NOT pin workflow class version or executor prompt template hash. Concrete failure: v1.0 ships a clinical-trial workflow with prompt P1; run pauses 11 days; operator deploys v1.1 with refined prompt P2; daemon resumes the v1.0 run with v1.1's P2 prompt. The audit log says nothing about which prompt produced the recommendation. Downstream this breaks 21 CFR Part 11 attestation (Tier 3.2).
+
+**Failure mode without it.** Regulator (or defense counsel) asks "what exact prompt generated this AI recommendation that the operator approved?" Answer is "whichever prompt was deployed at resume time, which we don't track." Attestation chain breaks.
+
+**Deliverable:**
+- `Checkpoint.workflow_version_hash: str` field added to library
+- `DurableWorkflow.__init__` computes `sha256(module + qualname + sorted(prompt_template_hashes))` and pins on first write
+- Resume guard: if checkpoint's hash ≠ current hash, refuse to resume; pause with `pause_reason=WORKFLOW_VERSION_DRIFT`; operator decides whether to bump-and-continue or fail-and-retire
+- Migration script bumps existing checkpoints with the current hash + a "back-filled" sentinel
+
+**Effort:** 3–4 days. Library change; touches `Checkpoint`, `DurableWorkflow`, schema migration.
+
+### 1.7 PII redaction in observability path (advisor D2)
+
+**Gap.** Tier 1.1 OTel deployment will export trace spans containing exception attributes, asyncpg query parameter values, and `record_exception()` events. The in-process `LOG_FIELD_ALLOWLIST` filters log lines but does NOT extend to spans. The OTel exporter becomes the highest-bandwidth PII leak channel the moment it goes on.
+
+**Failure mode without it.** First trace export ships PHI to Honeycomb/Tempo/Jaeger. SOC 2 finding, possible breach notification trigger.
+
+**Deliverable:**
+- PII-redaction `SpanProcessor` impl that strips known PHI attribute keys from `span.attributes` before export
+- Structured-exception sanitizer for `record_exception()` — re-serializes exceptions with allowlisted attributes only
+- CI test that records fixture traces, grep-scans for PHI shapes (`gAAAAA`, DSN passwords, known PHI columns)
+- Document the allowlist as part of the OTel reference deployment's threat model
+
+**Effort:** 3–5 days. Lives in the OTel sibling deployment (Tier 1.1).
+
+### 1.8 KMS-key-destroyed recovery (advisor D3)
+
+**Gap.** Spec for the GCP KMS cipher (`docs/superpowers/specs/2026-05-17-gcp-kms-cipher-design.md`) covers daemon-SA destroy prevention via IAM separation. Doesn't cover:
+- Admin-SA compromise
+- GCP project deletion
+- Single-region keyring outage
+
+**Failure mode without it.** Compromised admin role schedules key destruction. 30-day default delay is the only barrier. After delay, every paused run is cryptographically unrecoverable.
+
+**Deliverable:**
+- Enable GCP **key destroy protection** in the provisioning script: `gcloud kms keys update --destroy-protection`. Lifting requires `roles/cloudkms.admin` + a 30-day delay PLUS an explicit destroy-protection-removal step.
+- Optional: multi-region keyring (cross-region KMS replication) — documented as upgrade path
+- Project-deletion mitigation: organization-level deletion lien (`gcloud resource-manager liens create`)
+- Runbook entries in `durable-compliance.md` for each unrecoverable scenario
+
+**Effort:** 2 days. Mostly runbook + provisioning-script work.
+
 ---
 
 ## Tier 2 — needed before multi-tenant or multi-team use

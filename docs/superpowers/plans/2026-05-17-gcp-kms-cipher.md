@@ -4,6 +4,8 @@
 
 **Goal:** Ship `GcpKmsCipher` reference implementation at `examples/production/cipher_gcp_kms/`, a drop-in replacement for `FernetCipher` that delegates key custody to GCP Cloud KMS with envelope encryption.
 
+**Plan version:** v2 (folded advisor pass 2026-05-17 PM). v1 → v2 changes: prepended Task 0 (library async-bridge for B1); Task 3 narrows excepts (B2) + tightens regex (B5); Task 6 introduces `CIPHER_BACKEND` env var (B3); Task 8 grants role names not primitive perms (B4); mini-audit checkpoints inserted after Tasks 3/6/7 (P1). See spec §9.5 for the full revision log.
+
 **Architecture:** Per-run Data Encryption Key wrapped by KMS; AES-256-GCM locally; ADC for auth; `GKMSv1:<wrapped_dek>:<nonce>:<ciphertext>` storage format; string-in/string-out per F-C-01. Library Protocol unchanged.
 
 **Tech Stack:** Python 3.11+, `google-cloud-kms`, `cryptography` (AES-GCM), `cachetools` (TTLCache for DEKs), asyncio.
@@ -36,6 +38,59 @@
 | `docs/runbooks/durable-integration.md`                        | Add cipher choice section               |
 | `docs/runbooks/durable-operations.md`                         | Add KMS rotation runbook                 |
 | `docs/runbooks/durable-compliance.md`                         | Replace Fernet section with parallel GcpKms section |
+
+---
+
+### Task 0: Library async-bridge (B1) — must land BEFORE any cipher task
+
+**Why first:** `EncryptedCheckpointStore.write/read` are `async def` but call `cipher.encrypt/decrypt` synchronously, blocking the event loop on KMS network I/O. Fixing the bridge in the library (one place) benefits every Cipher impl. FernetCipher overhead is negligible (~5 μs CPU per call); GcpKmsCipher overhead becomes correct.
+
+**Files:**
+- Modify: `src/adv_multi_agent/core/durable/encryption.py` (4-line change)
+- Test: `tests/unit/test_encryption.py` (add concurrent-call test)
+
+- [ ] **Step 1: Add `asyncio.to_thread` wrappers**
+
+```python
+# In EncryptedCheckpointStore
+async def write(self, checkpoint: Checkpoint) -> None:
+    encrypted = await asyncio.to_thread(self._encrypt_request_json, checkpoint)
+    await self._inner.write(encrypted)
+
+async def read(self, run_id: str) -> Checkpoint:
+    cp = await self._inner.read(run_id)
+    return await asyncio.to_thread(self._decrypt_request_json, cp)
+```
+
+Add `import asyncio` at module top.
+
+- [ ] **Step 2: Add async-bridge test**
+
+```python
+@pytest.mark.asyncio
+async def test_concurrent_writes_do_not_block_loop():
+    """100 parallel writes with a 30 ms-slow cipher should not serialize.
+    Total wall time < 100 * 30 ms = 3 s; expect < 500 ms via thread pool.
+    """
+    import time
+    class SlowCipher:
+        def encrypt(self, s): time.sleep(0.03); return f"SLOW:{s}"
+        def decrypt(self, s): time.sleep(0.03); return s[len("SLOW:"):]
+    store = EncryptedCheckpointStore(InMemoryStore(), SlowCipher())
+    t0 = time.perf_counter()
+    await asyncio.gather(*[store.write(make_cp(i)) for i in range(100)])
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 0.5, f"writes serialized: {elapsed:.2f}s"
+```
+
+- [ ] **Step 3: Run existing encryption tests** — `pytest tests/unit/test_encryption.py -v` — verify nothing breaks.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/adv_multi_agent/core/durable/encryption.py tests/unit/test_encryption.py
+git commit -m "fix(durable): asyncio.to_thread wrappers in EncryptedCheckpointStore"
+```
 
 ---
 
@@ -115,6 +170,17 @@ POLL_INTERVAL=60
 MAX_TOKENS_IN=2000000
 MAX_TOKENS_OUT=500000
 MAX_USD=50.0
+
+# Cipher selection (B3): "fernet" or "gcp_kms". Single image supports both.
+# fernet -> reads DURABLE_CHECKPOINT_KEYS (CSV of Fernet keys)
+# gcp_kms -> reads GCP_KMS_KEY_NAME (resource path above)
+CIPHER_BACKEND=gcp_kms
+
+# DEK cache (gcp_kms only).
+# D4: DEK_CACHE_TTL_SECONDS should be >= 3 * POLL_INTERVAL. Below that
+# ratio, most resumes miss the cache and call KMS — cost surprise +
+# latency surprise. With defaults (POLL_INTERVAL=60, TTL=300), the ratio
+# is 5x; safe. If you bump POLL_INTERVAL, bump TTL proportionally.
 DEK_CACHE_SIZE=1024
 DEK_CACHE_TTL_SECONDS=300
 ```
@@ -288,6 +354,13 @@ class DekCache:
         if hit is not None:
             return hit
 
+        # D7: atomic check-and-set across these lines. NO `await` between
+        # them — CPython asyncio guarantees no other coroutine runs in this
+        # span, which is the only thing keeping the single-flight invariant.
+        # Adding `await` here (e.g. `await logger.adebug(...)`) silently
+        # breaks single-flight: two concurrent misses can both create
+        # futures, two KMS calls fire, one future gets orphaned. Load-bearing
+        # comment; do not refactor away.
         inflight = self._inflight.get(key)
         if inflight is not None:
             return await inflight
@@ -548,8 +621,13 @@ from .dek_cache import DekCache
 
 
 _CIPHERTEXT_PREFIX = "GKMSv1:"
+
+# B5: tight per-segment shape — GCP KMS resources are [a-zA-Z0-9_-]{1,63}.
+# Lax `[^/]+` accepts spaces, semicolons, control chars; passes through
+# to KMS which returns confusing errors.
+_SEG = r"[a-zA-Z0-9_-]{1,63}"
 _KEY_NAME_RE = re.compile(
-    r"^projects/[^/]+/locations/[^/]+/keyRings/[^/]+/cryptoKeys/[^/]+$"
+    rf"^projects/{_SEG}/locations/{_SEG}/keyRings/{_SEG}/cryptoKeys/{_SEG}$"
 )
 
 
@@ -597,12 +675,16 @@ class GcpKmsCipher:
         })
         plaintext_dek: bytes = resp.plaintext
         wrapped_dek: bytes = resp.ciphertext
-        nonce = base64.b64decode(base64.b64encode(b"\x00" * 12))  # placeholder
-        # Real impl: secrets.token_bytes(12)
+        # D6: 96-bit random nonce; AES-GCM IND-CPA holds up to 2^32 messages
+        # per key. Per-run DEK = exactly 1 message per DEK; nonce reuse
+        # impossible by construction.
         import secrets
         nonce = secrets.token_bytes(12)
         ct = AESGCM(plaintext_dek).encrypt(nonce, plaintext.encode("utf-8"), None)
-        # Cache the plaintext DEK keyed by wrapped (sha256)
+        # D5: warm the cache for same-process round-trip case (test fixtures,
+        # debug introspection, immediate re-read within one poll cycle). Real
+        # resume path reads from a fresh process and always misses; that's
+        # expected — the set just avoids redundant Decrypt in the happy path.
         cache_key = hashlib.sha256(wrapped_dek).digest()
         self._cache.set(cache_key, plaintext_dek)
         return (
@@ -618,19 +700,24 @@ class GcpKmsCipher:
                 f"ciphertext does not start with {_CIPHERTEXT_PREFIX!r}"
             )
         body = ciphertext[len(_CIPHERTEXT_PREFIX):]
+        # B2: narrow exception catches — naming the actual failure shapes.
         try:
             wrapped_b64, nonce_b64, ct_b64 = body.split(":")
             wrapped_dek = base64.b64decode(wrapped_b64, validate=True)
             nonce = base64.b64decode(nonce_b64, validate=True)
             ct = base64.b64decode(ct_b64, validate=True)
-        except (ValueError, Exception) as exc:
-            raise InvalidToken(f"malformed GKMSv1 ciphertext: {exc}") from exc
+        except (ValueError, binascii.Error) as exc:
+            raise InvalidToken(f"malformed GKMSv1 ciphertext: {exc}") from None
 
         cache_key = hashlib.sha256(wrapped_dek).digest()
         cached = self._cache.get(cache_key)
         if cached is not None:
             plaintext_dek = cached
         else:
+            # B2: catch only GoogleAPICallError, not bare Exception.
+            # P4: from None to suppress __cause__ leakage of project name
+            # via traceback exporters (OTel record_exception).
+            from google.api_core.exceptions import GoogleAPICallError
             try:
                 client = self._get_client()
                 resp = client.decrypt(request={
@@ -639,15 +726,17 @@ class GcpKmsCipher:
                 })
                 plaintext_dek = resp.plaintext
                 self._cache.set(cache_key, plaintext_dek)
-            except Exception as exc:
+            except GoogleAPICallError:
                 raise KmsDecryptError(
                     "KMS decrypt failed; check daemon SA grants and key version status"
-                ) from exc
+                ) from None
 
+        # AES-GCM tag-failure raises InvalidTag specifically (cryptography lib).
+        from cryptography.exceptions import InvalidTag
         try:
             payload = AESGCM(plaintext_dek).decrypt(nonce, ct, None)
-        except Exception as exc:
-            raise InvalidToken(f"AES-GCM decrypt failed: {exc}") from exc
+        except InvalidTag:
+            raise InvalidToken("AES-GCM tag mismatch (payload tampered or wrong DEK)") from None
         return payload.decode("utf-8")
 
     def key_fingerprint(self) -> str:
@@ -675,6 +764,8 @@ git add examples/production/cipher_gcp_kms/cipher.py \
         examples/production/cipher_gcp_kms/tests/{conftest.py,test_cipher.py}
 git commit -m "feat(cipher-gcp-kms): GcpKmsCipher envelope encryption + 20 tests"
 ```
+
+- [ ] **Step 6: Mini-audit checkpoint (P1)** — focused security-audit on `cipher.py` + `dek_cache.py` only. Spawn a code-reviewer subagent with the 18-attack-surface checklist from `~/.claude/skills/security-audit/SKILL.md`, scoped to these two files. Triage any CRITICAL/HIGH inline; close before Task 4. Convention-level errors (B2-shape recurrences) caught here are 10× cheaper than at cycle-9 sweep.
 
 ---
 
@@ -794,32 +885,52 @@ git commit -m "test(cipher-gcp-kms): 3 live KMS integration tests; env-gated"
 
 - [ ] **Step 1: Copy `examples/production/durable_postgres/daemon.py` as the base**
 
-- [ ] **Step 2: Replace `FernetCipher` import + construction**
+- [ ] **Step 2: Add `CIPHER_BACKEND` runtime selector (B3)**
+
+Both ciphers coexist in a single image. Operator selects at compose time. This enables future Fernet→KMS migration script that reads with one, writes with the other.
 
 ```python
+from typing import Literal
 from .cipher import GcpKmsCipher
+# Keep FernetCipher import from the durable_postgres path (or vendor it
+# into this directory if cleaner separation is wanted; either is fine).
+from ..durable_postgres.cipher import FernetCipher
+
+CipherBackend = Literal["fernet", "gcp_kms"]
 
 # In main():
-key_name = os.environ.get("GCP_KMS_KEY_NAME")
-if not key_name:
-    raise ValueError("GCP_KMS_KEY_NAME env var is required")
-cipher = GcpKmsCipher(
-    kms_key_name=key_name,
-    dek_cache_size=int(os.environ.get("DEK_CACHE_SIZE", "1024")),
-    dek_cache_ttl_seconds=int(os.environ.get("DEK_CACHE_TTL_SECONDS", "300")),
-)
-logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
+backend: CipherBackend = os.environ.get("CIPHER_BACKEND", "gcp_kms")  # type: ignore[assignment]
+if backend == "fernet":
+    keys_csv = os.environ.get("DURABLE_CHECKPOINT_KEYS", "")
+    keys = tuple(k.strip().encode() for k in keys_csv.split(",") if k.strip())
+    if not keys:
+        raise ValueError("CIPHER_BACKEND=fernet requires DURABLE_CHECKPOINT_KEYS")
+    cipher = FernetCipher(keys=list(keys))
+elif backend == "gcp_kms":
+    key_name = os.environ.get("GCP_KMS_KEY_NAME")
+    if not key_name:
+        raise ValueError("CIPHER_BACKEND=gcp_kms requires GCP_KMS_KEY_NAME")
+    cipher = GcpKmsCipher(
+        kms_key_name=key_name,
+        dek_cache_size=int(os.environ.get("DEK_CACHE_SIZE", "1024")),
+        dek_cache_ttl_seconds=int(os.environ.get("DEK_CACHE_TTL_SECONDS", "300")),
+    )
+else:
+    raise ValueError(f"unknown CIPHER_BACKEND: {backend!r}; expected fernet|gcp_kms")
+logging.info("cipher.backend=%s fingerprint=%s", backend, cipher.key_fingerprint())
 ```
 
-- [ ] **Step 3: Remove `DURABLE_CHECKPOINT_KEYS` env var handling** from `DaemonConfig` and `load_config_from_env`. Replace with `gcp_kms_key_name: str`.
+- [ ] **Step 3: Update `DaemonConfig`** — add `cipher_backend: CipherBackend` field; keep both `fernet_keys: tuple[bytes, ...]` and `gcp_kms_key_name: str | None`. `load_config_from_env` populates whichever the backend requires; the other is `()` / `None`. `__repr__` redacts both shapes.
 
 - [ ] **Step 4: Update HEALTHCHECK_KEYS / LOG_FIELD_ALLOWLIST** if any new fields are introduced (e.g. `dek_cache_hit_ratio`).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git commit -m "feat(cipher-gcp-kms): daemon entry; swaps FernetCipher for GcpKmsCipher"
+git commit -m "feat(cipher-gcp-kms): daemon entry; CIPHER_BACKEND env var supports both ciphers"
 ```
+
+- [ ] **Step 6: Mini-audit checkpoint (P1)** — focused audit on `daemon.py` config wiring + `CIPHER_BACKEND` dispatch. Specific concerns: (a) does the unknown-backend branch fail-loud at startup not at first encrypt? (b) does redacting `__repr__` cover both `fernet_keys` and `gcp_kms_key_name`? (c) is `load_config_from_env` order-independent on the two backends?
 
 ---
 
@@ -839,6 +950,8 @@ git commit -m "feat(cipher-gcp-kms): daemon entry; swaps FernetCipher for GcpKms
 git commit -m "feat(cipher-gcp-kms): Dockerfile + compose + ADC mount; same hardening as cycle-8"
 ```
 
+- [ ] **Step 4: Mini-audit checkpoint (P1)** — focused audit on Dockerfile + compose. Specific concerns: (a) ADC mount is `:ro` not `:rw`; (b) no service-account JSON path leaks via env var; (c) all cycle-8 hardening (cap_drop, read_only, no-new-privileges, ulimits, digest pin) carries forward unchanged; (d) postgres service inherits A8-M-06 hardening.
+
 ---
 
 ### Task 8: Provisioning + rotation + IAM-audit scripts
@@ -848,7 +961,25 @@ git commit -m "feat(cipher-gcp-kms): Dockerfile + compose + ADC mount; same hard
 - Create: `examples/production/cipher_gcp_kms/scripts/rotate_kms_key_version.sh`
 - Create: `examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh`
 
-- [ ] **Step 1: `provision_keyring.sh`** — idempotent. Creates keyring, key, IAM grants for daemon-SA + admin-SA. Uses `gcloud` CLI. Fail-loud if `gcloud auth` not configured.
+- [ ] **Step 1: `provision_keyring.sh`** — idempotent. Creates keyring, key, IAM grants for daemon-SA + admin-SA via **role names** not primitive perms (B4). Fail-loud if `gcloud auth` not configured. Also enables **key destroy protection** (D3): `gcloud kms keys update --destroy-protection KEY`. Bindings:
+
+```bash
+# Daemon SA: encrypt+decrypt only. Cannot rotate, destroy, modify IAM.
+gcloud kms keys add-iam-policy-binding "$KEY" \
+    --keyring "$KEYRING" --location "$LOCATION" \
+    --member "serviceAccount:durable-daemon@$PROJECT.iam.gserviceaccount.com" \
+    --role roles/cloudkms.cryptoKeyEncrypterDecrypter
+
+# Admin SA: full management. Used only by operator running rotation runbook.
+gcloud kms keys add-iam-policy-binding "$KEY" \
+    --keyring "$KEYRING" --location "$LOCATION" \
+    --member "serviceAccount:durable-admin@$PROJECT.iam.gserviceaccount.com" \
+    --role roles/cloudkms.admin
+
+# Destroy protection: lifting requires admin + 30-day delay.
+gcloud kms keys update "$KEY" --keyring "$KEYRING" --location "$LOCATION" \
+    --destroy-protection
+```
 
 - [ ] **Step 2: `rotate_kms_key_version.sh`** — `gcloud kms keys versions create`. Logs the new fingerprint. No daemon restart needed.
 
