@@ -443,4 +443,35 @@ Items where the library makes a choice that compliance may need to override:
 - **Cross-region replication of checkpoints:** library is indifferent; impl owns it. Data residency requires caller's `CheckpointStore` impl to pin region.
 - **Caller-side audit of library version:** if library version changes between pause and resume, the run executes under a different code path. Compliance may require pinning library version in the resume token or rejecting cross-version resume.
 
+---
+
+## §12 Workflow version drift
+
+A run that paused under workflow v1.0 and is resumed under v1.1 produces a
+`WORKFLOW_VERSION_DRIFT` pause. This is the 21 CFR Part 11 attestation
+guardrail — the same prompt that produced rounds 1-N must produce round
+N+1 unless an operator explicitly accepts the drift.
+
+### When you'll see this
+
+- `pause_reason=WORKFLOW_VERSION_DRIFT` in healthcheck output
+- Daemon logs: `workflow_version_drift run_id=... checkpoint_hash=... current_hash=...`
+
+### Remediation paths
+
+1. **Roll back the library deploy** to match the checkpoint's hash. Best when
+   the new code wasn't intended to land mid-flight. Verify by re-resuming;
+   the run continues without drift.
+
+2. **Accept the drift** explicitly. Caller passes `force_workflow_upgrade=True`
+   on the `resume()` call. The accept event lands in `rounds_history` for
+   the attestation log:
+   ```json
+   {"event": "workflow_version_upgrade", "from": "ab12...", "to": "cd34..."}
+   ```
+
+3. **Retire the run.** Cancel and re-start under the new workflow version.
+
+Force-accept defeats the attestation chain. Document the reason in writing.
+
 Surface each to your compliance lead during pre-production sign-off.

@@ -455,4 +455,58 @@ Tick every box before promoting to production traffic. Owner column points at wh
 - **Library bug or Protocol shape issue:** open an issue in `github.com/gmanch94/adv-multi-agent`
 - **Reference impl request (`PostgresCheckpointStore` et al.):** open an issue tagged `reference-impl`
 - **Domain workflow integration question:** consult the relevant domain slide deck in `docs/slides/` and the design spec in `docs/superpowers/specs/`
+
+---
+
+## §13 Implementing `workflow_version_inputs()`
+
+Implement on every workflow class that ships to a regulated workload.
+
+### What to return
+
+Every byte whose change would alter a recommendation:
+
+- Prompt templates (string constants in the workflow module)
+- Bundled skill template files (`.md` under `skills/templates/`)
+- Convergence-criteria constants (score thresholds, flag-header strings,
+  veto markers, FLAGS-class checklist text)
+
+### What NOT to return
+
+- Per-request data (PHI risk; hash inputs may appear in tracebacks)
+- The executor model name (already pinned via `pinned_executor_model`)
+- The reviewer model name (already pinned via `pinned_reviewer_model`)
+- Wall-clock or random values (breaks determinism)
+
+### Reference impl
+
+```python
+class MyWorkflow(BaseWorkflow):
+    _PROMPT = "You are a domain expert..."  # the executor prompt
+    _SCORE_THRESHOLD = 0.85
+
+    def workflow_version_inputs(self):
+        from importlib import resources
+        pkg = resources.files("adv_multi_agent.<domain>.skills.templates")
+        return [
+            self._PROMPT.encode(),
+            str(self._SCORE_THRESHOLD).encode(),
+            *[
+                (pkg / fname).read_bytes()
+                for fname in sorted(p.name for p in pkg.iterdir() if p.name.endswith(".md"))
+            ],
+        ]
+```
+
+### Roundtrip-testing
+
+```python
+def test_workflow_version_inputs_deterministic():
+    wf = MyWorkflow()
+    assert list(wf.workflow_version_inputs()) == list(wf.workflow_version_inputs())
+
+def test_workflow_version_inputs_change_on_template_edit(tmp_path):
+    # Mutate a template byte; verify hash changes.
+    ...
+```
 - **Security concern:** see `docs/SECURITY_MODEL.md` reporting section; do NOT open a public issue for vulnerabilities

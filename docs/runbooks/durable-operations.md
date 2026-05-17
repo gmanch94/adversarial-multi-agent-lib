@@ -447,3 +447,16 @@ bash examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh \
 
 Expected output: exactly two principals listed — daemon SA with `cryptoKeyEncrypterDecrypter`,
 admin SA with `cloudkms.admin`. Any additional principal is a finding.
+
+---
+
+## §14 Alert: WORKFLOW_VERSION_DRIFT
+
+Trigger: any paused run with `pause_reason=WORKFLOW_VERSION_DRIFT`.
+
+Severity: P2. One drift is an operator-action gate — it means a code deploy
+landed while a run was paused, and the operator must consciously roll back
+or accept the drift.
+
+Page after 0 hits (immediate alert). Page contains the run_id, checkpoint
+hash, current hash, and link to compliance runbook §12.
