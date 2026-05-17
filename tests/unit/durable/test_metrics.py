@@ -208,3 +208,137 @@ def test_noop_zero_call_overhead():
         m.counter("x", tags={"k": "v"})
     elapsed = time.perf_counter() - t0
     assert elapsed < 1.0, f"Noop counter took {elapsed:.3f}s for 10k calls"
+
+
+# ---------------- Tier 1.1 extensions: histograms + budget gauges ----------------
+
+
+class _ConvergingRoundWorkflow(BaseWorkflow):
+    """run_round workflow that converges on round 1 (no pause)."""
+
+    async def run(self, request):
+        return WorkflowResult(
+            final_output="unused", rounds=0, final_score=0.0, converged=False, metadata={}
+        )
+
+    async def run_round(self, request, prior_state, round_num, ctx):
+        return {
+            "output": "x",
+            "score": 1.0,
+            "converged": True,
+            "rounds_history_entry": {"round": round_num, "score": 1.0},
+        }
+
+
+@pytest.mark.asyncio
+async def test_round_latency_histogram_emitted_on_success(cfg):
+    rb = RecordingMetricsBackend()
+    dw = DurableWorkflow(
+        inner=_ConvergingRoundWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=MemoryRunLock(),
+        metrics=rb,
+    )
+    await dw.start(request={})
+    hist = [c for c in rb.calls if c[1] == "durable.round.latency_seconds"]
+    assert len(hist) >= 1
+    # Non-negative latency; tagged by workflow class
+    assert hist[0][2] >= 0.0
+    assert hist[0][3]["workflow"] == "_ConvergingRoundWorkflow"
+
+
+@pytest.mark.asyncio
+async def test_round_latency_not_emitted_on_pause(cfg):
+    """Pause path short-circuits before the histogram emit point — no histogram."""
+    rb = RecordingMetricsBackend()
+    dw = DurableWorkflow(
+        inner=_PausingWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=MemoryRunLock(),
+        metrics=rb,
+    )
+    await dw.start(request={})
+    hist = [c for c in rb.calls if c[1] == "durable.round.latency_seconds"]
+    assert hist == [], f"expected no histogram on pause path, got {hist}"
+
+
+@pytest.mark.asyncio
+async def test_lock_acquire_latency_histogram_emitted_on_success(cfg):
+    rb = RecordingMetricsBackend()
+    dw = DurableWorkflow(
+        inner=_ConvergingWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=MemoryRunLock(),
+        metrics=rb,
+    )
+    await dw.start(request={})
+    hist = [c for c in rb.calls if c[1] == "durable.lock.acquire_latency_seconds"]
+    assert len(hist) == 1
+    assert hist[0][2] >= 0.0
+    assert hist[0][3]["phase"] == "start"
+
+
+@pytest.mark.asyncio
+async def test_lock_acquire_latency_not_emitted_on_failure(cfg):
+    """Failure path returns early; histogram unreachable."""
+    rb = RecordingMetricsBackend()
+
+    class _BrokenLock:
+        async def acquire(self, run_id, ttl_seconds):
+            raise RuntimeError("down")
+
+        async def release(self, handle):
+            pass
+
+        async def heartbeat(self, handle):
+            pass
+
+    dw = DurableWorkflow(
+        inner=_ConvergingWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=_BrokenLock(),
+        metrics=rb,
+    )
+    await dw.start(request={})
+    hist = [c for c in rb.calls if c[1] == "durable.lock.acquire_latency_seconds"]
+    assert hist == []
+
+
+@pytest.mark.asyncio
+async def test_budget_gauges_emitted_per_round(cfg):
+    from adv_multi_agent.core.durable.budget import BudgetTracker
+
+    rb = RecordingMetricsBackend()
+    budget = BudgetTracker(max_tokens_in=1_000_000, max_tokens_out=500_000, max_usd=50.0)
+    dw = DurableWorkflow(
+        inner=_ConvergingRoundWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=MemoryRunLock(),
+        budget_tracker=budget,
+        metrics=rb,
+    )
+    await dw.start(request={})
+    names = {c[1] for c in rb.calls if c[0] == "gauge"}
+    assert "durable.budget.tokens_in" in names
+    assert "durable.budget.tokens_out" in names
+    assert "durable.budget.usd_spent" in names
+
+
+@pytest.mark.asyncio
+async def test_budget_gauges_not_emitted_without_budget_tracker(cfg):
+    rb = RecordingMetricsBackend()
+    dw = DurableWorkflow(
+        inner=_ConvergingRoundWorkflow(config=cfg),
+        config=cfg,
+        checkpoint_store=MemoryCheckpointStore(),
+        run_lock=MemoryRunLock(),
+        metrics=rb,  # no budget_tracker
+    )
+    await dw.start(request={})
+    names = {c[1] for c in rb.calls if c[0] == "gauge"}
+    assert not any(n.startswith("durable.budget.") for n in names)

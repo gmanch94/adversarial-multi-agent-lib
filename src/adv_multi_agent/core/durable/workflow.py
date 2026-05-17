@@ -292,6 +292,8 @@ class DurableWorkflow:
             "durable.workflow.start", tags={"workflow": wf_class}
         )
         handle: LockHandle | None = None
+        import time as _time_lock
+        _lock_t0 = _time_lock.perf_counter()
         try:
             handle = await self._lock.acquire(run_id, ttl_seconds=300)
         except Exception as exc:
@@ -300,6 +302,11 @@ class DurableWorkflow:
                 tags={"workflow": wf_class, "phase": "start"},
             )
             return RunOutcome(status="failed", token=token, error=f"lock acquire failed: {exc}")
+        self._metrics.histogram(
+            "durable.lock.acquire_latency_seconds",
+            _time_lock.perf_counter() - _lock_t0,
+            tags={"workflow": wf_class, "phase": "start"},
+        )
 
         try:
             cp = Checkpoint(
@@ -339,7 +346,9 @@ class DurableWorkflow:
                         "score": final_result.final_score,
                     })
                 else:
+                    import time as _time_mod  # local; histogram timing only
                     for round_num in range(1, self._config.max_review_rounds + 1):
+                        _round_t0 = _time_mod.perf_counter()
                         try:
                             r = await self._inner.run_round(  # type: ignore[attr-defined]
                                 round_num=round_num,
@@ -390,6 +399,14 @@ class DurableWorkflow:
                                 pause_reason=ps.reason,
                             )
 
+                        # Tier 1.1: round latency histogram (success path only;
+                        # pause path doesn't measure since it short-circuits).
+                        self._metrics.histogram(
+                            "durable.round.latency_seconds",
+                            _time_mod.perf_counter() - _round_t0,
+                            tags={"workflow": wf_class},
+                        )
+
                         entry = r.get("rounds_history_entry")
                         if entry is not None:
                             rounds_history.append(entry)
@@ -400,7 +417,25 @@ class DurableWorkflow:
                             cp.rounds_history = rounds_history
                             cp.updated_at = _now_iso()
                             if self._budget is not None:
-                                cp.budget_used = self._budget.snapshot().to_dict()
+                                _bs = self._budget.snapshot()
+                                cp.budget_used = _bs.to_dict()
+                                # Tier 1.1: budget gauges (one snapshot reused).
+                                _btags = {"workflow": wf_class}
+                                self._metrics.gauge(
+                                    "durable.budget.tokens_in",
+                                    float(_bs.tokens_in),
+                                    tags=_btags,
+                                )
+                                self._metrics.gauge(
+                                    "durable.budget.tokens_out",
+                                    float(_bs.tokens_out),
+                                    tags=_btags,
+                                )
+                                self._metrics.gauge(
+                                    "durable.budget.usd_spent",
+                                    float(_bs.usd_spent),
+                                    tags=_btags,
+                                )
                             await self._store.write(cp)
 
                         if r.get("converged"):
