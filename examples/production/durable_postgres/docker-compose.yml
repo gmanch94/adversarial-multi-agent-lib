@@ -35,9 +35,14 @@ services:
       dockerfile: examples/production/durable_postgres/Dockerfile
     networks: [internal, egress]
     env_file: .env
-    environment:
-      # Override DSN to point at the in-network postgres service.
-      POSTGRES_DSN: "postgresql://daemon@postgres:5432/durable"
+    # A8-H-01: no POSTGRES_DSN override here.  compose environment: blocks
+    # override env_file: values, so a bare "postgresql://daemon@postgres:5432/durable"
+    # without a password silently discards the operator's password from .env.
+    # The operator MUST set POSTGRES_DSN in .env to include the password AND
+    # use "postgres" as the hostname (docker-compose internal service name):
+    #   POSTGRES_DSN=postgresql://daemon:<password>@postgres:5432/durable
+    # where <password> matches the content of .secrets/postgres_password.
+    # See .env.example for the exact template line.
     depends_on:
       postgres:
         condition: service_healthy

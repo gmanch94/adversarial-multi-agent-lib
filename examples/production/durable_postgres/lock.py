@@ -49,7 +49,7 @@ import asyncpg
 from adv_multi_agent.core.durable.lock import RunLocked
 
 
-@dataclass(unsafe_hash=True)
+@dataclass(eq=False)
 class _PgLockHandle:
     """Concrete lock handle wrapping the held asyncpg connection.
 
@@ -57,6 +57,12 @@ class _PgLockHandle:
     but _PgLockHandle must mutate `watchdog` and `released` at runtime.
     The isinstance() guards in release()/heartbeat() use _PgLockHandle
     directly, so no base class is required for correctness.
+
+    A8-H-05: eq=False gives identity-based hash (id(self)), immune to
+    field mutation.  unsafe_hash=True derived hash from ALL fields
+    including mutable `watchdog` and `released` — after heartbeat mutated
+    watchdog, _ActiveLockRegistry.unregister() looked up a stale bucket
+    and silently failed, leaking ghost entries forever.
     """
     run_id: str
     key1: int

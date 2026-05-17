@@ -52,12 +52,27 @@ async def reencrypt_all(
         CompareAndSwapFailed,
     )
 
+    # A8-H-06: assert private API symbols exist before use so a library refactor
+    # fails loud at the start of rotation rather than silently mid-sweep.
+    if not hasattr(store, "_inner"):
+        raise RuntimeError(
+            "reencrypt_all requires EncryptedCheckpointStore with _inner attribute. "
+            "Library private API changed — update this script to match encryption.py."
+        )
+    if not hasattr(store, "_encrypt_request_json"):
+        raise RuntimeError(
+            "reencrypt_all requires EncryptedCheckpointStore._encrypt_request_json. "
+            "Library private API changed — update this script to match encryption.py."
+        )
+
     # Reach through the encryption decorator to the inner Postgres store.
     # The library's EncryptedCheckpointStore exposes `_inner` (see encryption.py).
     inner: PostgresCheckpointStore = store._inner  # type: ignore[attr-defined]
-    assert isinstance(inner, PostgresCheckpointStore), (
-        "reencrypt_all requires a PostgresCheckpointStore inside the encryption decorator"
-    )
+    if not isinstance(inner, PostgresCheckpointStore):
+        raise RuntimeError(
+            "reencrypt_all requires a PostgresCheckpointStore inside the encryption decorator; "
+            f"got {type(inner).__name__}"
+        )
 
     async with pool.acquire() as conn:
         # v4: read workflow_class so we preserve it on the CAS write
@@ -92,7 +107,20 @@ async def reencrypt_all(
             skipped += 1
             continue
 
-    logging.info("reencrypt complete: %d re-encrypted, %d skipped", count, skipped)
+    total = len(rows)
+    logging.info(
+        "reencrypt complete: %d re-encrypted, %d skipped, %d total rows",
+        count, skipped, total,
+    )
+    # A8-H-06: verify the sweep accounted for every row.  count + skipped must
+    # equal the snapshot size we fetched.  A mismatch means an exception was
+    # swallowed somewhere in the loop and rotation is incomplete.
+    if count + skipped != total:
+        raise RuntimeError(
+            f"reencrypt_all accounting mismatch: re-encrypted={count} + "
+            f"skipped={skipped} != total={total}. "
+            "Rotation is incomplete — re-run after investigating."
+        )
     return count
 
 

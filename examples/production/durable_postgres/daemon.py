@@ -147,8 +147,11 @@ class HealthcheckServer:
 
     async def start(self) -> None:
         # F-M-01: bind to 127.0.0.1 only; docker compose healthcheck uses localhost
+        # A8-H-04: cap listener backlog; healthcheck never needs more than 16.
+        # Default SOMAXCONN (4096) leaves the queue open to slow-loris exhaustion
+        # from co-resident processes; 16 is ample for docker-exec health probes.
         self._server = await asyncio.start_server(
-            self._handle, host="127.0.0.1", port=self._port
+            self._handle, host="127.0.0.1", port=self._port, backlog=16
         )
 
     async def _handle(

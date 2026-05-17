@@ -479,6 +479,26 @@ What IS implemented correctly that a researcher would expect to find broken:
 
 ---
 
+## POST-AUDIT CLOSURE — 2026-05-17
+
+All 6 HIGH findings closed inline same-session. MEDIUM + LOW deferred to NEXT_SESSION as in-sprint per CLAUDE.md domain-ship audit cadence.
+
+| Code | Closure | Fix |
+|---|---|---|
+| **A8-H-01** | ✅ CLOSED | `docker-compose.yml`: removed `POSTGRES_DSN` override in `environment:` block (was silently discarding `.env` password). `.env.example` updated: operator now sets full DSN including password, hostname `postgres` for compose deploys. |
+| **A8-H-02** | ✅ CLOSED | `requirements.txt` regenerated via `pip-compile --generate-hashes --allow-unsafe` → 959-line hashed lockfile. Dockerfile `--require-hashes` now succeeds. |
+| **A8-H-03** | ✅ CLOSED | Dockerfile digest filled: `python:3.11-slim@sha256:9a7765b36773a37061455b332f18e265e7f58f6fea9c419a550d2a8b0e9db834` (pulled 2026-05-17). |
+| **A8-H-04** | ✅ CLOSED | `daemon.py` `HealthcheckServer.start()` adds `backlog=16` cap to `asyncio.start_server`. SYN flood / slow-loris on co-resident network bounded. |
+| **A8-H-05** | ✅ CLOSED | `lock.py` `_PgLockHandle` decorator changed `unsafe_hash=True` → `eq=False`. Identity-based hash via `id(self)`; immune to field mutation. Registry set membership now stable across heartbeats. |
+| **A8-H-06** | ✅ CLOSED | `scripts/reencrypt_all.py`: explicit `hasattr` checks on library private API symbols at start of sweep (fail-loud on refactor). End-of-sweep accounting check: `count + skipped == total`, raises on mismatch. |
+
+**Cumulative posture after cycle-8 HIGH closures: 0 CRIT / 0 HIGH / 9 MED / 10 LOW.** MEDIUM + LOW tracked in NEXT_SESSION for next-session pickup.
+
+---
+
+
+---
+
 ## Cumulative posture (8 cycles)
 
 | Cycle | Date | Scope | Initial C/H/M/L | Status |
@@ -490,7 +510,7 @@ What IS implemented correctly that a researcher would expect to find broken:
 | 5 | 2026-05-16 AM | healthcare | 0 / 0 / 1 / 4 | all closed |
 | 6 | 2026-05-16 AM | healthcare follow-up | 0 / 0 / 0 / 0 | carry-forward verified |
 | 7 | 2026-05-16 PM | durable POC | 0 / 4 / 6 / 5 | drained same-session to 0/0/0/0 |
-| **8** | **2026-05-17** | **prod-postgres reference** | **0 / 6 / 9 / 10** | **NEEDS FIXES (open)** |
+| **8** | **2026-05-17** | **prod-postgres reference** | **0 / 6 / 9 / 10** | **HIGH drained same-day to 0/0/9/10; MED+LOW deferred to NEXT_SESSION** |
 
 **Cycle-8 recurring shapes:**
 - **A8-H-01 (compose DSN override)** — single-path-of-control assumption: README + .env.example assume operator's password matters; compose silently overrides. Same shape as M-PC-1 / H-IND-1 (load-bearing convention undermined elsewhere in the codebase).
