@@ -1,8 +1,72 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-17 PM (Tasks 10-12 of GCP KMS cipher plan SHIPPED)
+Last updated: 2026-05-17 EVE (8-hour autonomous session — three Tier-1 lanes shipped)
 
 **Standing autonomy (2026-05-17):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
+
+## 2026-05-17 EVE — 8-hour autonomous session summary
+
+User stepped away with "roll with tasks that move us in the right direction." Three Tier-1 lanes shipped + pushed to `main`. Cycle-10 audit closed. 680→685 tests.
+
+### Lanes shipped
+
+**Tier 1.6 — Workflow-version pinning (D-DURABLE-5)** — `b7814fa`..`f36badb` (8 commits)
+- Spec: `docs/superpowers/specs/2026-05-17-workflow-version-pinning-design.md`
+- Plan: `docs/superpowers/plans/2026-05-17-workflow-version-pinning.md`
+- `Checkpoint.workflow_version_hash: str | None` (16-hex) + same on `ResumeToken`
+- `HasWorkflowVersionInputs` Protocol on inner workflow (optional; UserWarning if absent)
+- `DurableWorkflow.resume(token, *, force_workflow_upgrade=False)` — drift defaults to pause+`WORKFLOW_VERSION_DRIFT`
+- Pre-1.6 back-fill with explicit `workflow_version_backfill` event in rounds_history (A10-M1 closure)
+- `DURABLE_REFUSE_UNVERSIONED=1` env-var hardens post-migration
+- Healthcare clinical-trial workflow gained Protocol impl as fold-in
+- Cycle-10 audit: 0 CRIT / 2 HIGH / 3 MED / 5 LOW. Drained HIGH×2 + MED×2 inline; A10-M3 + 5 LOW backlogged. Report at `docs/security-audits/2026-05-17-workflow-version-pinning-sweep.md`.
+- New Tier 1.9 (Full-Checkpoint AEAD) appended to gaps doc as A10-H2 follow-up
+
+**Tier 1.8 — KMS-key-destroyed recovery** — `5772cfc`..`d3cade8` (2 commits)
+- `provision_keyring.sh` auto-applies `--prevent-destroy` to every ENABLED version + creates project-deletion lien
+- `rotate_kms_key_version.sh` chains `--prevent-destroy` on every new version
+- `durable-compliance.md` §13 added: three unrecoverable scenarios (admin-SA compromise / project deletion / regional outage) + mitigations + recovery posture table
+- Multi-region keyring documented as operator upgrade path
+- cipher_gcp_kms README operator-checklist items ticked for destroy-protection + recovery procedure
+
+**Tier 1.1 — Observability scaffold (PARTIAL)** — `ccdad61`..`b8803fd` (2 commits)
+- `src/adv_multi_agent/core/durable/metrics.py` — `MetricsBackend` Protocol (counter/gauge/histogram/timing) + `NoopMetricsBackend` zero-overhead default
+- `DurableWorkflow.__init__` accepts `metrics=` kwarg; default Noop
+- 3 representative wire points: `durable.workflow.start` counter, `durable.lock.acquire_failed` counter, `durable.workflow.pause` counter (with `pause_reason` tag)
+- 12 unit tests (Noop perf + Recording backend wired in DurableWorkflow)
+- **NOT shipped yet:** OTel sibling reference deployment, histograms (round latency), gauges (budget, lock-pool saturation), Grafana dashboards, alert rules, Tier 1.7 PII-redaction SpanProcessor
+
+### Audit + meta
+
+- Cycle-10 audit posture: 0 CRIT / 0 HIGH / 1 MED (A10-M3 backlog → Tier 3.2) / 5 LOW
+- Repo posture: 685 tests pass · ruff clean · mypy clean on durable subpackage
+- Stale-shell-redirect artifacts cleaned in `4fda541`
+
+### Outstanding work (queued, in order of recommended next pickup)
+
+1. **Tier 1.1 continuation — OTel sibling deployment.** Most force-multiplier. Scaffold is in place; OTel exporter wiring + Grafana dashboards + alert rules are mechanical. Effort: 4-6 days. New dir: `examples/production/durable_postgres_otel/`.
+2. **Tier 1.7 — PII redaction in OTel exports.** Depends on 1.1 deployment landing. Effort: 3-5 days.
+3. **Tier 1.2 — k8s deployment target.** kustomize overlays + sealed-secrets. Effort: 1 wk.
+4. **Tier 1.4 — schema migration tool.** Foundation for any future library version bump. Effort: 4-5 d.
+5. **Tier 1.5 — backup/restore/PITR.** First disk failure invalidates the value prop without this. Effort: 1 wk.
+6. **Tier 1.9 — Full-Checkpoint AEAD (A10-H2 closure).** Cipher Protocol extension to sign full Checkpoint blob, not just `last_request_json`. Effort: 1 wk.
+7. **A10-M3 — operator identity on force-accept event.** Folds into Tier 3.2 (21 CFR Part 11 e-signature workflow).
+
+### Backlog (cycle-10 LOW, all triaged backlog or accepted)
+
+- A10-L1 (64-bit hash truncation) — accepted for accidental-drift detection
+- A10-L2 (hardcoded `_KNOWN_MODELS`) — separate refactor
+- A10-L3 (`DURABLE_REFUSE_UNVERSIONED` accepts literal `"1"` only) — cosmetic
+- A10-L4 (PHI restriction docs-only) — documented in compliance runbook §12
+- A10-L5 (force-accept replay duplicate event) — accepted audit-trail noise
+
+### Recommended next pickup
+
+**1.1 continuation** is highest-leverage (every future operational concern depends on metrics being live). Scaffold is shipped; OTel deployment is the next slice. Per autonomy: secure (PII redaction must land alongside, not after) + durable (alert rules + dashboards survive operator turnover) + scalable (the Protocol is already plug-replaceable).
+
+If user reverses cost policy or re-enables branch protection: re-run audit cycles 1-10 against branch protection (none of the cycle-8/9/10 fixes assume direct-to-main).
 
 ---
 
