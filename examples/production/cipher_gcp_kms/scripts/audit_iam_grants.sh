@@ -58,6 +58,12 @@ POLICY_JSON=$(gcloud kms keys get-iam-policy "$KEY" \
     --project "$PROJECT" \
     --format=json 2>/dev/null)
 
+# Export JSON before the first heredoc so both python sub-shells can read it.
+# A9-H-01: original code ran the first heredoc before the export, so
+# _POLICY_JSON was always empty → table always printed "(no sensitive KMS
+# bindings found)". Moving the export here fixes the operator-visible table.
+export _POLICY_JSON="$POLICY_JSON"
+
 # Extract relevant bindings using python (available in gcloud SDK environments)
 AUDIT_OUTPUT=$(python3 - <<'PYEOF'
 import json, sys, os
@@ -97,7 +103,6 @@ sys.exit(0)
 PYEOF
 )
 
-export _POLICY_JSON="$POLICY_JSON"
 echo "$AUDIT_OUTPUT"
 
 # Re-run python to get count for gate check
