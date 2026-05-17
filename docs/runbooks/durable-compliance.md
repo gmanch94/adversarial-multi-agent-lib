@@ -173,7 +173,7 @@ Library's `Cipher` Protocol is rotation-agnostic — caller's cipher impl decide
 5. **Remove old key** from `MultiFernet` config. Redeploy.
 6. **Verify** — no decrypt failures in logs for 24 hours.
 
-**Frequency:** annually at minimum; quarterly if PHI volumes warrant; immediately on suspected compromise.
+**Frequency:** quarterly at minimum (HITRUST CSF KSP.02.05 floor for PHI-bearing systems); immediately on suspected compromise. The bundled clinical-trial workflow is in scope; defer to your regulator for any stricter cadence. Earlier guidance ("annually") was tightened post-A8-L-05.
 
 ### 5.3 Key compromise response
 

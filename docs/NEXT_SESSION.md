@@ -60,7 +60,7 @@ Reference deployment for the durable subpackage at `examples/production/durable_
 - 18 new files under `examples/production/durable_postgres/` (~640 LOC code, ~360 docs/config)
 - `PostgresCheckpointStore` + `PostgresAdvisoryLock` + `FernetCipher` reference impls
 - Two-pool model prevents lock-vs-query deadlock
-- SHA-256 two-key advisory lock (2^96 collision space)
+- SHA-256 two-key advisory lock (2^64 raw collision space; Postgres 16 exposes only `pg_try_advisory_lock(int4,int4)`, so original 2^96 estimate was based on the unavailable int8+int4 form. Post-A8-M-01: namespace XOR'd across both keys → 2^64 of namespace separation.)
 - `EncryptedCheckpointStore` decorator wraps PG store; `ENC:v1:` sentinel
 - `MultiFernet` rotation-ready; `scripts/reencrypt_all.py` closes the loop
 - Hardened container: non-root, read-only-rootfs, all caps dropped, no core dumps
