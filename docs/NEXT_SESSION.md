@@ -2,6 +2,8 @@
 
 Last updated: 2026-05-17 PM (Tasks 10-12 of GCP KMS cipher plan SHIPPED)
 
+**Standing autonomy (2026-05-17):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
 ---
 
 ## 2026-05-17 PM (later) — GCP KMS cipher SHIPPED (Tasks 10-12 docs complete)
