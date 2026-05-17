@@ -44,12 +44,13 @@ examples/production/durable_postgres/
 ├── lock.py                                # PostgresAdvisoryLock (pg_try_advisory_lock)
 ├── cipher.py                              # FernetCipher (MultiFernet rotation-ready)
 ├── daemon.py                              # entry point — composes everything
-├── caller.py                              # synthetic ClinicalTrial start/resume harness
-├── smoke_test.py                          # full lifecycle + 14 assertions
+├── caller.py                              # manual live-integration demo (real APIs)
+├── smoke_test.py                          # impl-correctness smoke; 14 assertions
 └── scripts/
-    ├── check_no_fstring_sql.sh            # SQL-injection grep gate
-    ├── audit_deps.sh                      # pip-audit --require-hashes wrapper
-    └── generate_sbom.sh                   # cyclonedx-py wrapper
+    ├── check_no_fstring_sql.sh            # SQL-injection grep gate (single-line)
+    ├── audit_deps.sh                      # pip-audit + bandit B608 (multi-line SQL)
+    ├── generate_sbom.sh                   # cyclonedx-py wrapper
+    └── reencrypt_all.py                   # rotation completion helper (~50 LOC)
 ```
 
 **Architecture diagram (text):**
@@ -145,27 +146,53 @@ Implements `RunLock` via Postgres session-scoped advisory locks. Lock is auto-re
 
 ```python
 class PostgresAdvisoryLock:
-    """RunLock via pg_try_advisory_lock(hashtext(run_id)).
+    """RunLock via pg_try_advisory_lock(key1::int8, key2::int4).
 
     Lock is session-scoped: held until connection is released back to the
     pool. heartbeat() runs SELECT 1 to keep the connection alive.
 
-    Concurrency model: one connection per active LockHandle. Pool size MUST
-    exceed expected concurrent run count.
+    TWO-POOL CONCURRENCY MODEL (advisor #2):
+      - lock_pool: one connection per active LockHandle. Size = expected
+        max-concurrent-runs (default 20). Connections held for entire run.
+      - query_pool: passed separately to PostgresCheckpointStore. Size 5-10.
+        Used for store reads/writes. Connections released after each query.
+      Pools never share connections; deadlock impossible by construction.
+
+    KEY-COLLISION DEFENSE (advisor #8):
+      run_id hashed via SHA-256 to 96 bits split as int8 + int4. Two-key
+      form pg_try_advisory_lock(key1, key2) gives 2^96 collision space,
+      not 2^32 of bare hashtext().
+
+    PGBOUNCER INCOMPATIBILITY (advisor #3):
+      Advisory locks are session-state. pgbouncer in transaction/statement
+      pooling modes SILENTLY breaks them. Either:
+        a) configure pgbouncer in session pooling mode, OR
+        b) connect directly to Postgres bypassing the pooler.
+      Documented in README and §7 failure modes.
     """
 
-    def __init__(self, pool: asyncpg.Pool, default_ttl: int = 300) -> None: ...
+    def __init__(self, lock_pool: asyncpg.Pool, default_ttl: int = 300) -> None: ...
+
+    @staticmethod
+    def _split_key(run_id: str) -> tuple[int, int]:
+        # SHA-256(run_id)[:12] split as int8 (signed 64-bit) + int4 (signed 32-bit).
+        # 96 bits of collision space.
+        h = hashlib.sha256(run_id.encode("ascii")).digest()
+        key1 = int.from_bytes(h[0:8], "big", signed=True)
+        key2 = int.from_bytes(h[8:12], "big", signed=True)
+        return key1, key2
 
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:
-        # Acquire a dedicated connection from the pool.
-        # SELECT pg_try_advisory_lock(hashtext($1))
+        # Acquire a dedicated connection from the lock_pool.
+        # key1, key2 = self._split_key(run_id)
+        # SELECT pg_try_advisory_lock($1::int8, $2::int4)
         # If False: raise RunLocked. If True: return LockHandle wrapping conn.
         # ttl_seconds tracked client-side via asyncio.Task that calls release()
         # if not heartbeated within the window.
 
     async def release(self, handle: LockHandle) -> None:
-        # SELECT pg_advisory_unlock(hashtext($1))
-        # Return connection to pool. Cancel TTL watchdog task.
+        # SELECT pg_advisory_unlock($1::int8, $2::int4)
+        # Return connection to lock_pool. Cancel TTL watchdog task.
 
     async def heartbeat(self, handle: LockHandle) -> None:
         # SELECT 1 -- keeps connection alive; resets TTL watchdog.
@@ -214,14 +241,18 @@ Composes everything. Single entrypoint module. Sets up structured logging with f
 ```python
 async def main() -> None:
     cfg = load_config_from_env()
-    pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=2, max_size=20,
+    # Two-pool model (advisor #2): locks never starve queries.
+    lock_pool = await asyncpg.create_pool(
+        cfg["postgres_dsn"], min_size=2, max_size=cfg["max_concurrent_runs"],
+    )
+    query_pool = await asyncpg.create_pool(
+        cfg["postgres_dsn"], min_size=2, max_size=10,
     )
 
-    inner_store = PostgresCheckpointStore(pool)
-    cipher = FernetCipher(keys=cfg["fernet_keys"])
+    inner_store = PostgresCheckpointStore(query_pool)
+    cipher = FernetCipher(keys=cfg["fernet_keys"])  # list, supports rotation
     store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
-    lock = PostgresAdvisoryLock(pool)
+    lock = PostgresAdvisoryLock(lock_pool)
 
     def workflow_factory(workflow_class: str) -> DurableWorkflow:
         # In production, look up by workflow_class. POC supports one.
@@ -254,10 +285,13 @@ async def main() -> None:
         await daemon.run_forever()
     finally:
         await healthcheck_server.close()
-        await pool.close()
+        await lock_pool.close()
+        await query_pool.close()
 ```
 
 **Logging policy:** allowlist enforced at the emitter. Only `run_id`, `status`, `rounds_completed`, `duration_s`, `tokens_in`, `tokens_out`, `usd_spent`, `pause_reason`, `workflow_class`, `pinned_executor_model`, `pinned_reviewer_model`, `schema_version`, `cipher_fingerprint` are loggable. Cipher key, API keys, DSN, payload bytes are never logged.
+
+**HTTP framework choice (advisor #10):** bare `asyncio.start_server` parsing a single `GET /health` line. No new dep. ~30 LOC inline in `daemon.py`. Rejects all other paths with 404. No request body parsing.
 
 **Healthcheck response shape (hard-coded, no env enumeration):**
 
@@ -281,7 +315,11 @@ Manual demo harness. Synthetic de-identified ClinicalTrial request. Calls `start
 
 ### 2.6 `smoke_test.py`
 
-pytest-style assertions, 14 total. Runs against fake executor/reviewer fixtures (not real APIs) so it can be invoked repeatedly without burning keys. Spawns daemon in a subprocess. Asserts:
+**Scope (advisor #5):** impl-correctness only. NOT a production-readiness gate. Verifies SQL correctness, advisory-lock semantics, cipher round-trip, container hardening. Uses fake executor/reviewer fixtures so it can run repeatedly without burning API keys. Invoked as `python smoke_test.py` (not `-m`; module is a script, not a package).
+
+Live-model-API integration is `caller.py`'s job (manual, no assertions, prints `RunOutcome` for human inspection).
+
+pytest-style assertions, 14 total. Spawns daemon in a subprocess. Asserts:
 
 1. Start → returns `paused` outcome at the rolling_data gate
 2. Token persisted in `checkpoints` table with `status='paused'`
@@ -297,8 +335,56 @@ pytest-style assertions, 14 total. Runs against fake executor/reviewer fixtures 
 12. Healthcheck response has exactly the documented keys (no env echo)
 13. `docker compose exec scheduler whoami` returns `appuser`, not `root`
 14. `docker compose exec scheduler touch /etc/foo` fails (read-only rootfs)
+15. Rotation lifecycle: write 3 rows under key A → rotate to `[B, A]` → run `reencrypt_all.py` → assert all 3 decrypt under `[B]` alone (covers advisor #4 rotation-completeness)
 
-**Estimated LOC:** 150.
+**Estimated LOC:** 170 (was 150; +20 for assertion #15).
+
+---
+
+## Section 2.7 — Library bootstrap into the image (advisor #1)
+
+The library is not on PyPI yet. The image build must consume the in-repo source.
+
+**Decision: build context = repo root.** Dockerfile path is `examples/production/durable_postgres/Dockerfile`; `docker compose build` is invoked with `context: ../../..` (relative to the compose file). The Dockerfile copies:
+
+- `src/adv_multi_agent/` → `/repo/src/adv_multi_agent/`
+- `pyproject.toml` → `/repo/pyproject.toml`
+- `examples/production/durable_postgres/` → `/app/`
+
+Install order:
+
+```dockerfile
+# Stage 1: install pinned third-party deps (cacheable layer)
+COPY examples/production/durable_postgres/requirements.txt /tmp/requirements.txt
+RUN pip install --require-hashes --only-binary=:all: -r /tmp/requirements.txt
+
+# Stage 2: install the library from local source (cache-busts on src change)
+COPY pyproject.toml /repo/pyproject.toml
+COPY src/ /repo/src/
+RUN pip install --no-deps --no-build-isolation /repo
+
+# Stage 3: app code
+COPY examples/production/durable_postgres/ /app/
+WORKDIR /app
+```
+
+`--no-deps` prevents the local install from re-resolving the locked third-party deps. `--no-build-isolation` uses the already-installed build backend.
+
+`requirements.in` lists ONLY third-party deps (asyncpg, cryptography, pip-audit, cyclonedx-bom, bandit). The library itself is NOT in `requirements.in` — it's installed in stage 2 from local source.
+
+**Compose change:**
+
+```yaml
+services:
+  scheduler:
+    build:
+      context: ../../..                                    # repo root
+      dockerfile: examples/production/durable_postgres/Dockerfile
+```
+
+**`.dockerignore` at repo root** (or compose'd context dir) excludes: `.env`, `.git`, `tests/`, `docs/`, `**/__pycache__`, `**/.pytest_cache`, `examples/` except `examples/production/durable_postgres/`.
+
+**Migration path when PyPI ship lands:** replace stage 2 with a normal `adv-multi-agent==<version>` pin in `requirements.in`. No other changes needed.
 
 ---
 
@@ -308,7 +394,7 @@ pytest-style assertions, 14 total. Runs against fake executor/reviewer fixtures 
 
 | Key | Storage in deploy | Used for |
 |---|---|---|
-| `DURABLE_CHECKPOINT_KEY` (Fernet symmetric) | `.env` file → `env_file:` directive in compose (dev); Docker/k8s secrets in prod (sketched) | Encrypt/decrypt checkpoint payload bytes |
+| `DURABLE_CHECKPOINT_KEYS` (comma-separated Fernet keys; first is encrypt-with) | `.env` file → `env_file:` directive in compose (dev); Docker/k8s secrets in prod (sketched) | Encrypt/decrypt checkpoint payload bytes. Single-key deploys use a one-element list. Plural form makes rotation natural (advisor #7). |
 | `ANTHROPIC_API_KEY` | Same | Executor model calls |
 | `OPENAI_API_KEY` | Same | Reviewer model calls |
 | `POSTGRES_DSN` | Same; contains DB password | asyncpg pool |
@@ -326,13 +412,17 @@ pytest-style assertions, 14 total. Runs against fake executor/reviewer fixtures 
 | 3.2.7 | Rotation requires downtime | `MultiFernet([new, old])` — zero-downtime rotation per compliance runbook §5.2. README walks the four-step procedure. |
 | 3.2.8 | Process memory dump (RCE-adjacent) | Acknowledged limitation. README points at seccomp + `no-new-privileges` (covered in §5). |
 
-### 3.3 Rotation procedure (README excerpt)
+### 3.3 Rotation procedure (README excerpt) — fully implemented (advisor #4)
 
 1. Generate new key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 2. Update env: `DURABLE_CHECKPOINT_KEYS=<new>,<old>` (comma-separated; first is encrypt-with).
-3. Redeploy daemon. New writes use new key; reads accept either.
-4. Run re-encrypt pass: `python -m scripts.reencrypt_all` (reads each row, decrypts under MultiFernet, re-encrypts with primary key only, writes back atomically). REFERENCE-IMPL-PENDING for the helper script itself; smoke-test verifies key acceptance.
+3. Redeploy daemon. New writes use new key; reads accept either via `MultiFernet`.
+4. Run re-encrypt pass: `python scripts/reencrypt_all.py` (ships in this deliverable, ~50 LOC). Iterates `checkpoints` table; for each row reads payload through the daemon's `EncryptedCheckpointStore` (decrypts under either key), writes back through the same store (re-encrypts with primary key only). Atomic per row via `UPDATE ... WHERE updated_at = $previous_updated_at` optimistic concurrency guard. Idempotent — safe to re-run.
 5. After re-encrypt completes, drop old key from env: `DURABLE_CHECKPOINT_KEYS=<new>`. Redeploy.
+
+**Without `reencrypt_all.py`, rotation cannot complete:** new writes use new key but old rows stay encrypted under old key, so the old key can never be dropped. Shipping the helper closes the loop.
+
+**`reencrypt_all.py` smoke-test coverage:** smoke test #15 (added) writes 3 rows under key A, rotates to `[B, A]`, runs `reencrypt_all.py`, asserts all 3 rows decrypt under `[B]` alone.
 
 ---
 
@@ -352,7 +442,8 @@ pytest-style assertions, 14 total. Runs against fake executor/reviewer fixtures 
 | 4.1.8 | `ORDER BY` / `LIKE` / JSONB paths | None planned. Document in `store.py` header. If added later, escape `%` and `_`; JSON paths must be SQL literals. |
 | 4.1.9 | `POSTGRES_DSN` | Deploy-time secret, not runtime input. asyncpg validates DSN shape on connect. README: never construct DSN from user input. |
 | 4.1.10 | Adminer | `profiles: ["debug"]` — not started by default `docker compose up`. README: "adminer is dev-only; never expose in production." |
-| 4.1.11 | f-string SQL future regression | `scripts/check_no_fstring_sql.sh` greps for `(f"|f')[^"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)`. Fails build if any match. Documented in README §"Security invariants". |
+| 4.1.11 | f-string SQL future regression (single-line) | `scripts/check_no_fstring_sql.sh` greps for `(f"|f')[^"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)`. Fails build if any match. |
+| 4.1.12 | Multi-line f-string SQL + string concat (advisor #6) | `scripts/audit_deps.sh` also runs `bandit -t B608 -r .` — B608 detects hardcoded SQL expressions including concat and multi-line cases. Stacked with #4.1.11 for defense in depth. |
 
 ### 4.2 `schema.sql`
 
@@ -569,6 +660,7 @@ Inherits library's failure-mode matrix (design spec §5 of the durable POC desig
 | 7.5 | Schema-version mismatch | Library's existing check | `SchemaVersionMismatch` | Caller runs migration tool (REFERENCE-IMPL-PENDING) |
 | 7.6 | DB role lacks permission | asyncpg `InsufficientPrivilegeError` | Surface to caller as `RunOutcome(failed, error=...)` | Operator runs `GRANT` per schema.sql comment |
 | 7.7 | Audit log write fails | (out of scope here; library doesn't ship one) | — | — |
+| 7.8 | pgbouncer in transaction/statement pooling mode (advisor #3) | Advisory locks SILENTLY release between statements. Symptom: concurrent-resume invariants break; `RunLocked` never raised when it should be. Detection: smoke test #6 fails on a pgbouncer-fronted deploy. | Configure pgbouncer in **session pooling mode** ONLY for the daemon's connection. OR connect directly to Postgres bypassing pgbouncer. Document loudly in README §"Operations" and `.env.example` comment. | Reconfigure pooler; or use a separate DSN that bypasses it for the daemon |
 
 ---
 
@@ -611,7 +703,6 @@ Carried into the new `D-PROD-1..3` decisions and surfaced in README:
 
 | Gap | Why deferred | Surfacing |
 |---|---|---|
-| `examples/production/durable_postgres/scripts/reencrypt_all.py` | Re-encrypt helper script for rotation pass; reference impl can defer | README key-rotation §3.3 names it as next |
 | Schema migration tool | Still REFERENCE-IMPL-PENDING in operations runbook §8 | Same as POC scope |
 | KMS / Vault cipher impls | Text-only sketches in compliance runbook §3.2 | Pointer in `cipher.py` header |
 | k8s manifests | Single docker-compose covers the walkthrough | Named in README |
@@ -650,7 +741,8 @@ Carried into the new `D-PROD-1..3` decisions and surfaced in README:
 | `cipher.py` `FernetCipher` | SHIPPED at `examples/production/durable_postgres/cipher.py` | #3, #10 |
 | `daemon.py` wiring | SHIPPED | #1, #11, #12 |
 | `caller.py` demo | SHIPPED (manual, real APIs) | — |
-| `smoke_test.py` 14 assertions | SHIPPED | all |
+| `smoke_test.py` 15 assertions | SHIPPED | all |
+| `scripts/reencrypt_all.py` | SHIPPED | #15 |
 | `docker-compose.yml` + `Dockerfile` | SHIPPED | #13, #14 |
 | `schema.sql` | SHIPPED | #1, #7 |
 | `.env.example`, `.dockerignore` | SHIPPED | implicit |
@@ -673,9 +765,10 @@ Bump these rows in `docs/runbooks/durable-integration.md`:
 ### 10.2 Other doc updates
 
 - `docs/decisions.md` — append `D-PROD-1`, `D-PROD-2`, `D-PROD-3`
-- `docs/NEXT_SESSION.md` — entry for this ship + next-likely (k8s manifests, KMS sketch, reencrypt_all helper)
+- `docs/NEXT_SESSION.md` — entry for this ship + next-likely (k8s manifests, KMS sketch, schema migration tool)
 - `docs/SECURITY_MODEL.md` — new row in §4 Known Gaps pointing at the reference deployment as the production-posture example
 - `examples/production/README.md` — index page (just this one example for now)
+- **Cycle-8 security audit (advisor #12):** focused sweep on the new `examples/production/durable_postgres/` surface scheduled immediately post-ship. Same cadence as the per-domain audit pattern in CLAUDE.md. Track record: every prior cycle (1-7) found at least one fixable finding that unit tests missed.
 
 ---
 
@@ -683,10 +776,10 @@ Bump these rows in `docs/runbooks/durable-integration.md`:
 
 | Item | Count |
 |---|---|
-| New files under `examples/production/durable_postgres/` | 17 (incl. 3 scripts) |
-| Code LOC | ~570 |
-| Config / docs LOC | ~340 |
-| Smoke-test assertions | 14 |
+| New files under `examples/production/durable_postgres/` | 18 (incl. 4 scripts) |
+| Code LOC | ~640 (570 base + 50 reencrypt_all + 20 extra smoke test) |
+| Config / docs LOC | ~360 (340 base + 20 bootstrap + pgbouncer callouts) |
+| Smoke-test assertions | 15 |
 | Library changes | 0 |
 | New decision rows | 3 |
 | Runbook row promotions | 3 |
@@ -707,4 +800,8 @@ Bump these rows in `docs/runbooks/durable-integration.md`:
 
 **Scope check:** Focused on one reference deployment. No multi-domain creep. K8s + KMS deliberately deferred.
 
-**Ambiguity check:** §3.3 step 4 (re-encrypt script) is REFERENCE-IMPL-PENDING — surfaced explicitly. No silent gap.
+**Ambiguity check:** rotation procedure now fully implemented (advisor #4 closed via shipped `reencrypt_all.py`). Bootstrap path explicit (§2.7; advisor #1 closed). Pool model explicit (§2.2; advisor #2 closed). pgbouncer failure mode named (§7.8; advisor #3 closed). Smoke-vs-caller scope split (§2.6; advisor #5 closed). No silent gap.
+
+**Schema-change footgun (advisor #9):** Postgres only runs `/docker-entrypoint-initdb.d/schema.sql` on an empty data dir. After schema changes, the persisted volume blocks reinit. README §"Schema changes" documents `docker compose down -v` to force reinit during dev iteration. Not a spec change; README-level note.
+
+**Advisor pass:** all 12 items addressed. Items 1, 2, 4 fixed in spec body. Items 3, 5 surfaced as failure-mode rows + README callouts. Items 6, 7, 8, 9, 10, 11 folded into spec (bandit B608, KEYS rename, two-key advisory lock, schema reinit note, asyncio.start_server, `python smoke_test.py`). Item 12 (cycle-8 audit) added to §10.2 doc updates.
