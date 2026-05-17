@@ -11,7 +11,6 @@ and order-independence of load_config_from_env.
 """
 from __future__ import annotations
 
-import os
 import pytest
 
 # Import target under test — relative from the package root.
