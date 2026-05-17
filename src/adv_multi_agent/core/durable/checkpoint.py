@@ -13,6 +13,7 @@ from .token import CURRENT_SCHEMA_VERSION, ResumeToken
 
 # L-DUR-1: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
 _RUN_ID_RE = _re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
+_HASH_RE = _re.compile(r"^[0-9a-f]{16}$")
 
 _STATUS_VALUES = {
     "running", "paused", "completed", "vetoed", "budget_exceeded", "failed"
@@ -48,6 +49,7 @@ class Checkpoint:
     created_at: str                       # ISO-8601 UTC
     updated_at: str                       # ISO-8601 UTC
     wake_at: str | None = None            # ISO-8601 UTC; None = explicit only
+    workflow_version_hash: str | None = None  # 16-char lowercase hex; None = pre-1.6
 
     def __post_init__(self) -> None:
         if self.status not in _STATUS_VALUES:
@@ -77,6 +79,14 @@ class Checkpoint:
             raise ValueError("pinned_executor_model must be non-empty str")
         if not isinstance(self.pinned_reviewer_model, str) or not self.pinned_reviewer_model:
             raise ValueError("pinned_reviewer_model must be non-empty str")
+        if self.workflow_version_hash is not None:
+            if not isinstance(self.workflow_version_hash, str) or not _HASH_RE.fullmatch(
+                self.workflow_version_hash
+            ):
+                raise ValueError(
+                    f"workflow_version_hash {self.workflow_version_hash!r} must be "
+                    f"16 lowercase hex chars or None"
+                )
 
     def to_token(self) -> ResumeToken:
         return ResumeToken(
@@ -87,6 +97,7 @@ class Checkpoint:
             schema_version=self.schema_version,
             created_at=self.created_at,
             wake_at=self.wake_at,
+            workflow_version_hash=self.workflow_version_hash,
         )
 
 
@@ -108,7 +119,7 @@ def _checkpoint_from_json(s: str) -> Checkpoint:
             f"CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION}"
         )
     known = {f.name for f in fields(Checkpoint)}
-    missing = known - data.keys() - {"wake_at"}
+    missing = known - data.keys() - {"wake_at", "workflow_version_hash"}
     if missing:
         raise CheckpointCorrupt(f"missing required field(s): {sorted(missing)}")
     extra = data.keys() - known

@@ -13,6 +13,7 @@ from typing import Any
 
 # L-DUR-2: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
 _RUN_ID_RE_TOKEN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
+_HASH_RE = re.compile(r"^[0-9a-f]{16}$")
 
 CURRENT_SCHEMA_VERSION = 1
 """Bumped on any incompatible change to ResumeToken or Checkpoint shape."""
@@ -27,6 +28,7 @@ class ResumeToken:
     schema_version: int
     created_at: str                # ISO-8601 UTC
     wake_at: str | None            # ISO-8601 UTC; None = explicit-resume only
+    workflow_version_hash: str | None = None  # 16-char lowercase hex; None = pre-1.6
 
 
 def serialize_token(token: ResumeToken) -> str:
@@ -47,7 +49,8 @@ def deserialize_token(s: str) -> ResumeToken:
         raise ValueError(f"token must be a JSON object, got {type(data).__name__}")
 
     known = {f.name for f in fields(ResumeToken)}
-    missing = known - data.keys()
+    optional = {"wake_at", "workflow_version_hash"}
+    missing = known - optional - data.keys()
     if missing:
         raise ValueError(f"missing required field(s): {sorted(missing)}")
     extra = data.keys() - known
@@ -86,5 +89,15 @@ def deserialize_token(s: str) -> ResumeToken:
         val = data.get(fld)
         if not isinstance(val, str) or not val:
             raise ValueError(f"token {fld} must be non-empty str, got {val!r}")
+    wvh = data.get("workflow_version_hash")
+    if wvh is not None:
+        if not isinstance(wvh, str) or not _HASH_RE.fullmatch(wvh):
+            raise ValueError(
+                f"token workflow_version_hash {wvh!r} must be 16 lowercase hex chars"
+            )
 
-    return ResumeToken(**{k: data[k] for k in known})
+    # Supply defaults for optional fields absent from pre-1.6 JSON
+    kwargs: dict[str, Any] = {k: data[k] for k in data.keys() & known}
+    kwargs.setdefault("wake_at", None)
+    kwargs.setdefault("workflow_version_hash", None)
+    return ResumeToken(**kwargs)

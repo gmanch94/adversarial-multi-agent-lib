@@ -5,7 +5,7 @@ Stubbed in Task 1; filled in Tasks 3-5.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Iterable, Protocol
 
 if TYPE_CHECKING:
     from .checkpoint import Checkpoint
@@ -79,3 +79,23 @@ class Cipher(Protocol):
     def decrypt(self, ciphertext: str) -> str:
         """Reverse of encrypt; raises ValueError if tampered/invalid."""
         ...
+
+
+class HasWorkflowVersionInputs(Protocol):
+    """Optional Protocol on the inner workflow. If implemented, returned
+    bytes are folded into Checkpoint.workflow_version_hash.
+
+    Implementations should return raw bytes of every prompt template,
+    skill template, and convergence-criteria constant whose change would
+    affect a recommendation. The library hashes (sorted) bytes plus the
+    workflow's module + qualname.
+
+    Implementations must be deterministic: same code, same returned bytes
+    every call. Implementations must be pure (no side effects, no I/O
+    other than reading bundled package resources).
+
+    PHI restriction: inputs must be bundled package resources only, not
+    per-request data. Do not fold patient/user data into these bytes.
+    """
+
+    def workflow_version_inputs(self) -> Iterable[bytes]: ...
