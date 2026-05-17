@@ -22,6 +22,8 @@
 
 **v3 (2026-05-17):** Second independent reviewer returned APPROVED WITH FIXES (see `docs/security-audits/2026-05-17-prod-postgres-plan-review-v2.md` — 6 of 9 HIGH fully closed, 3 partial; all MED closed; 11 NEW findings: 1 HIGH, 5 MED, 5 LOW). Three blocking new findings applied inline (N-H-01 healthcheck timeout, N-M-01 decrypt ASCII catch, N-M-05 asyncpg parse). Partial HIGH closures tightened (F-H-04 shutdown hook via `_ActiveLockRegistry`, F-H-05 instance-level namespace test, F-H-09 → N-M-02 dict-shape DSN regex). N-L-01 (empty namespace) + N-L-02 (class-alias drift) folded inline. N-M-04, N-L-03, N-L-04, N-L-05 deferred to NEXT_SESSION as in-sprint.
 
+**v4 (2026-05-17, mid-execution):** Task 2 implementer surfaced a plan defect both prior reviewers missed: the library's `Checkpoint` dataclass does NOT have a `workflow_class` field (verified via `src/adv_multi_agent/core/durable/checkpoint.py:36-50` + `to_token()` returns `workflow_class=""` with comment "filled by DurableWorkflow caller"). User chose Path B: keep the schema column, add a `default_workflow_class` constructor parameter to `PostgresCheckpointStore` + an extension method `write_with_class(checkpoint, workflow_class)` for multi-workflow callers. Daemon constructs the store with the demo's workflow class hard-coded; `list_paused` returns proper ResumeTokens reading from the DB column. Patches Task 3 (store + tests) and Task 5 (daemon wiring).
+
 ---
 
 ## Task 1: Directory skeleton + .dockerignore + initial commit
@@ -266,7 +268,7 @@ def test_composes_with_library_encrypted_store(key_a: bytes) -> None:
         pause_reason=None, pause_context={},
         budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
         pinned_executor_model="m1", pinned_reviewer_model="m2",
-        workflow_class="x.Y", wake_at=None,
+        wake_at=None,  # v4: workflow_class is NOT a Checkpoint field
         created_at="2026-05-17T12:00:00Z", updated_at="2026-05-17T12:00:00Z",
     )
 
@@ -605,6 +607,8 @@ pytestmark = [pytest.mark.asyncio, needs_postgres]
 
 
 def _make_checkpoint(run_id: str = "test-run-001", status: str = "paused") -> Checkpoint:
+    # v4: workflow_class is NOT a Checkpoint field; it lives on the DB column
+    # via the store's default_workflow_class or write_with_class extension.
     return Checkpoint(
         run_id=run_id,
         schema_version=1,
@@ -620,8 +624,10 @@ def _make_checkpoint(run_id: str = "test-run-001", status: str = "paused") -> Ch
         created_at="2026-05-16T12:00:00Z",
         updated_at="2026-05-16T12:00:00Z",
         wake_at=None,
-        workflow_class="x.y.ClinicalTrialEligibilityDurableWorkflow",
     )
+
+
+_TEST_WORKFLOW_CLASS = "x.y.ClinicalTrialEligibilityDurableWorkflow"
 
 
 async def test_write_then_read_roundtrips(pg_pool, fresh_checkpoints_table):
@@ -757,6 +763,69 @@ async def test_store_rejects_bad_run_id_before_touching_db(
         await store.delete("abc;DROP TABLE")
 
 
+async def test_default_workflow_class_used_for_protocol_write(
+    pg_pool, fresh_checkpoints_table
+):
+    """v4: write(checkpoint) uses default_workflow_class from constructor."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(
+        pg_pool, default_workflow_class=_TEST_WORKFLOW_CLASS,
+    )
+    cp = _make_checkpoint(run_id="wfc-default")
+    await store.write(cp)
+    async with pg_pool.acquire() as conn:
+        wf = await conn.fetchval(
+            "SELECT workflow_class FROM checkpoints WHERE run_id = $1",
+            "wfc-default",
+        )
+    assert wf == _TEST_WORKFLOW_CLASS
+
+
+async def test_write_with_class_overrides_default(pg_pool, fresh_checkpoints_table):
+    """v4: write_with_class extension overrides the constructor default."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(
+        pg_pool, default_workflow_class="default.class.Name",
+    )
+    cp = _make_checkpoint(run_id="wfc-override")
+    await store.write_with_class(cp, workflow_class="other.class.Name")
+    async with pg_pool.acquire() as conn:
+        wf = await conn.fetchval(
+            "SELECT workflow_class FROM checkpoints WHERE run_id = $1",
+            "wfc-override",
+        )
+    assert wf == "other.class.Name"
+
+
+async def test_list_paused_returns_tokens_with_workflow_class(
+    pg_pool, fresh_checkpoints_table
+):
+    """v4: list_paused must read workflow_class from the DB column."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(
+        pg_pool, default_workflow_class=_TEST_WORKFLOW_CLASS,
+    )
+    cp = _make_checkpoint(run_id="wfc-list")
+    await store.write(cp)
+    tokens = await store.list_paused(wake_before=datetime(2099, 1, 1, tzinfo=timezone.utc))
+    assert len(tokens) == 1
+    assert tokens[0].workflow_class == _TEST_WORKFLOW_CLASS
+
+
+async def test_workflow_class_too_long_rejected(pg_pool, fresh_checkpoints_table):
+    """v4: workflow_class > 512 chars rejected at app layer before DB CHECK."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(pg_pool)
+    cp = _make_checkpoint(run_id="wfc-toolong")
+    too_long = "x." * 300  # 600 chars
+    with pytest.raises(ValueError, match="workflow_class exceeds"):
+        await store.write_with_class(cp, workflow_class=too_long)
+
+
 async def test_write_if_unchanged_cas_success(pg_pool, fresh_checkpoints_table):
     """F-H-06: CAS write succeeds when updated_at matches."""
     from examples.production.durable_postgres.store import PostgresCheckpointStore
@@ -876,11 +945,29 @@ class CompareAndSwapFailed(RuntimeError):
 
 
 class PostgresCheckpointStore:
-    """Implements CheckpointStore Protocol over asyncpg + raw parameterized SQL."""
+    """Implements CheckpointStore Protocol over asyncpg + raw parameterized SQL.
 
-    def __init__(self, pool: asyncpg.Pool, max_batch: int = 1000) -> None:
+    v4 NOTE — workflow_class handling: The library's Checkpoint dataclass does
+    NOT carry workflow_class (it lives on ResumeToken, filled by DurableWorkflow
+    at runtime via `_workflow_class_path()`). Our `checkpoints` table DOES have
+    a `workflow_class` column so that `list_paused` can construct real
+    ResumeTokens (not empty strings). Two write paths:
+      - `write(checkpoint)` (Protocol-compliant): uses `default_workflow_class`
+        set at construction time. The reference daemon constructs one store
+        instance per workflow class (typical single-workflow deploy).
+      - `write_with_class(checkpoint, workflow_class)` (extension): overrides
+        the default for multi-workflow callers. Not in the Protocol.
+    """
+
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        max_batch: int = 1000,
+        default_workflow_class: str = "",
+    ) -> None:
         self._pool = pool
         self._max_batch = max_batch
+        self._default_workflow_class = default_workflow_class
 
     @staticmethod
     def _validate_run_id(run_id: str) -> None:
@@ -891,7 +978,24 @@ class PostgresCheckpointStore:
             )
 
     async def write(self, checkpoint: Checkpoint) -> None:
+        """Protocol-compliant write; uses default_workflow_class for the column."""
+        await self.write_with_class(checkpoint, self._default_workflow_class)
+
+    async def write_with_class(
+        self,
+        checkpoint: Checkpoint,
+        workflow_class: str,
+    ) -> None:
+        """Extension method (NOT Protocol): write with explicit workflow_class.
+
+        Used by daemon-internal call paths AND by reencrypt_all (which must
+        preserve the original workflow_class read from the DB).
+        """
         self._validate_run_id(checkpoint.run_id)
+        if len(workflow_class) > 512:
+            raise ValueError(
+                f"workflow_class exceeds DB CHECK length cap (512): {len(workflow_class)}"
+            )
         payload_bytes = self._serialize(checkpoint)
         # Parse wake_at (string in checkpoint, TIMESTAMPTZ in DB).
         wake_at_dt: datetime | None = None
@@ -917,7 +1021,7 @@ class PostgresCheckpointStore:
                 checkpoint.schema_version,
                 checkpoint.status,
                 wake_at_dt,
-                checkpoint.workflow_class,
+                workflow_class,  # v4: from parameter, not from cp
                 payload_bytes,
             )
 
@@ -966,6 +1070,7 @@ class PostgresCheckpointStore:
         self,
         checkpoint: Checkpoint,
         expected_updated_at: datetime,
+        workflow_class: str | None = None,
     ) -> None:
         """F-H-06: Compare-and-swap write for the reencrypt rotation pass.
 
@@ -973,12 +1078,19 @@ class PostgresCheckpointStore:
         the row mid-sweep, this raises CompareAndSwapFailed and the caller
         (reencrypt_all) logs + skips that run_id.
 
+        v4: workflow_class parameter — defaults to `self._default_workflow_class`.
+        Reencrypt callers pass the row's existing workflow_class (read at sweep
+        start) to preserve it across the re-encrypt write.
+
         NOT a Protocol method — this is an example-internal extension. The
-        library's CheckpointStore Protocol does not require it. Other Store
-        impls (FileCheckpointStore) do not implement it; only the reencrypt
-        helper uses it, and only against THIS impl.
+        library's CheckpointStore Protocol does not require it.
         """
         self._validate_run_id(checkpoint.run_id)
+        wf_class = workflow_class if workflow_class is not None else self._default_workflow_class
+        if len(wf_class) > 512:
+            raise ValueError(
+                f"workflow_class exceeds DB CHECK length cap (512): {len(wf_class)}"
+            )
         payload_bytes = self._serialize(checkpoint)
         wake_at_dt: datetime | None = None
         if checkpoint.wake_at:
@@ -1003,7 +1115,7 @@ class PostgresCheckpointStore:
                 checkpoint.schema_version,
                 checkpoint.status,
                 wake_at_dt,
-                checkpoint.workflow_class,
+                wf_class,  # v4: from parameter or default, not from cp
                 payload_bytes,
                 expected_updated_at,
             )
@@ -1050,6 +1162,9 @@ class PostgresCheckpointStore:
     def _deserialize(row: asyncpg.Record) -> Checkpoint:
         body = json.loads(bytes(row["payload"]).decode("utf-8"))
         wake_at = row["wake_at"]
+        # v4 NOTE: Checkpoint dataclass has no workflow_class field;
+        # we read row["workflow_class"] only when constructing ResumeTokens
+        # in _row_to_token, not when re-hydrating Checkpoint objects.
         return Checkpoint(
             run_id=row["run_id"],
             schema_version=row["schema_version"],
@@ -1062,7 +1177,6 @@ class PostgresCheckpointStore:
             budget_used=body["budget_used"],
             pinned_executor_model=body["pinned_executor_model"],
             pinned_reviewer_model=body["pinned_reviewer_model"],
-            workflow_class=row["workflow_class"],
             wake_at=wake_at.isoformat() if wake_at is not None else None,
             created_at=body["created_at"],
             updated_at=body["updated_at"],
@@ -2106,7 +2220,15 @@ async def main() -> None:
     cipher = FernetCipher(keys=list(cfg.fernet_keys))
     # F-M-02: log cipher_fingerprint at INFO so operator can verify rotation
     logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
-    inner_store = PostgresCheckpointStore(query_pool)
+    # v4: reference deployment supports one workflow class. Multi-workflow
+    # deploys construct separate stores per class OR use write_with_class.
+    _DEMO_WORKFLOW_CLASS = (
+        "adv_multi_agent.healthcare.workflows."
+        "clinical_trial_eligibility_durable.ClinicalTrialEligibilityDurableWorkflow"
+    )
+    inner_store = PostgresCheckpointStore(
+        query_pool, default_workflow_class=_DEMO_WORKFLOW_CLASS,
+    )
     store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
     # F-H-04 v2: registry tracks active lock handles for shutdown force-close
     from .lock import _ActiveLockRegistry
@@ -2933,8 +3055,7 @@ async def test_reencrypt_completes_rotation(pg_pool, fresh_checkpoints_table):
             budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
             pinned_executor_model="claude-opus-4-7",
             pinned_reviewer_model="gpt-4o",
-            workflow_class="x.Y",
-            wake_at=None,
+            wake_at=None,  # v4: workflow_class not on Checkpoint
             created_at="2026-05-16T12:00:00Z",
             updated_at="2026-05-16T12:00:00Z",
         )
@@ -2985,8 +3106,7 @@ async def test_reencrypt_is_idempotent(pg_pool, fresh_checkpoints_table):
         budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
         pinned_executor_model="m1",
         pinned_reviewer_model="m2",
-        workflow_class="x.Y",
-        wake_at=None,
+        wake_at=None,  # v4: workflow_class not on Checkpoint
         created_at="2026-05-16T12:00:00Z",
         updated_at="2026-05-16T12:00:00Z",
     )
@@ -3077,13 +3197,17 @@ async def reencrypt_all(
     )
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT run_id, updated_at FROM checkpoints")
+        # v4: read workflow_class so we preserve it on the CAS write
+        rows = await conn.fetch(
+            "SELECT run_id, updated_at, workflow_class FROM checkpoints"
+        )
 
     count = 0
     skipped = 0
     for row in rows:
         run_id = row["run_id"]
         original_updated_at = row["updated_at"]
+        original_wf_class = row["workflow_class"]
 
         # Read full checkpoint through encryption layer → plaintext last_request_json
         cp = await store.read(run_id)
@@ -3093,8 +3217,11 @@ async def reencrypt_all(
 
         try:
             # CAS: write only if updated_at hasn't moved since we read it.
+            # v4: preserve the row's original workflow_class through the rotation.
             await inner.write_if_unchanged(
-                re_encrypted, expected_updated_at=original_updated_at,
+                re_encrypted,
+                expected_updated_at=original_updated_at,
+                workflow_class=original_wf_class,
             )
             count += 1
         except CompareAndSwapFailed:
@@ -3226,10 +3353,20 @@ def _cp(run_id: str = "smk-001", status: str = "paused") -> Checkpoint:
         budget_used={"tokens_in": 100, "tokens_out": 50, "usd_spent": 0.0042},
         pinned_executor_model="claude-opus-4-7",
         pinned_reviewer_model="gpt-4o",
-        workflow_class="x.Y.ClinicalTrialEligibilityDurableWorkflow",
-        wake_at=None,
+        wake_at=None,  # v4: workflow_class not on Checkpoint
         created_at="2026-05-16T12:00:00Z",
         updated_at="2026-05-16T12:00:00Z",
+    )
+
+
+_SMOKE_WORKFLOW_CLASS = "x.Y.ClinicalTrialEligibilityDurableWorkflow"
+
+
+def _make_store(pg_pool):
+    """Helper: PostgresCheckpointStore with the test workflow_class default."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+    return PostgresCheckpointStore(
+        pg_pool, default_workflow_class=_SMOKE_WORKFLOW_CLASS,
     )
 
 
