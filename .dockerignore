@@ -1,0 +1,50 @@
+# Build context = repo root (per spec §2.7 + F-L-05).
+# This file MUST live at repo root, not in the example dir, or Docker
+# silently copies the entire repo into the build context.
+
+# Secrets — never bake into image
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+**/.secrets/
+**/.secrets/*
+!**/.secrets/.gitkeep
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Python build artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tests + docs (image needs only library + example app code)
+tests/
+docs/
+memory/
+
+# Sibling examples — only durable_postgres is needed in the image
+examples/healthcare/
+examples/industrial/
+examples/parole/
+examples/pc/
+examples/research/
+examples/retail/
+
+# IDE
+.vscode/
+.idea/
+*.swp
