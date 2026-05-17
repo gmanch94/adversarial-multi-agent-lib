@@ -359,9 +359,38 @@ async def main() -> None:
 
     healthcheck = HealthcheckServer(get_state=get_health_state, port=8080)
     await healthcheck.start()
+
+    # Tier 1.1 Slice A: lock + query pool saturation sampler. asyncpg pool
+    # internals (`_holders`, `_maxsize`) are private — wrap in try/except so
+    # version churn never breaks the daemon. Telemetry must not crash workflow.
+    from adv_multi_agent.core.durable.metrics import NoopMetricsBackend
+    pool_metrics = NoopMetricsBackend()
+
+    async def _sample_pool_saturation() -> None:
+        while True:
+            try:
+                for pool_name, pool in (("lock", lock_pool), ("query", query_pool)):
+                    try:
+                        used = len([h for h in pool._holders if h._in_use])  # type: ignore[attr-defined]
+                        maxsize = pool._maxsize  # type: ignore[attr-defined]
+                        if maxsize > 0:
+                            pool_metrics.gauge(
+                                "durable.lock.pool_saturation",
+                                used / maxsize,
+                                tags={"pool": pool_name},
+                            )
+                    except AttributeError:
+                        # asyncpg version changed internals; skip silently
+                        pass
+            except Exception:
+                pass
+            await asyncio.sleep(cfg.poll_interval)
+
+    _sat_task = asyncio.create_task(_sample_pool_saturation())
     try:
         await daemon.run_forever()
     finally:
+        _sat_task.cancel()
         # F-H-04 v2: force-close any still-held lock handles BEFORE pool teardown.
         # asyncpg pool.close() does NOT close idle connections that are merely
         # held (an advisory lock holder is "idle" from the pool's perspective).

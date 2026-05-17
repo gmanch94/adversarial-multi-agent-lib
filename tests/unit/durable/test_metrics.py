@@ -52,6 +52,13 @@ class RecordingMetricsBackend:
     ) -> None:
         self.calls.append(("timing", name, float(seconds), dict(tags or {})))
 
+    def span(
+        self, name: str, *, tags: Mapping[str, str] | None = None
+    ):
+        from adv_multi_agent.core.durable.metrics import _NoopSpan
+        self.calls.append(("span", name, 0.0, dict(tags or {})))
+        return _NoopSpan()
+
 
 # ---------------- NoopMetricsBackend ----------------
 

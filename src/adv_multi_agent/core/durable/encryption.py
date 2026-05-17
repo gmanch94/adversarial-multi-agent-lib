@@ -39,9 +39,23 @@ class EncryptedCheckpointStore:
     # was wrapped) and pass them through untouched.
     _ENC_PREFIX = "ENC:v1:"
 
-    def __init__(self, inner: Any, cipher: Cipher) -> None:
+    def __init__(
+        self,
+        inner: Any,
+        cipher: Cipher,
+        *,
+        metrics: Any | None = None,
+        workflow_class: str = "unknown",
+    ) -> None:
         self._inner = inner
         self._cipher = cipher
+        # Tier 1.1 Slice A: optional MetricsBackend for decrypt-failure counter.
+        # Default Noop so existing callers keep working unchanged.
+        if metrics is None:
+            from .metrics import NoopMetricsBackend
+            metrics = NoopMetricsBackend()
+        self._metrics = metrics
+        self._workflow_class = workflow_class
 
     def _encrypt_request_json(self, cp: Checkpoint) -> Checkpoint:
         # Return a NEW Checkpoint with last_request_json swapped to ciphertext.
@@ -81,7 +95,21 @@ class EncryptedCheckpointStore:
             )
             return cp
         ciphertext = cp.last_request_json[len(self._ENC_PREFIX):]
-        plaintext = self._cipher.decrypt(ciphertext)
+        try:
+            plaintext = self._cipher.decrypt(ciphertext)
+        except Exception as exc:
+            # Tier 1.1 Slice A: decrypt-failure counter for rotation-in-progress
+            # signal. Tag values are allowlisted low-cardinality strings only;
+            # NO key id / fingerprint (per spec §2 threat model).
+            self._metrics.counter(
+                "durable.cipher.decrypt_failed",
+                tags={
+                    "workflow": self._workflow_class,
+                    "cipher_backend": type(self._cipher).__name__,
+                    "error_class": type(exc).__name__,
+                },
+            )
+            raise
         return Checkpoint(
             run_id=cp.run_id,
             schema_version=cp.schema_version,

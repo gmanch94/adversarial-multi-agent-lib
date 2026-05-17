@@ -349,6 +349,13 @@ class DurableWorkflow:
                     import time as _time_mod  # local; histogram timing only
                     for round_num in range(1, self._config.max_review_rounds + 1):
                         _round_t0 = _time_mod.perf_counter()
+                        _span_cm = self._metrics.span(
+                            "durable.round", tags={"workflow": wf_class}
+                        )
+                        _span = await _span_cm.__aenter__()
+                        _span_closed = False
+                        _span.set_attribute("workflow.class", wf_class)
+                        _span.set_attribute("round.index", round_num)
                         try:
                             r = await self._inner.run_round(  # type: ignore[attr-defined]
                                 round_num=round_num,
@@ -357,6 +364,10 @@ class DurableWorkflow:
                                 ctx=ctx,
                             )
                         except _PauseSignal as ps:
+                            _span.set_attribute("round.paused", True)
+                            _span.set_attribute("pause_reason", str(ps.reason))
+                            await _span_cm.__aexit__(None, None, None)
+                            _span_closed = True
                             # H-DUR-1: mark whether this pause fired mid-round
                             # (before run_round appended its rounds_history entry)
                             last_entry_round = (
@@ -406,6 +417,10 @@ class DurableWorkflow:
                             _time_mod.perf_counter() - _round_t0,
                             tags={"workflow": wf_class},
                         )
+                        _span.set_attribute("round.converged", bool(r.get("converged")))
+                        if not _span_closed:
+                            await _span_cm.__aexit__(None, None, None)
+                            _span_closed = True
 
                         entry = r.get("rounds_history_entry")
                         if entry is not None:
@@ -437,6 +452,11 @@ class DurableWorkflow:
                                     tags=_btags,
                                 )
                             await self._store.write(cp)
+                            self._metrics.gauge(
+                                "durable.checkpoint.schema_version",
+                                float(cp.schema_version),
+                                tags={"workflow": wf_class},
+                            )
 
                         if r.get("converged"):
                             final_result = WorkflowResult(
@@ -501,7 +521,22 @@ class DurableWorkflow:
         *,
         force_workflow_upgrade: bool = False,
     ) -> RunOutcome:
-        handle = await self._lock.acquire(token.run_id, ttl_seconds=300)
+        wf_class = type(self._inner).__name__
+        import time as _time_lock
+        _lock_t0 = _time_lock.perf_counter()
+        try:
+            handle = await self._lock.acquire(token.run_id, ttl_seconds=300)
+        except Exception:
+            self._metrics.counter(
+                "durable.lock.acquire_failed",
+                tags={"workflow": wf_class, "phase": "resume"},
+            )
+            raise
+        self._metrics.histogram(
+            "durable.lock.acquire_latency_seconds",
+            _time_lock.perf_counter() - _lock_t0,
+            tags={"workflow": wf_class, "phase": "resume"},
+        )
         try:
             cp = await self._store.read(token.run_id)  # raises RunNotFound
             if cp.schema_version != CURRENT_SCHEMA_VERSION:
@@ -660,6 +695,13 @@ class DurableWorkflow:
             r: dict[str, Any] = {}
             try:
                 for round_num in range(cp.round + 1, self._config.max_review_rounds + 1):
+                    _r_span_cm = self._metrics.span(
+                        "durable.round", tags={"workflow": wf_class}
+                    )
+                    _r_span = await _r_span_cm.__aenter__()
+                    _r_span_closed = False
+                    _r_span.set_attribute("workflow.class", wf_class)
+                    _r_span.set_attribute("round.index", round_num)
                     try:
                         r = await self._inner.run_round(  # type: ignore[attr-defined]
                             round_num=round_num,
@@ -668,6 +710,10 @@ class DurableWorkflow:
                             ctx=ctx,
                         )
                     except _PauseSignal as ps:
+                        _r_span.set_attribute("round.paused", True)
+                        _r_span.set_attribute("pause_reason", str(ps.reason))
+                        await _r_span_cm.__aexit__(None, None, None)
+                        _r_span_closed = True
                         # H-DUR-1: mark whether this pause fired mid-round
                         last_entry_round = (
                             rounds_history[-1].get("round", 0)
@@ -685,6 +731,11 @@ class DurableWorkflow:
                         cp.rounds_history = rounds_history
                         cp.updated_at = _now_iso()
                         await self._store.write(cp)
+                        self._metrics.gauge(
+                            "durable.checkpoint.schema_version",
+                            float(cp.schema_version),
+                            tags={"workflow": wf_class},
+                        )
                         paused_token = ResumeToken(
                             run_id=token.run_id,
                             workflow_class=token.workflow_class,
@@ -697,6 +748,11 @@ class DurableWorkflow:
                         return RunOutcome(
                             status="paused", token=paused_token, pause_reason=ps.reason
                         )
+
+                    _r_span.set_attribute("round.converged", bool(r.get("converged")))
+                    if not _r_span_closed:
+                        await _r_span_cm.__aexit__(None, None, None)
+                        _r_span_closed = True
 
                     entry = r.get("rounds_history_entry")
                     if entry is not None:

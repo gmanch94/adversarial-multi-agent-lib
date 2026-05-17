@@ -41,7 +41,32 @@ caller-side discipline anchored in the runbook.
 """
 from __future__ import annotations
 
+from contextlib import AbstractAsyncContextManager
 from typing import Mapping, Protocol
+
+
+class Span(Protocol):
+    """Minimal span surface — OTel-compatible subset.
+
+    Decouples library from any specific tracing SDK. An OTel-backed
+    implementation maps these to `opentelemetry.trace.Span.set_attribute` and
+    `record_exception`; a Datadog/Honeycomb/custom impl can do the same.
+
+    PII boundary (Tier 1.7): span names, attribute keys, attribute values, and
+    tag values MUST NOT contain per-request PII. Use stable low-cardinality
+    strings only. Exporter-side `SpanProcessor` redaction is the second line
+    of defense; the library does not redact.
+    """
+
+    def set_attribute(self, key: str, value: str | int | float | bool) -> None:
+        """Attach a key/value attribute to this span."""
+        ...
+
+    def record_exception(self, exc: BaseException) -> None:
+        """Record an exception against this span. Does NOT mark span errored
+        automatically — that decision belongs to the caller (some exceptions
+        are control-flow signals, e.g. `_PauseSignal`)."""
+        ...
 
 
 class MetricsBackend(Protocol):
@@ -101,6 +126,43 @@ class MetricsBackend(Protocol):
         """
         ...
 
+    def span(
+        self,
+        name: str,
+        *,
+        tags: Mapping[str, str] | None = None,
+    ) -> AbstractAsyncContextManager[Span]:
+        """Start a span as an async context manager (D-OTEL-1).
+
+        Library wire points are inside ``async def`` methods; ``async with`` is
+        idiomatic. The returned `Span` exposes `set_attribute` and
+        `record_exception`. PII boundary applies to span names, attribute
+        values, and tag values identically — caller must keep them low-
+        cardinality + PHI-free.
+
+        Implementations MUST NOT raise from `span()` or from the returned
+        context manager's `__aenter__/__aexit__`. Telemetry never breaks the
+        workflow.
+        """
+        ...
+
+
+class _NoopSpan:
+    """Zero-overhead default span. Methods are no-ops; context manager exits
+    cleanly without suppressing exceptions."""
+
+    async def __aenter__(self) -> "_NoopSpan":
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        return None
+
+    def set_attribute(self, key: str, value: str | int | float | bool) -> None:
+        return
+
+    def record_exception(self, exc: BaseException) -> None:
+        return
+
 
 class NoopMetricsBackend:
     """Default zero-overhead backend. Swallows every call.
@@ -134,5 +196,13 @@ class NoopMetricsBackend:
     ) -> None:
         return
 
+    def span(
+        self,
+        name: str,
+        *,
+        tags: Mapping[str, str] | None = None,
+    ) -> AbstractAsyncContextManager["_NoopSpan"]:
+        return _NoopSpan()
 
-__all__ = ["MetricsBackend", "NoopMetricsBackend"]
+
+__all__ = ["MetricsBackend", "NoopMetricsBackend", "Span"]
