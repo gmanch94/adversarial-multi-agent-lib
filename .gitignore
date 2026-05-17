@@ -40,3 +40,8 @@ docs/linkedin-announcement.md
 # OS
 .DS_Store
 Thumbs.db
+
+# Reference deployment secrets — only .gitkeep is tracked.
+examples/production/durable_postgres/.secrets/*
+!examples/production/durable_postgres/.secrets/.gitkeep
+examples/production/durable_postgres/.env
