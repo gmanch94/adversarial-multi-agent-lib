@@ -12,7 +12,11 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 ## Tier 1 — must-haves before someone runs this on a real workload
 
-### 1.1 Observability — metrics + traces + structured logs
+### 1.1 Observability — metrics + traces + structured logs (PARTIAL — scaffold shipped 2026-05-17)
+
+**Progress 2026-05-17:** library-side scaffold landed. `core/durable/metrics.py` defines `MetricsBackend` Protocol + `NoopMetricsBackend` default. `DurableWorkflow.__init__` accepts `metrics=` kwarg. Three representative metric calls wired: `durable.workflow.start` counter, `durable.lock.acquire_failed` counter, `durable.workflow.pause` counter (with `pause_reason` tag). 12 unit tests including zero-overhead Noop perf test.
+
+**Still pending:** OTel sibling reference deployment (`examples/production/durable_postgres_otel/`), histogram wiring for round latency, gauge for budget+lock-pool saturation, Grafana dashboards, alert rules, PII-redaction `SpanProcessor` (Tier 1.7 depends on this).
 
 **Gap.** Today the daemon emits allowlist-filtered INFO logs and a JSON `/health` endpoint. That is not enough to operate. There is no:
 
