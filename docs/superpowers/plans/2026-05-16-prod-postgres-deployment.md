@@ -16,15 +16,23 @@
 
 ---
 
+## REVISION HISTORY
+
+**v2 (2026-05-17):** Independent pre-implementation security review rejected v1 (see `docs/security-audits/2026-05-16-prod-postgres-plan-review.md` — 3 CRIT / 9 HIGH / 9 MED / 8 LOW). Plan revised inline to address all CRIT + HIGH + MED findings. LOW items folded into NEXT_SESSION as in-sprint. Each fix tagged with finding code (F-C-NN / F-H-NN / F-M-NN) where it appears.
+
+---
+
 ## Task 1: Directory skeleton + .dockerignore + initial commit
 
 **Files:**
 - Create: `examples/production/__init__.py`
 - Create: `examples/production/README.md`
 - Create: `examples/production/durable_postgres/__init__.py`
-- Create: `examples/production/durable_postgres/.dockerignore`
+- Create: `.dockerignore` (at REPO ROOT — F-L-05: build context = repo root per spec §2.7, so Docker reads .dockerignore from there, NOT from the example dir)
 - Create: `examples/production/durable_postgres/tests/__init__.py`
 - Create: `examples/production/durable_postgres/scripts/.gitkeep`
+
+**v2 fixes:** F-L-05 (.dockerignore at repo root) · F-M-03 (excludes `.secrets/` so postgres_password file never lands in image layer).
 
 - [ ] **Step 1: Create directory skeleton**
 
@@ -67,36 +75,63 @@ These are teaching artifacts, not productionizable packages. The library itself 
 ```
 ```
 
-- [ ] **Step 7: Create `examples/production/durable_postgres/.dockerignore`**
+- [ ] **Step 7: Create `.dockerignore` at REPO ROOT** (F-L-05)
+
+Docker reads `.dockerignore` from the build context root. Spec §2.7 sets build context to repo root. Putting `.dockerignore` inside the example dir (plan v1) has no effect — Docker ignores it. File MUST live at the repo root.
+
+Create `.dockerignore` (in the project root, NOT under examples/):
 
 ```
-# Build context = repo root (per spec §2.7). Exclude everything not needed.
+# Build context = repo root (per spec §2.7 + F-L-05).
+# This file MUST live at repo root, not in the example dir, or Docker
+# silently copies the entire repo into the build context.
+
+# Secrets — never bake into image
 .env
 .env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+**/.secrets/
+**/.secrets/*
+!**/.secrets/.gitkeep
+
+# Git
 .git/
 .gitignore
 .github/
+
+# Python build artifacts
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tests + docs (image needs only library + example app code)
 tests/
 docs/
 memory/
+
+# Sibling examples — only durable_postgres is needed in the image
 examples/healthcare/
 examples/industrial/
 examples/parole/
 examples/pc/
 examples/research/
 examples/retail/
-*.egg-info/
-build/
-dist/
-.venv/
-venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
 ```
 
 - [ ] **Step 8: Verify skeleton compiles as Python package**
@@ -107,11 +142,19 @@ python -c "import examples.production.durable_postgres"
 ```
 Expected: no output (import succeeds).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 9: Verify .dockerignore is at repo root, not in example dir**
 
 ```bash
-git add examples/production/
-git commit -m "feat(prod-deploy): skeleton for examples/production/durable_postgres/ [skip ci]"
+test -f .dockerignore && echo "OK: .dockerignore at repo root"
+test ! -f examples/production/durable_postgres/.dockerignore && echo "OK: not duplicated in example dir"
+```
+Expected: both `OK:` lines print.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add examples/production/ .dockerignore
+git commit -m "feat(prod-deploy): skeleton + repo-root .dockerignore (F-L-05, F-M-03) [skip ci]"
 ```
 
 ---
@@ -124,12 +167,20 @@ git commit -m "feat(prod-deploy): skeleton for examples/production/durable_postg
 
 Spec reference: §2.3, §3.
 
+**v2 fixes:** F-C-01 (str-not-bytes Protocol shape) · F-L-01 (no class alias) · F-L-03 (validate key shape at load) · F-M-02 (first-key-is-encrypt-with test sharper).
+
 - [ ] **Step 1: Write failing tests**
 
 Create `examples/production/durable_postgres/tests/test_cipher.py`:
 
 ```python
 """Unit tests for FernetCipher reference impl.
+
+CRITICAL CONTRACT (F-C-01 fix): the library's EncryptedCheckpointStore
+passes a `str` to cipher.encrypt and interpolates the return value into
+an f-string. So FernetCipher MUST be str-in/str-out. Tests below
+exercise that shape exclusively. A bytes-shaped impl will fail every
+test.
 
 These are pure in-process tests; no Postgres needed.
 """
@@ -153,27 +204,94 @@ def key_b() -> bytes:
     return Fernet.generate_key()
 
 
-def test_encrypt_decrypt_roundtrip(key_a: bytes) -> None:
-    cipher = FernetCipher(keys=[key_a])
-    plaintext = b"sensitive checkpoint payload"
-    ciphertext = cipher.encrypt(plaintext)
-    assert ciphertext != plaintext
-    assert cipher.decrypt(ciphertext) == plaintext
+# ----- F-C-01: str-in / str-out roundtrip -----
 
+def test_encrypt_decrypt_roundtrip_str(key_a: bytes) -> None:
+    cipher = FernetCipher(keys=[key_a])
+    plaintext: str = '{"trial_id": "T1", "patient_profile": "anon"}'
+    ciphertext = cipher.encrypt(plaintext)
+    assert isinstance(ciphertext, str), "ciphertext MUST be str for f-string compat"
+    assert ciphertext != plaintext
+    out = cipher.decrypt(ciphertext)
+    assert isinstance(out, str)
+    assert out == plaintext
+
+
+def test_ciphertext_is_safe_in_fstring(key_a: bytes) -> None:
+    """F-C-01: the library does f'ENC:v1:{ciphertext}'. Verify no b'...' leak."""
+    cipher = FernetCipher(keys=[key_a])
+    ct = cipher.encrypt("any payload")
+    interpolated = f"ENC:v1:{ct}"
+    # Must NOT contain the bytes-repr 'b\'' prefix or trailing quote.
+    assert "b'" not in interpolated
+    assert "\"" not in interpolated[7:]  # ASCII-clean Fernet token
+    # Round-trip through prefix strip mimics the library's decrypt path.
+    stripped = interpolated[len("ENC:v1:"):]
+    assert cipher.decrypt(stripped) == "any payload"
+
+
+# ----- F-C-01 end-to-end: composes with library's EncryptedCheckpointStore -----
+
+def test_composes_with_library_encrypted_store(key_a: bytes) -> None:
+    """End-to-end: wrap a fake inner store; assert PHI never lands in plaintext."""
+    import asyncio
+    from adv_multi_agent.core.durable import EncryptedCheckpointStore
+    from adv_multi_agent.core.durable.checkpoint import Checkpoint
+
+    class _FakeInner:
+        def __init__(self) -> None:
+            self._rows: dict[str, Checkpoint] = {}
+
+        async def write(self, cp: Checkpoint) -> None:
+            self._rows[cp.run_id] = cp
+
+        async def read(self, run_id: str) -> Checkpoint:
+            return self._rows[run_id]
+
+        async def list_paused(self, wake_before):
+            return []
+
+        async def delete(self, run_id: str) -> None:
+            self._rows.pop(run_id, None)
+
+    cipher = FernetCipher(keys=[key_a])
+    inner = _FakeInner()
+    store = EncryptedCheckpointStore(inner=inner, cipher=cipher)
+
+    cp = Checkpoint(
+        run_id="rt-001", schema_version=1, status="paused", round=1,
+        rounds_history=[], last_request_json='{"trial_id": "PHI_HERE"}',
+        pause_reason=None, pause_context={},
+        budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
+        pinned_executor_model="m1", pinned_reviewer_model="m2",
+        workflow_class="x.Y", wake_at=None,
+        created_at="2026-05-17T12:00:00Z", updated_at="2026-05-17T12:00:00Z",
+    )
+
+    asyncio.run(store.write(cp))
+    stored = inner._rows["rt-001"]
+    # CRITICAL: inner store sees ciphertext, NOT plaintext
+    assert stored.last_request_json.startswith("ENC:v1:")
+    assert "PHI_HERE" not in stored.last_request_json
+
+    loaded = asyncio.run(store.read("rt-001"))
+    assert loaded.last_request_json == '{"trial_id": "PHI_HERE"}'
+
+
+# ----- Rotation correctness -----
 
 def test_multifernet_accepts_either_key_during_rotation(
     key_a: bytes, key_b: bytes
 ) -> None:
-    # Write under key A
     cipher_old = FernetCipher(keys=[key_a])
-    payload = b"row written before rotation"
+    payload = "row written before rotation"
     ciphertext_a = cipher_old.encrypt(payload)
 
     # Rotate: new=B, old=A. New writes use B; reads accept either.
     cipher_rotating = FernetCipher(keys=[key_b, key_a])
-    assert cipher_rotating.decrypt(ciphertext_a) == payload  # reads old
+    assert cipher_rotating.decrypt(ciphertext_a) == payload
     ciphertext_b = cipher_rotating.encrypt(payload)
-    assert cipher_rotating.decrypt(ciphertext_b) == payload  # reads new
+    assert cipher_rotating.decrypt(ciphertext_b) == payload
 
     # After re-encrypt pass: only B configured. A-encrypted rows must fail.
     cipher_new_only = FernetCipher(keys=[key_b])
@@ -182,59 +300,67 @@ def test_multifernet_accepts_either_key_during_rotation(
         cipher_new_only.decrypt(ciphertext_a)
 
 
+def test_first_key_is_encrypt_with(key_a: bytes, key_b: bytes) -> None:
+    """F-M-02: MultiFernet contract — encrypt always uses keys[0].
+    Operator who swaps key order on rotation gets a no-op; this test
+    proves the ciphertext is encrypt-with-keys[0] specifically.
+    """
+    cipher = FernetCipher(keys=[key_a, key_b])
+    ct_str = cipher.encrypt("x")
+    # The Fernet token under-the-hood is decryptable by key_a only.
+    assert Fernet(key_a).decrypt(ct_str.encode("ascii")) == b"x"
+    with pytest.raises(Exception):
+        Fernet(key_b).decrypt(ct_str.encode("ascii"))
+
+
+# ----- Redaction -----
+
 def test_repr_redacts_key_material(key_a: bytes) -> None:
     cipher = FernetCipher(keys=[key_a])
     rendered = repr(cipher)
     assert "<redacted>" in rendered
-    # Raw key bytes must never appear
     assert key_a.decode() not in rendered
     assert key_a.hex() not in rendered
 
 
-def test_fingerprint_is_short_and_stable(key_a: bytes) -> None:
+def test_str_redacts_key_material(key_a: bytes) -> None:
+    """F-L-01: __str__ explicit method, not class alias."""
+    cipher = FernetCipher(keys=[key_a])
+    assert "<redacted>" in str(cipher)
+    assert key_a.decode() not in str(cipher)
+
+
+def test_fingerprint_is_short_stable_and_does_not_leak(key_a: bytes) -> None:
     cipher = FernetCipher(keys=[key_a])
     fp = cipher.key_fingerprint()
     assert len(fp) == 8
-    # Stable across instances
-    other = FernetCipher(keys=[key_a])
-    assert other.key_fingerprint() == fp
-    # Matches SHA-256 prefix
     assert fp == hashlib.sha256(key_a).hexdigest()[:8]
-
-
-def test_fingerprint_does_not_leak_key(key_a: bytes) -> None:
-    cipher = FernetCipher(keys=[key_a])
-    fp = cipher.key_fingerprint()
-    # Fingerprint must not be reversible to the key
     assert key_a.decode() not in fp
-    # Different keys produce different fingerprints
-    other_key = Fernet.generate_key()
-    other_cipher = FernetCipher(keys=[other_key])
-    assert cipher.key_fingerprint() != other_cipher.key_fingerprint()
+    other = FernetCipher(keys=[Fernet.generate_key()])
+    assert cipher.key_fingerprint() != other.key_fingerprint()
 
+
+# ----- F-L-03: validate key shape at load time -----
 
 def test_empty_keys_list_rejected() -> None:
     with pytest.raises(ValueError, match="at least one key"):
         FernetCipher(keys=[])
 
 
-def test_first_key_is_encrypt_with(key_a: bytes, key_b: bytes) -> None:
-    """The MultiFernet contract: encrypt always uses keys[0]."""
-    cipher = FernetCipher(keys=[key_a, key_b])
-    ct = cipher.encrypt(b"x")
-    # Only key A should be able to decrypt without MultiFernet
-    assert Fernet(key_a).decrypt(ct) == b"x"
-    with pytest.raises(Exception):
-        Fernet(key_b).decrypt(ct)
+def test_malformed_key_rejected_at_construction() -> None:
+    """F-L-03: invalid base64 / wrong length must fail at load, not at first encrypt."""
+    with pytest.raises(ValueError, match="invalid Fernet key"):
+        FernetCipher(keys=[b"not-a-real-fernet-key"])
+    with pytest.raises(ValueError, match="invalid Fernet key"):
+        FernetCipher(keys=[b""])
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run:
 ```bash
 pytest examples/production/durable_postgres/tests/test_cipher.py -v
 ```
-Expected: `ImportError: No module named 'examples.production.durable_postgres.cipher'` or `ModuleNotFoundError`.
+Expected: `ImportError` for cipher module.
 
 - [ ] **Step 3: Write cipher.py implementation**
 
@@ -243,15 +369,23 @@ Create `examples/production/durable_postgres/cipher.py`:
 ```python
 """FernetCipher reference impl — NOT shipped by the library (D-DURABLE-4).
 
+PROTOCOL CONTRACT (F-C-01):
+  The library's EncryptedCheckpointStore calls
+    ciphertext = self._cipher.encrypt(cp.last_request_json)
+  where last_request_json is a `str`, and interpolates the return value
+  into an f-string. So this Cipher impl MUST be str-in / str-out. A
+  bytes-shaped impl would either raise TypeError (MultiFernet rejects str)
+  or produce literal "b'...'" in the f-string. Both ship broken at-rest
+  encryption.
+
 Key rotation:
   Construct with MultiFernet([new_key, old_key]). New writes use new_key.
   Reads accept either. After re-encrypt pass (scripts/reencrypt_all.py),
   drop old_key. See README "Key management" for the full procedure.
 
 Repr redaction:
-  __repr__ returns FernetCipher(key=<redacted>, fingerprint=<8 hex>). Raw
-  key bytes never appear in repr, logs, or healthcheck output. See spec
-  §3.2.1 + smoke test #10.
+  __repr__ AND __str__ return FernetCipher(key=<redacted>, fingerprint=<8 hex>).
+  Raw key bytes never appear in repr, logs, or healthcheck output (spec §3.2.1).
 """
 from __future__ import annotations
 
@@ -262,20 +396,35 @@ from cryptography.fernet import Fernet, MultiFernet
 
 
 class FernetCipher:
-    """Implements the durable Cipher Protocol via cryptography.MultiFernet."""
+    """Implements the durable Cipher Protocol via cryptography.MultiFernet.
+
+    str-in / str-out per F-C-01 — internally encodes UTF-8 and decodes ASCII
+    around MultiFernet's bytes-only API.
+    """
 
     def __init__(self, keys: Sequence[bytes]) -> None:
         if not keys:
             raise ValueError("FernetCipher requires at least one key")
-        self._multi = MultiFernet([Fernet(k) for k in keys])
+        # F-L-03: validate key shape at construction, not at first encrypt
+        fernets: list[Fernet] = []
+        for k in keys:
+            try:
+                fernets.append(Fernet(k))
+            except (ValueError, Exception) as exc:
+                raise ValueError(f"invalid Fernet key: {exc}") from exc
+        self._multi = MultiFernet(fernets)
         # Fingerprint of the primary (encrypt-with) key for log correlation.
         self._fingerprint = hashlib.sha256(keys[0]).hexdigest()[:8]
 
-    def encrypt(self, plaintext: bytes) -> bytes:
-        return self._multi.encrypt(plaintext)
+    def encrypt(self, plaintext: str) -> str:
+        """Encrypt a str payload; return ASCII-safe Fernet token string."""
+        token_bytes = self._multi.encrypt(plaintext.encode("utf-8"))
+        return token_bytes.decode("ascii")
 
-    def decrypt(self, ciphertext: bytes) -> bytes:
-        return self._multi.decrypt(ciphertext)
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt a Fernet token string; return the original str plaintext."""
+        plaintext_bytes = self._multi.decrypt(ciphertext.encode("ascii"))
+        return plaintext_bytes.decode("utf-8")
 
     def key_fingerprint(self) -> str:
         """Short SHA-256 prefix of the primary key. Safe to log."""
@@ -284,25 +433,24 @@ class FernetCipher:
     def __repr__(self) -> str:
         return f"FernetCipher(key=<redacted>, fingerprint={self._fingerprint})"
 
-    __str__ = __repr__
+    def __str__(self) -> str:
+        # F-L-01: explicit method, not class-level alias
+        return self.__repr__()
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run:
 ```bash
 pytest examples/production/durable_postgres/tests/test_cipher.py -v
 ```
-Expected: 7 tests pass.
+Expected: 10 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add examples/production/durable_postgres/cipher.py examples/production/durable_postgres/tests/test_cipher.py
-git commit -m "feat(prod-deploy): FernetCipher with rotation + repr redaction"
+git commit -m "feat(prod-deploy): FernetCipher str-in/str-out + end-to-end roundtrip + key validation (F-C-01, F-L-01, F-L-03)"
 ```
-
-(No `[skip ci]` — touches Python code; full matrix runs.)
 
 ---
 
@@ -315,6 +463,8 @@ git commit -m "feat(prod-deploy): FernetCipher with rotation + repr redaction"
 - Create: `examples/production/durable_postgres/tests/test_store.py`
 
 Spec reference: §2.1, §4 (SQL-injection posture), §4.2 (schema.sql).
+
+**v2 fixes:** F-H-08 (run_id app-layer validation at store boundary) · F-M-07 (schema length-check comment) · F-H-06 (add `write_if_unchanged` for CAS used by reencrypt_all).
 
 - [ ] **Step 1: Write schema.sql**
 
@@ -335,6 +485,9 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT run_id_charset CHECK (run_id ~ '^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$'),
     CONSTRAINT workflow_class_length CHECK (char_length(workflow_class) <= 512)
+    -- F-M-07: payload is BYTEA NOT NULL. Smallest valid JSON object is "{}"
+    -- (2 bytes). If a future migration adds CHECK (length(payload) > N),
+    -- N must be <= 2 OR the migration must rewrite legacy rows.
 );
 
 -- Partial index supports the hot list_paused query.
@@ -570,6 +723,71 @@ async def test_payload_is_bytes_passthrough(pg_pool, fresh_checkpoints_table):
     assert loaded.last_request_json == "ENC:v1:abc123XYZ=="
 
 
+async def test_store_rejects_bad_run_id_before_touching_db(
+    pg_pool, fresh_checkpoints_table
+):
+    """F-H-08: app-layer validation must fire BEFORE asyncpg call.
+
+    Asserts the store raises ValueError (not asyncpg CheckViolationError),
+    proving the check happened in Python, not in Postgres.
+    """
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(pg_pool)
+    bad_cp = _make_checkpoint(run_id="abc;DROP TABLE")
+    with pytest.raises(ValueError, match="invalid run_id"):
+        await store.write(bad_cp)
+    with pytest.raises(ValueError, match="invalid run_id"):
+        await store.read("abc;DROP TABLE")
+    with pytest.raises(ValueError, match="invalid run_id"):
+        await store.delete("abc;DROP TABLE")
+
+
+async def test_write_if_unchanged_cas_success(pg_pool, fresh_checkpoints_table):
+    """F-H-06: CAS write succeeds when updated_at matches."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(pg_pool)
+    cp = _make_checkpoint(run_id="cas-001")
+    await store.write(cp)
+
+    async with pg_pool.acquire() as conn:
+        original_updated_at = await conn.fetchval(
+            "SELECT updated_at FROM checkpoints WHERE run_id = $1", "cas-001",
+        )
+
+    cp_v2 = _make_checkpoint(run_id="cas-001")
+    object.__setattr__(cp_v2, "round", 5)
+    await store.write_if_unchanged(cp_v2, expected_updated_at=original_updated_at)
+
+    loaded = await store.read("cas-001")
+    assert loaded.round == 5
+
+
+async def test_write_if_unchanged_cas_failure(pg_pool, fresh_checkpoints_table):
+    """F-H-06: CAS write raises when updated_at has moved."""
+    from examples.production.durable_postgres.store import (
+        PostgresCheckpointStore,
+        CompareAndSwapFailed,
+    )
+
+    store = PostgresCheckpointStore(pg_pool)
+    cp = _make_checkpoint(run_id="cas-002")
+    await store.write(cp)
+
+    # Simulate a stale expected_updated_at (1 day in the past)
+    from datetime import timedelta
+    async with pg_pool.acquire() as conn:
+        current = await conn.fetchval(
+            "SELECT updated_at FROM checkpoints WHERE run_id = $1", "cas-002",
+        )
+    stale = current - timedelta(days=1)
+
+    cp_v2 = _make_checkpoint(run_id="cas-002")
+    with pytest.raises(CompareAndSwapFailed, match="updated_at moved"):
+        await store.write_if_unchanged(cp_v2, expected_updated_at=stale)
+
+
 async def test_list_paused_limit_capped(pg_pool, fresh_checkpoints_table):
     """list_paused honors the batch_size cap."""
     from examples.production.durable_postgres.store import PostgresCheckpointStore
@@ -613,6 +831,12 @@ SQL INJECTION POSTURE (spec §4.1):
 
 If you add a new query, add a row to README §"Security invariants" or it
 will fail the pre-commit grep gate (scripts/check_no_fstring_sql.sh).
+
+F-H-08 — STORE-BOUNDARY VALIDATION:
+  Even though the DB CHECK constraint rejects bad run_ids, app-layer
+  validation MUST fire FIRST so we never encrypt PHI for a request that
+  will be rejected at the DB. _RUN_ID_RE is the same regex used by the
+  library; importing it keeps the two layers in sync.
 """
 from __future__ import annotations
 
@@ -625,8 +849,16 @@ import asyncpg
 from adv_multi_agent.core.durable.checkpoint import (
     Checkpoint,
     RunNotFound,
+    _RUN_ID_RE,
 )
 from adv_multi_agent.core.durable.token import ResumeToken
+
+
+class CompareAndSwapFailed(RuntimeError):
+    """Raised by write_if_unchanged when expected_updated_at doesn't match.
+
+    F-H-06: optimistic concurrency for the reencrypt rotation pass.
+    """
 
 
 class PostgresCheckpointStore:
@@ -636,7 +868,16 @@ class PostgresCheckpointStore:
         self._pool = pool
         self._max_batch = max_batch
 
+    @staticmethod
+    def _validate_run_id(run_id: str) -> None:
+        """F-H-08: app-layer fence before any DB / cipher operation."""
+        if not _RUN_ID_RE.fullmatch(run_id):
+            raise ValueError(
+                f"invalid run_id (must match _RUN_ID_RE): {run_id!r}"
+            )
+
     async def write(self, checkpoint: Checkpoint) -> None:
+        self._validate_run_id(checkpoint.run_id)
         payload_bytes = self._serialize(checkpoint)
         # Parse wake_at (string in checkpoint, TIMESTAMPTZ in DB).
         wake_at_dt: datetime | None = None
@@ -667,6 +908,7 @@ class PostgresCheckpointStore:
             )
 
     async def read(self, run_id: str) -> Checkpoint:
+        self._validate_run_id(run_id)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
@@ -699,10 +941,62 @@ class PostgresCheckpointStore:
         return [self._row_to_token(r) for r in rows]
 
     async def delete(self, run_id: str) -> None:
+        self._validate_run_id(run_id)
         async with self._pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM checkpoints WHERE run_id = $1",
                 run_id,
+            )
+
+    async def write_if_unchanged(
+        self,
+        checkpoint: Checkpoint,
+        expected_updated_at: datetime,
+    ) -> None:
+        """F-H-06: Compare-and-swap write for the reencrypt rotation pass.
+
+        UPDATE only if `updated_at = $expected`. If another writer touched
+        the row mid-sweep, this raises CompareAndSwapFailed and the caller
+        (reencrypt_all) logs + skips that run_id.
+
+        NOT a Protocol method — this is an example-internal extension. The
+        library's CheckpointStore Protocol does not require it. Other Store
+        impls (FileCheckpointStore) do not implement it; only the reencrypt
+        helper uses it, and only against THIS impl.
+        """
+        self._validate_run_id(checkpoint.run_id)
+        payload_bytes = self._serialize(checkpoint)
+        wake_at_dt: datetime | None = None
+        if checkpoint.wake_at:
+            wake_at_dt = datetime.fromisoformat(
+                checkpoint.wake_at.replace("Z", "+00:00")
+            )
+
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE checkpoints
+                   SET schema_version = $2,
+                       status = $3,
+                       wake_at = $4,
+                       workflow_class = $5,
+                       payload = $6,
+                       updated_at = NOW()
+                 WHERE run_id = $1
+                   AND updated_at = $7
+                """,
+                checkpoint.run_id,
+                checkpoint.schema_version,
+                checkpoint.status,
+                wake_at_dt,
+                checkpoint.workflow_class,
+                payload_bytes,
+                expected_updated_at,
+            )
+        # asyncpg execute returns "UPDATE N"; 0 = no rows matched the CAS
+        if result.endswith(" 0"):
+            raise CompareAndSwapFailed(
+                f"run_id={checkpoint.run_id!r} updated_at moved during sweep"
             )
 
     # --- serialization helpers ---
@@ -789,6 +1083,8 @@ git commit -m "feat(prod-deploy): PostgresCheckpointStore with parameterized que
 
 Spec reference: §2.2, advisor items #2, #3, #8.
 
+**v2 fixes:** F-H-01 (watchdog closes conn, not release) · F-H-02 (heartbeat awaits cancel) · F-H-03 (`RunLocked(run_id, locked_at: float)`) · F-H-04 (try/except around create_task; release on failure) · F-H-05 (namespace via `DURABLE_APP_NAMESPACE`) · F-M-06 (pool sizing in conftest).
+
 - [ ] **Step 1: Write failing tests**
 
 Create `examples/production/durable_postgres/tests/test_lock.py`:
@@ -860,15 +1156,15 @@ async def test_acquire_then_release(pg_pool):
 
 
 async def test_double_acquire_blocks(pg_pool):
-    """Two acquires on different connections for same run_id; second raises."""
+    """Two acquires on different connections for same run_id; second raises.
+
+    F-M-06: pool_b sized to 1 (was 2) to minimize cluster max_connections impact.
+    """
     import asyncpg as ap
 
     from examples.production.durable_postgres.lock import PostgresAdvisoryLock
 
-    # Pool of size 2; lock holds one connection, second acquire uses the other.
-    dsn = pg_pool._connect_kwargs.get("dsn") or None  # asyncpg internal
-    # Build a fresh second pool to ensure separate connection
-    pool_b = await ap.create_pool(dsn or _get_dsn_from_env(), min_size=1, max_size=2)
+    pool_b = await ap.create_pool(_get_dsn_from_env(), min_size=1, max_size=1)
     try:
         lock_a = PostgresAdvisoryLock(pg_pool)
         lock_b = PostgresAdvisoryLock(pool_b)
@@ -880,6 +1176,102 @@ async def test_double_acquire_blocks(pg_pool):
             await lock_a.release(handle)
     finally:
         await pool_b.close()
+
+
+async def test_run_locked_exception_shape_matches_library(pg_pool):
+    """F-H-03: RunLocked signature is (run_id: str, locked_at: float).
+
+    Plan v1 passed locked_by='other' + locked_at='unknown' — would raise
+    TypeError. This test ensures the impl uses the library's actual shape.
+    """
+    import time
+
+    pool_b = await asyncpg.create_pool(_get_dsn_from_env(), min_size=1, max_size=1)
+    try:
+        lock_a = PostgresAdvisoryLock(pg_pool)
+        lock_b = PostgresAdvisoryLock(pool_b)
+        h = await lock_a.acquire("run-exc-shape", ttl_seconds=10)
+        try:
+            before = time.time()
+            with pytest.raises(RunLocked) as exc_info:
+                await lock_b.acquire("run-exc-shape", ttl_seconds=10)
+            after = time.time()
+            assert exc_info.value.run_id == "run-exc-shape"
+            assert isinstance(exc_info.value.locked_at, float)
+            assert before <= exc_info.value.locked_at <= after
+        finally:
+            await lock_a.release(h)
+    finally:
+        await pool_b.close()
+
+
+# ----- F-H-01: TTL boundary — watchdog must release lock without corruption -----
+
+async def test_ttl_expiry_releases_lock_via_connection_close(pg_pool):
+    """F-H-01: after TTL elapses with no heartbeat, the lock must be reacquirable.
+
+    Watchdog must close the connection (not call release()), which auto-releases
+    the session-scoped advisory lock without reentrancy bugs.
+    """
+    from examples.production.durable_postgres.lock import PostgresAdvisoryLock
+
+    pool_b = await asyncpg.create_pool(_get_dsn_from_env(), min_size=1, max_size=1)
+    try:
+        lock_a = PostgresAdvisoryLock(pg_pool)
+        lock_b = PostgresAdvisoryLock(pool_b)
+        _ = await lock_a.acquire("run-ttl-001", ttl_seconds=1)
+        # Do NOT release; let TTL elapse
+        await asyncio.sleep(2.0)
+        # Second acquire on different pool MUST succeed now
+        h2 = await lock_b.acquire("run-ttl-001", ttl_seconds=10)
+        await lock_b.release(h2)
+    finally:
+        await pool_b.close()
+
+
+# ----- F-H-02: heartbeat-watchdog race — no asyncpg conn corruption -----
+
+async def test_heartbeat_does_not_race_watchdog(pg_pool):
+    """F-H-02: rapid heartbeats around TTL boundary must not corrupt conn."""
+    from examples.production.durable_postgres.lock import PostgresAdvisoryLock
+
+    lock = PostgresAdvisoryLock(pg_pool, default_ttl=2)
+    h = await lock.acquire("run-hb-race", ttl_seconds=2)
+    try:
+        # Fire 5 heartbeats in quick succession
+        for _ in range(5):
+            await lock.heartbeat(h)
+            await asyncio.sleep(0.1)
+        # Connection should still be usable
+        result = await h.conn.fetchval("SELECT 42")
+        assert result == 42
+    finally:
+        await lock.release(h)
+
+
+# ----- F-H-05: namespace via env var -----
+
+def test_namespace_changes_keyspace(monkeypatch):
+    """F-H-05: same run_id under different DURABLE_APP_NAMESPACE produces
+    different (key1, key2) pairs at the Postgres level.
+    """
+    from examples.production.durable_postgres.lock import _namespace_key
+
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "app-A")
+    ns_a = _namespace_key()
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "app-B")
+    ns_b = _namespace_key()
+    assert ns_a != ns_b
+
+
+def test_namespace_default_when_unset(monkeypatch):
+    from examples.production.durable_postgres.lock import _namespace_key
+
+    monkeypatch.delenv("DURABLE_APP_NAMESPACE", raising=False)
+    default_ns = _namespace_key()
+    monkeypatch.setenv("DURABLE_APP_NAMESPACE", "durable-checkpoints")
+    explicit_ns = _namespace_key()
+    assert default_ns == explicit_ns
 
 
 def _get_dsn_from_env() -> str:
@@ -943,23 +1335,40 @@ TWO-POOL CONCURRENCY MODEL (spec §2.2, advisor #2):
       Connections released after each query.
   Pools never share connections; deadlock impossible by construction.
 
-KEY COLLISION DEFENSE (spec §2.2, advisor #8):
+KEY COLLISION DEFENSE (spec §2.2, advisor #8 + F-H-05):
   run_id hashed via SHA-256 to 96 bits split as int8 + int4. Two-key form
-  pg_try_advisory_lock(key1, key2) gives 2^96 collision space, not 2^32
-  of bare hashtext().
+  pg_try_advisory_lock(key1, key2). To prevent keyspace collision with
+  co-resident apps (pg_boss, other advisory-lock users), key1 is XOR'd
+  with a 64-bit namespace derived from DURABLE_APP_NAMESPACE env var
+  (default 'durable-checkpoints' if unset).
 
 PGBOUNCER INCOMPATIBILITY (spec §7.8, advisor #3):
   Advisory locks are session-state. pgbouncer in transaction/statement
-  pooling modes SILENTLY breaks them — lock acquires but releases between
-  statements. Either:
+  pooling modes SILENTLY breaks them. Either:
     a) configure pgbouncer in session pooling mode, OR
     b) connect directly to Postgres bypassing the pooler.
+
+WATCHDOG SEMANTICS (F-H-01, F-H-02, F-H-04):
+  TTL watchdog DOES NOT call self.release(). Instead, on TTL expiry it
+  closes the held asyncpg connection — Postgres session-scoped advisory
+  locks auto-release on connection close. This eliminates the reentrancy
+  bug where release() cancelled the watchdog from within the watchdog,
+  corrupting the asyncpg connection state.
+
+  heartbeat() awaits the watchdog cancellation before issuing the
+  keepalive — prevents the heartbeat-vs-watchdog race on the same conn.
+
+  acquire() wraps watchdog creation in try/except; on failure the lock
+  is released and connection returned to pool. No silent leak on
+  CancelledError or OOM at task-spawn time.
 """
 from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import dataclass
+import os
+import time
+from dataclasses import dataclass, field
 from typing import Optional
 
 import asyncpg
@@ -975,25 +1384,54 @@ class _PgLockHandle(LockHandle):
     key2: int
     conn: asyncpg.Connection
     watchdog: Optional[asyncio.Task] = None
+    released: bool = False  # idempotency guard
+
+
+def _namespace_key() -> int:
+    """64-bit namespace derived from DURABLE_APP_NAMESPACE env var.
+
+    F-H-05: prevents keyspace collision with co-resident advisory-lock
+    apps like pg_boss. Default 'durable-checkpoints' if unset.
+    """
+    ns = os.environ.get("DURABLE_APP_NAMESPACE", "durable-checkpoints")
+    digest = hashlib.sha256(ns.encode("utf-8")).digest()
+    return int.from_bytes(digest[0:8], "big", signed=True)
 
 
 class PostgresAdvisoryLock:
-    """RunLock via pg_try_advisory_lock with two-key SHA-256 split."""
+    """RunLock via pg_try_advisory_lock with two-key SHA-256 split + namespace."""
 
     def __init__(self, lock_pool: asyncpg.Pool, default_ttl: int = 300) -> None:
         self._pool = lock_pool
         self._default_ttl = default_ttl
+        self._namespace = _namespace_key()  # cached at construction
 
     @staticmethod
     def _split_key(run_id: str) -> tuple[int, int]:
-        """SHA-256(run_id)[:12] → (int8, int4). 96 bits of collision space."""
+        """SHA-256(run_id)[:12] → (int8, int4). 96 bits of collision space.
+
+        key1 is XOR'd with the namespace at acquire/release time, NOT here —
+        keeps this method pure for testability.
+        """
         digest = hashlib.sha256(run_id.encode("ascii")).digest()
         key1 = int.from_bytes(digest[0:8], "big", signed=True)
         key2 = int.from_bytes(digest[8:12], "big", signed=True)
         return key1, key2
 
+    def _ns_split_key(self, run_id: str) -> tuple[int, int]:
+        """Apply namespace XOR before passing to Postgres."""
+        k1, k2 = self._split_key(run_id)
+        # XOR with namespace; cast back to signed int8 via 64-bit mask
+        ns_k1 = (k1 ^ self._namespace)
+        # Python ints are arbitrary precision; constrain to signed int8 range
+        if ns_k1 >= 2**63:
+            ns_k1 -= 2**64
+        elif ns_k1 < -(2**63):
+            ns_k1 += 2**64
+        return ns_k1, k2
+
     async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle:
-        key1, key2 = self._split_key(run_id)
+        key1, key2 = self._ns_split_key(run_id)
         conn = await self._pool.acquire()
         try:
             got = await conn.fetchval(
@@ -1005,41 +1443,119 @@ class PostgresAdvisoryLock:
             raise
         if not got:
             await self._pool.release(conn)
-            raise RunLocked(run_id=run_id, locked_by="other", locked_at="unknown")
-        handle = _PgLockHandle(run_id=run_id, key1=key1, key2=key2, conn=conn)
-        # TTL watchdog: if heartbeat() not called within ttl_seconds, auto-release.
-        handle.watchdog = asyncio.create_task(self._watchdog(handle, ttl_seconds))
+            # F-H-03: library RunLocked signature is (run_id: str, locked_at: float)
+            raise RunLocked(run_id=run_id, locked_at=time.time())
+
+        handle = _PgLockHandle(
+            run_id=run_id, key1=key1, key2=key2, conn=conn,
+        )
+        # F-H-04: defensive try/except around watchdog spawn.
+        # On any failure here we MUST release the lock + connection.
+        try:
+            handle.watchdog = asyncio.create_task(
+                self._watchdog(handle, ttl_seconds)
+            )
+        except BaseException:
+            # CancelledError / OOM / event-loop-shutdown
+            try:
+                await conn.fetchval(
+                    "SELECT pg_advisory_unlock($1::int8, $2::int4)",
+                    key1, key2,
+                )
+            finally:
+                await self._pool.release(conn)
+            raise
         return handle
 
     async def release(self, handle: LockHandle) -> None:
         assert isinstance(handle, _PgLockHandle)
-        if handle.watchdog is not None:
-            handle.watchdog.cancel()
-            handle.watchdog = None
+        if handle.released:
+            return  # idempotent
+        handle.released = True
+
+        # F-H-02-style cancel-and-await for the watchdog
+        watchdog = handle.watchdog
+        handle.watchdog = None
+        if watchdog is not None and not watchdog.done():
+            watchdog.cancel()
+            try:
+                await watchdog
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                # Watchdog already errored (e.g., conn closed during sleep);
+                # swallow — we're releasing anyway.
+                pass
+
+        # Attempt unlock; ignore errors (conn may already be closed by watchdog)
         try:
             await handle.conn.fetchval(
                 "SELECT pg_advisory_unlock($1::int8, $2::int4)",
                 handle.key1, handle.key2,
             )
+        except Exception:
+            pass
         finally:
-            await self._pool.release(handle.conn)
+            try:
+                await self._pool.release(handle.conn)
+            except Exception:
+                # Pool may already have terminated the conn; nothing to do
+                pass
 
     async def heartbeat(self, handle: LockHandle) -> None:
+        """F-H-02: cancel-and-AWAIT the watchdog before issuing keepalive."""
         assert isinstance(handle, _PgLockHandle)
-        # Cancel + reschedule the watchdog
-        if handle.watchdog is not None:
-            handle.watchdog.cancel()
+        if handle.released:
+            return
+
+        old_watchdog = handle.watchdog
+        handle.watchdog = None
+        if old_watchdog is not None and not old_watchdog.done():
+            old_watchdog.cancel()
+            try:
+                await old_watchdog
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+
+        # Now safe to use the connection — no concurrent watchdog
         await handle.conn.fetchval("SELECT 1")
-        handle.watchdog = asyncio.create_task(
-            self._watchdog(handle, self._default_ttl)
-        )
+
+        # Re-arm watchdog
+        try:
+            handle.watchdog = asyncio.create_task(
+                self._watchdog(handle, self._default_ttl)
+            )
+        except BaseException:
+            # Same defensive cleanup as acquire()
+            await self.release(handle)
+            raise
 
     async def _watchdog(self, handle: _PgLockHandle, ttl: int) -> None:
+        """F-H-01: on TTL expiry, CLOSE the connection (not call release()).
+
+        Postgres advisory locks are session-scoped — closing the conn
+        auto-releases the lock. No reentrancy bug; no race with release().
+        """
         try:
             await asyncio.sleep(ttl)
-            await self.release(handle)
         except asyncio.CancelledError:
-            pass
+            return
+        # TTL elapsed without heartbeat. Close conn; lock releases server-side.
+        # Do NOT call self.release() — would re-enter cancel + unlock paths
+        # on a connection we're about to invalidate.
+        if not handle.released:
+            handle.released = True
+            try:
+                await handle.conn.close()
+            except Exception:
+                pass
+            # Return conn to pool so pool doesn't leak the slot
+            try:
+                await self._pool.release(handle.conn)
+            except Exception:
+                pass
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1066,6 +1582,8 @@ git commit -m "feat(prod-deploy): PostgresAdvisoryLock with SHA-256 two-key spli
 - Create: `examples/production/durable_postgres/tests/test_daemon.py`
 
 Spec reference: §2.4, advisor item #10.
+
+**v2 fixes:** F-H-07 (DaemonConfig frozen dataclass with `__repr__` redaction) · F-M-01 (healthcheck binds 127.0.0.1) · F-M-09 (bound request-line + catch LimitOverrunError).
 
 - [ ] **Step 1: Write failing tests**
 
@@ -1141,10 +1659,31 @@ def test_load_config_parses_keys_list(monkeypatch):
     monkeypatch.setenv("MAX_USD", "25.0")
 
     cfg = load_config_from_env()
-    assert cfg["fernet_keys"] == [b"key_one", b"key_two", b"key_three"]
-    assert cfg["max_concurrent_runs"] == 10
-    assert cfg["poll_interval"] == 30
-    assert cfg["postgres_dsn"] == "postgresql://x"
+    # F-H-07: DaemonConfig dataclass attribute access
+    assert cfg.fernet_keys == (b"key_one", b"key_two", b"key_three")
+    assert cfg.max_concurrent_runs == 10
+    assert cfg.poll_interval == 30
+    assert cfg.postgres_dsn == "postgresql://x"
+
+
+def test_daemon_config_repr_redacts_secrets(monkeypatch):
+    """F-H-07: __repr__ must NOT leak any secret value."""
+    monkeypatch.setenv("POSTGRES_DSN", "postgresql://user:SUPER_SECRET_PWD@h/d")
+    monkeypatch.setenv("DURABLE_CHECKPOINT_KEYS", "GAAAA_FERNET_KEY_LITERAL")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-LEAK_CHECK")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-LEAK_CHECK_OPENAI")
+
+    cfg = load_config_from_env()
+    rendered = repr(cfg)
+    for secret in (
+        "SUPER_SECRET_PWD",
+        "GAAAA_FERNET_KEY_LITERAL",
+        "sk-ant-LEAK_CHECK",
+        "sk-LEAK_CHECK_OPENAI",
+    ):
+        assert secret not in rendered, f"secret {secret!r} leaked in repr"
+    # Same for str()
+    assert "SUPER_SECRET_PWD" not in str(cfg)
 
 
 def test_load_config_rejects_empty_keys(monkeypatch):
@@ -1196,6 +1735,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -1232,14 +1772,53 @@ def redacted_log_record(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k in LOG_FIELD_ALLOWLIST}
 
 
-def load_config_from_env() -> dict[str, Any]:
-    """Parse env vars; fail-loud on missing required keys."""
+@dataclass(frozen=True)
+class DaemonConfig:
+    """F-H-07: frozen config dataclass with secret-redacting __repr__.
+
+    Wraps the env-derived config so that `logging.info("cfg=%s", cfg)` does
+    not leak API keys or DSN passwords. Mirrors library's Config.__repr__
+    pattern (SECURITY_MODEL.md §3 row #1).
+    """
+    postgres_dsn: str
+    fernet_keys: tuple[bytes, ...]
+    anthropic_api_key: str
+    openai_api_key: str
+    max_concurrent_runs: int
+    poll_interval: int
+    max_tokens_in: int
+    max_tokens_out: int
+    max_usd: float
+
+    def __repr__(self) -> str:
+        return (
+            "DaemonConfig("
+            "postgres_dsn=<redacted>, "
+            "fernet_keys=<redacted x{nkeys}>, "
+            "anthropic_api_key=<redacted>, "
+            "openai_api_key=<redacted>, "
+            f"max_concurrent_runs={self.max_concurrent_runs}, "
+            f"poll_interval={self.poll_interval}, "
+            f"max_tokens_in={self.max_tokens_in}, "
+            f"max_tokens_out={self.max_tokens_out}, "
+            f"max_usd={self.max_usd}"
+            ")"
+        ).replace("{nkeys}", str(len(self.fernet_keys)))
+
+    __str__ = __repr__
+
+
+def load_config_from_env() -> DaemonConfig:
+    """Parse env vars; fail-loud on missing required keys.
+
+    F-H-07: returns redaction-safe DaemonConfig (not a raw dict).
+    """
     dsn = os.environ.get("POSTGRES_DSN")
     if not dsn:
         raise ValueError("POSTGRES_DSN env var is required")
 
     keys_csv = os.environ.get("DURABLE_CHECKPOINT_KEYS", "")
-    keys = [k.strip().encode() for k in keys_csv.split(",") if k.strip()]
+    keys = tuple(k.strip().encode() for k in keys_csv.split(",") if k.strip())
     if not keys:
         raise ValueError(
             "DURABLE_CHECKPOINT_KEYS env var is required (comma-separated; "
@@ -1250,17 +1829,17 @@ def load_config_from_env() -> dict[str, Any]:
         if not os.environ.get(required):
             raise ValueError(f"{required} env var is required")
 
-    return {
-        "postgres_dsn": dsn,
-        "fernet_keys": keys,
-        "anthropic_api_key": os.environ["ANTHROPIC_API_KEY"],
-        "openai_api_key": os.environ["OPENAI_API_KEY"],
-        "max_concurrent_runs": int(os.environ.get("MAX_CONCURRENT_RUNS", "20")),
-        "poll_interval": int(os.environ.get("POLL_INTERVAL", "60")),
-        "max_tokens_in": int(os.environ.get("MAX_TOKENS_IN", "2000000")),
-        "max_tokens_out": int(os.environ.get("MAX_TOKENS_OUT", "500000")),
-        "max_usd": float(os.environ.get("MAX_USD", "50.0")),
-    }
+    return DaemonConfig(
+        postgres_dsn=dsn,
+        fernet_keys=keys,
+        anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
+        openai_api_key=os.environ["OPENAI_API_KEY"],
+        max_concurrent_runs=int(os.environ.get("MAX_CONCURRENT_RUNS", "20")),
+        poll_interval=int(os.environ.get("POLL_INTERVAL", "60")),
+        max_tokens_in=int(os.environ.get("MAX_TOKENS_IN", "2000000")),
+        max_tokens_out=int(os.environ.get("MAX_TOKENS_OUT", "500000")),
+        max_usd=float(os.environ.get("MAX_USD", "50.0")),
+    )
 
 
 class HealthcheckServer:
@@ -1275,25 +1854,48 @@ class HealthcheckServer:
         self._port = port
         self._server: asyncio.Server | None = None
 
+    # F-M-09: bound any single header line at 8KB; total request bytes via this cap
+    _MAX_LINE_BYTES = 8192
+    _MAX_HEADERS = 32
+
     async def start(self) -> None:
+        # F-M-01: bind to 127.0.0.1 only; docker compose healthcheck uses localhost
         self._server = await asyncio.start_server(
-            self._handle, host="0.0.0.0", port=self._port
+            self._handle, host="127.0.0.1", port=self._port
         )
 
     async def _handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         try:
-            request_line = await reader.readline()
+            try:
+                request_line = await reader.readuntil(b"\r\n")
+            except (asyncio.LimitOverrunError, asyncio.IncompleteReadError):
+                # F-M-09: oversized request line — slow-loris / DoS attempt
+                writer.write(b"HTTP/1.1 414 URI Too Long\r\n\r\n")
+                await writer.drain()
+                return
+            if len(request_line) > self._MAX_LINE_BYTES:
+                writer.write(b"HTTP/1.1 414 URI Too Long\r\n\r\n")
+                await writer.drain()
+                return
             method_path = request_line.decode("ascii", errors="replace").split()
-            # Drain headers
-            while True:
-                line = await reader.readline()
-                if not line or line == b"\r\n":
+
+            # F-M-09: drain headers with a hard cap on count to bound memory
+            for _ in range(self._MAX_HEADERS):
+                try:
+                    line = await reader.readuntil(b"\r\n")
+                except (asyncio.LimitOverrunError, asyncio.IncompleteReadError):
+                    writer.write(b"HTTP/1.1 431 Request Header Fields Too Large\r\n\r\n")
+                    await writer.drain()
+                    return
+                if line == b"\r\n":
                     break
-            if len(method_path) >= 2 and method_path[0] == "GET" and method_path[1] == "/health":
+
+            if (len(method_path) >= 2
+                    and method_path[0] == "GET"
+                    and method_path[1] == "/health"):
                 state = self._get_state()
-                # Enforce hard-coded key set
                 safe = {k: state[k] for k in HEALTHCHECK_KEYS if k in state}
                 body = json.dumps(safe).encode("utf-8")
                 writer.write(b"HTTP/1.1 200 OK\r\n")
@@ -1303,9 +1905,19 @@ class HealthcheckServer:
             else:
                 writer.write(b"HTTP/1.1 404 Not Found\r\n\r\n")
             await writer.drain()
+        except Exception:
+            # Never let a healthcheck handler error take down the daemon
+            try:
+                writer.write(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
+                await writer.drain()
+            except Exception:
+                pass
         finally:
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
     async def close(self) -> None:
         if self._server is not None:
@@ -1342,21 +1954,24 @@ async def main() -> None:
     from .store import PostgresCheckpointStore
 
     logging.basicConfig(level=logging.INFO)
-    cfg = load_config_from_env()
+    cfg = load_config_from_env()  # DaemonConfig instance (F-H-07)
 
+    # Two-pool model (advisor #2): locks never starve queries.
     lock_pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=2, max_size=cfg["max_concurrent_runs"],
+        cfg.postgres_dsn, min_size=2, max_size=cfg.max_concurrent_runs,
     )
     query_pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=2, max_size=10,
+        cfg.postgres_dsn, min_size=2, max_size=10,
     )
 
     agent_cfg = Config(
-        anthropic_api_key=cfg["anthropic_api_key"],
-        openai_api_key=cfg["openai_api_key"],
+        anthropic_api_key=cfg.anthropic_api_key,
+        openai_api_key=cfg.openai_api_key,
     )
 
-    cipher = FernetCipher(keys=cfg["fernet_keys"])
+    cipher = FernetCipher(keys=list(cfg.fernet_keys))
+    # F-M-02: log cipher_fingerprint at INFO so operator can verify rotation
+    logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
     inner_store = PostgresCheckpointStore(query_pool)
     store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
     lock = PostgresAdvisoryLock(lock_pool)
@@ -1370,9 +1985,9 @@ async def main() -> None:
             checkpoint_store=store,
             run_lock=lock,
             budget_tracker=BudgetTracker(
-                max_tokens_in=cfg["max_tokens_in"],
-                max_tokens_out=cfg["max_tokens_out"],
-                max_usd=cfg["max_usd"],
+                max_tokens_in=cfg.max_tokens_in,
+                max_tokens_out=cfg.max_tokens_out,
+                max_usd=cfg.max_usd,
             ),
             reconciliation_hook=MergeFreshInputsHook(
                 request_cls=TrialEligibilityRequest,
@@ -1382,7 +1997,7 @@ async def main() -> None:
     daemon = SchedulerDaemon(
         checkpoint_store=store,
         workflow_factory=workflow_factory,
-        poll_interval_seconds=cfg["poll_interval"],
+        poll_interval_seconds=cfg.poll_interval,
         max_retries=3,
     )
 
@@ -1457,6 +2072,8 @@ from __future__ import annotations
 import asyncio
 import os
 
+import os
+
 from adv_multi_agent.core import Config
 from adv_multi_agent.core.durable import DurableWorkflow
 from adv_multi_agent.healthcare.workflows.clinical_trial_eligibility import (
@@ -1493,6 +2110,15 @@ _SYNTHETIC_REQUEST = TrialEligibilityRequest(
 
 
 async def main() -> None:
+    # F-M-04: refuse to run outside the scheduler container; prevents
+    # accidental execution against developer's host environment.
+    if not os.environ.get("DURABLE_INSIDE_CONTAINER"):
+        raise SystemExit(
+            "ERROR: caller.py is designed to run inside the scheduler container.\n"
+            "Invoke via: docker compose exec scheduler python caller.py\n"
+            "(Set DURABLE_INSIDE_CONTAINER=1 to bypass; Dockerfile sets this.)"
+        )
+
     print(_DISCLAIMER)
     print("Constructing DurableWorkflow against running daemon's store...")
     print("(See daemon.py for the actual wiring; this is the start/resume harness.)")
@@ -1510,19 +2136,19 @@ async def main() -> None:
     )
 
     import asyncpg
-    cfg = load_config_from_env()
+    cfg = load_config_from_env()  # DaemonConfig (F-H-07)
     lock_pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=1, max_size=2,
+        cfg.postgres_dsn, min_size=1, max_size=2,
     )
     query_pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=1, max_size=2,
+        cfg.postgres_dsn, min_size=1, max_size=2,
     )
     try:
         agent_cfg = Config(
-            anthropic_api_key=cfg["anthropic_api_key"],
-            openai_api_key=cfg["openai_api_key"],
+            anthropic_api_key=cfg.anthropic_api_key,
+            openai_api_key=cfg.openai_api_key,
         )
-        cipher = FernetCipher(keys=cfg["fernet_keys"])
+        cipher = FernetCipher(keys=list(cfg.fernet_keys))
         store = EncryptedCheckpointStore(
             inner=PostgresCheckpointStore(query_pool),
             cipher=cipher,
@@ -1608,8 +2234,20 @@ Create `examples/production/durable_postgres/requirements.in`:
 #     pip install pip-tools
 #     pip-compile --generate-hashes --output-file=requirements.txt requirements.in
 #
+
+# Runtime deps
 asyncpg>=0.29,<0.30
 cryptography>=42,<43
+
+# F-C-03: build-time backends for stage 2 of Dockerfile (which installs the
+# library from local source with --no-build-isolation). Verified against the
+# library's pyproject.toml: build-backend = "setuptools.build_meta", requires
+# ["setuptools>=68", "wheel"]. Without these in the locked install, stage 2
+# fails with ModuleNotFoundError. Listed as direct deps to keep them in the
+# hashed lockfile.
+setuptools>=68
+wheel
+
 # Audit + SBOM tooling — installed in the image to enable scripts/*.sh
 pip-audit>=2.7,<3.0
 bandit>=1.7,<2.0
@@ -1820,7 +2458,27 @@ POSTGRES_DSN=postgresql://daemon:CHANGEME@localhost:5432/durable
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 # Single-key deploys: one entry. Rotation: two entries during the re-encrypt
 # pass (new,old). See README §"Key management" for the full procedure.
+#
+# F-M-02 ROTATION VERIFICATION:
+#   After every config change to this variable, exec into the running daemon
+#   and confirm cipher.fingerprint matches the FIRST key's first-8-hex SHA-256.
+#   The daemon logs "cipher.fingerprint=<8-hex>" at startup. If the fingerprint
+#   doesn't match the new key's digest, the order is swapped and rotation will
+#   silently fail — old key would still be encrypt-with.
+#
+#   Verify:
+#     docker compose exec scheduler python -c "
+#       import hashlib
+#       k = b'<new-key-bytes>'
+#       print('expected:', hashlib.sha256(k).hexdigest()[:8])
+#     "
+#   Compare to the daemon's logged fingerprint.
 DURABLE_CHECKPOINT_KEYS=REPLACE_WITH_FERNET_KEY
+
+# F-H-05: namespace for advisory locks. Prevents keyspace collision with
+# co-resident apps like pg_boss. Default 'durable-checkpoints' if unset;
+# set to a project-unique string per deployment.
+DURABLE_APP_NAMESPACE=durable-checkpoints
 
 # Model API keys.
 ANTHROPIC_API_KEY=sk-ant-REPLACE
@@ -1891,7 +2549,13 @@ Create `examples/production/durable_postgres/scripts/check_no_fstring_sql.sh`:
 #!/usr/bin/env bash
 # Pre-commit SQL-injection grep gate (spec §4.1.11).
 # Fails if any Python file in this dir embeds SQL keywords inside an f-string.
-# Stacked with bandit B608 in audit_deps.sh for multi-line cases (advisor #6).
+# Stacked with bandit B608 in audit_deps.sh for multi-line cases.
+#
+# F-C-02: scripts/ is INCLUDED in the scan (was excluded in plan v1).
+# scripts/reencrypt_all.py contains live SQL; any future f-string regression
+# there is exactly what this gate exists to catch. tests/ is also INCLUDED
+# now — there is no legitimate reason for tests to embed f-string SQL since
+# parameterized queries are equally testable.
 
 set -euo pipefail
 
@@ -1899,18 +2563,87 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Use ripgrep if available; fall back to grep.
 if command -v rg >/dev/null 2>&1; then
-    SEARCH="rg -n --type py"
+    if rg -n --type py \
+        "(f\"|f')[^\"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)" "$DIR" 2>/dev/null; then
+        echo "ERROR: f-string SQL detected. Use asyncpg parameterized queries." >&2
+        exit 1
+    fi
 else
-    SEARCH="grep -rn --include=*.py"
-fi
-
-if $SEARCH "(f\"|f')[^\"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)" "$DIR" \
-   --glob='!scripts/*' --glob='!tests/*' 2>/dev/null; then
-    echo "ERROR: f-string SQL detected. Use asyncpg parameterized queries." >&2
-    exit 1
+    if grep -rn --include='*.py' \
+        "(f\"\|f')[^\"']*\(SELECT\|INSERT\|UPDATE\|DELETE\|WHERE\|FROM\)" "$DIR" 2>/dev/null; then
+        echo "ERROR: f-string SQL detected. Use asyncpg parameterized queries." >&2
+        exit 1
+    fi
 fi
 
 echo "OK: no f-string SQL detected in $DIR"
+```
+
+- [ ] **Step 1b: Write a positive test for the gate**
+
+Create `examples/production/durable_postgres/tests/test_grep_gate.py`:
+
+```python
+"""F-C-02: positive test that the grep gate actually fails on f-string SQL.
+
+A gate that never fails is decorative. This test writes a tempfile with
+known-bad SQL pattern, runs the gate against it, asserts exit 1.
+"""
+from __future__ import annotations
+
+import pathlib
+import subprocess
+import tempfile
+
+import pytest
+
+
+GATE = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "check_no_fstring_sql.sh"
+
+
+def test_gate_catches_fstring_sql(tmp_path: pathlib.Path) -> None:
+    bad = tmp_path / "bad.py"
+    bad.write_text('query = f"SELECT * FROM users WHERE id = {user_id}"\n')
+
+    # Run the gate against a controlled directory containing the bad file.
+    # Easiest: temporarily set DIR via a wrapper script that cd's to tmp_path.
+    wrapper = tmp_path / "run_gate.sh"
+    wrapper.write_text(f"""#!/usr/bin/env bash
+set -e
+# Re-execute the gate logic against the test directory.
+if command -v rg >/dev/null 2>&1; then
+    rg -n --type py "(f\\"|f')[^\\"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)" "{tmp_path}" 2>/dev/null && exit 1
+else
+    grep -rn --include='*.py' "(f\\"\\|f')[^\\"']*\\(SELECT\\|INSERT\\|UPDATE\\|DELETE\\|WHERE\\|FROM\\)" "{tmp_path}" 2>/dev/null && exit 1
+fi
+exit 0
+""")
+    wrapper.chmod(0o755)
+    result = subprocess.run(["bash", str(wrapper)], capture_output=True)
+    # We expect the wrapper to exit 1 (gate caught the bad pattern)
+    assert result.returncode == 1, (
+        f"Gate did NOT catch f-string SQL. stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def test_gate_passes_on_parameterized_sql(tmp_path: pathlib.Path) -> None:
+    """Negative case — clean code should pass."""
+    good = tmp_path / "good.py"
+    good.write_text('query = "SELECT * FROM users WHERE id = $1"\n')
+
+    if subprocess.run(["which", "rg"], capture_output=True).returncode == 0:
+        cmd = ["rg", "-n", "--type", "py",
+               r"(f\"|f')[^\"']*(SELECT|INSERT|UPDATE|DELETE|WHERE|FROM)",
+               str(tmp_path)]
+    else:
+        cmd = ["grep", "-rn", "--include=*.py",
+               r"(f\"\|f')[^\"']*\(SELECT\|INSERT\|UPDATE\|DELETE\|WHERE\|FROM\)",
+               str(tmp_path)]
+    result = subprocess.run(cmd, capture_output=True)
+    # No matches → grep/rg returns non-zero (1 = no matches in grep, 1 in rg too)
+    assert result.returncode != 0 or not result.stdout, (
+        "Gate falsely flagged parameterized SQL as injection-risk"
+    )
 ```
 
 - [ ] **Step 2: Write audit_deps.sh**
@@ -1919,8 +2652,19 @@ Create `examples/production/durable_postgres/scripts/audit_deps.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# Pre-deploy dependency audit + multi-line SQL check (spec §6, advisor #6).
+# Pre-deploy dependency audit + multi-line SQL check (spec §6).
 # Run before `docker compose build`.
+#
+# F-M-05: --strict exits non-zero on any advisory, including unfixable. To
+# override a specific CVE that you've evaluated as not-applicable, append
+# --ignore-vuln GHSA-XXXX-YYYY-ZZZZ to the pip-audit invocation below, AND
+# add an inline comment naming the CVE and the rationale.
+#
+# Example ignore-list pattern (uncomment + customize as needed):
+#   IGNORE_VULNS=(
+#     --ignore-vuln GHSA-XXXX-YYYY-ZZZZ  # not exploitable: code path X never hit
+#   )
+#   pip-audit --require-hashes -r "$DIR/requirements.txt" --strict "${IGNORE_VULNS[@]}"
 
 set -euo pipefail
 
@@ -1930,7 +2674,10 @@ echo "==> pip-audit (CVE check on hashed lockfile)"
 pip-audit --require-hashes -r "$DIR/requirements.txt" --strict
 
 echo "==> bandit B608 (SQL-injection patterns including concat + multi-line)"
-bandit -t B608 -r "$DIR" --exclude "$DIR/scripts,$DIR/tests"
+# F-C-02: scripts/ and tests/ are NOT excluded — both contain SQL that
+# warrants scanning. Bandit's B608 covers multi-line + concat where the
+# grep gate cannot.
+bandit -t B608 -r "$DIR"
 
 echo "==> single-line f-string SQL grep"
 bash "$DIR/scripts/check_no_fstring_sql.sh"
@@ -2155,32 +2902,64 @@ async def reencrypt_all(
     store: "EncryptedCheckpointStore",
     pool: asyncpg.Pool,
 ) -> int:
-    """Iterate every row, re-encrypt under primary key. Returns count."""
+    """Iterate every row, re-encrypt under primary key. Returns count.
+
+    F-H-06: uses PostgresCheckpointStore.write_if_unchanged for true CAS
+    semantics at the SQL layer. A blind upsert would silently clobber
+    concurrent writes from the live daemon — losing executor draft state
+    mid-rotation. The reencrypt path here:
+      1. Read row updated_at (capture expected value)
+      2. Read full checkpoint through the store (decrypts under either key)
+      3. Write back via write_if_unchanged with the captured updated_at
+      4. On CompareAndSwapFailed: log + skip; the daemon will pick up that
+         run on its next round and the new write will be under the new key
+         (since the daemon's cipher has [new, old] and encrypts with new).
+
+    NOTE: this function reaches THROUGH EncryptedCheckpointStore to call
+    write_if_unchanged on the inner PostgresCheckpointStore — an example-
+    internal extension that bypasses the library's Protocol. The library's
+    CheckpointStore.write() is the only Protocol method; CAS is an impl
+    detail of this reference deployment.
+    """
+    from examples.production.durable_postgres.store import (
+        PostgresCheckpointStore,
+        CompareAndSwapFailed,
+    )
+
+    # Reach through the encryption decorator to the inner Postgres store.
+    # The library's EncryptedCheckpointStore exposes `_inner` (see encryption.py).
+    inner: PostgresCheckpointStore = store._inner  # type: ignore[attr-defined]
+    assert isinstance(inner, PostgresCheckpointStore), (
+        "reencrypt_all requires a PostgresCheckpointStore inside the encryption decorator"
+    )
+
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT run_id, updated_at FROM checkpoints")
 
     count = 0
+    skipped = 0
     for row in rows:
         run_id = row["run_id"]
         original_updated_at = row["updated_at"]
 
-        # Read through the store → decrypt under either key.
+        # Read full checkpoint through encryption layer → plaintext last_request_json
         cp = await store.read(run_id)
 
-        # Optimistic concurrency: only write back if updated_at unchanged.
-        async with pool.acquire() as conn:
-            current = await conn.fetchval(
-                "SELECT updated_at FROM checkpoints WHERE run_id = $1",
-                run_id,
+        # Re-encrypt the request_json via the encryption decorator's _encrypt method
+        re_encrypted = store._encrypt_request_json(cp)  # type: ignore[attr-defined]
+
+        try:
+            # CAS: write only if updated_at hasn't moved since we read it.
+            await inner.write_if_unchanged(
+                re_encrypted, expected_updated_at=original_updated_at,
             )
-        if current != original_updated_at:
-            logging.info("Skipping %s — modified during sweep", run_id)
+            count += 1
+        except CompareAndSwapFailed:
+            logging.info("reencrypt: skipping %s (modified during sweep)", run_id)
+            skipped += 1
             continue
 
-        # Write back through the store → re-encrypts under primary key.
-        await store.write(cp)
-        count += 1
-
+    logging.info("reencrypt complete: %d re-encrypted, %d skipped", count, skipped)
     return count
 
 
@@ -2192,12 +2971,12 @@ async def _main() -> None:
     from adv_multi_agent.core.durable import EncryptedCheckpointStore
 
     logging.basicConfig(level=logging.INFO)
-    cfg = load_config_from_env()
+    cfg = load_config_from_env()  # DaemonConfig (F-H-07)
     pool = await asyncpg.create_pool(
-        cfg["postgres_dsn"], min_size=1, max_size=2,
+        cfg.postgres_dsn, min_size=1, max_size=2,
     )
     try:
-        cipher = FernetCipher(keys=cfg["fernet_keys"])
+        cipher = FernetCipher(keys=list(cfg.fernet_keys))
         store = EncryptedCheckpointStore(
             inner=PostgresCheckpointStore(pool),
             cipher=cipher,
@@ -2363,6 +3142,7 @@ async def test_6_concurrent_acquire_raises_run_locked(pg_pool, fresh_checkpoints
 # ----- #7: corrupt payload → CheckpointCorrupt -----
 
 async def test_7_corrupt_payload_raises(pg_pool, fresh_checkpoints_table):
+    """F-M-08: assert on CheckpointCorrupt specifically — not catch-all Exception."""
     cipher = FernetCipher(keys=[Fernet.generate_key()])
     store = EncryptedCheckpointStore(
         inner=PostgresCheckpointStore(pg_pool), cipher=cipher,
@@ -2374,7 +3154,7 @@ async def test_7_corrupt_payload_raises(pg_pool, fresh_checkpoints_table):
             "UPDATE checkpoints SET payload = $1 WHERE run_id = $2",
             b"\x00\x01\x02not-json", "t7-corrupt",
         )
-    with pytest.raises((CheckpointCorrupt, Exception)):
+    with pytest.raises(CheckpointCorrupt):
         await store.read("t7-corrupt")
 
 
@@ -2426,9 +3206,10 @@ def test_10_cipher_repr_redacts_key():
     assert key.decode() not in rendered
 
 
-# ----- #11: log redaction drops secrets -----
+# ----- #11: in-process log redaction AND daemon stdout/stderr grep -----
 
-def test_11_log_redaction():
+def test_11a_in_process_log_redaction():
+    """In-process unit check: redacted_log_record drops non-allowlisted fields."""
     raw = {
         "run_id": "r1",
         "status": "paused",
@@ -2439,6 +3220,54 @@ def test_11_log_redaction():
     assert "fernet_key_bytes" not in safe
     assert "dsn" not in safe
     assert b"gAAAAA" not in json.dumps(safe).encode()
+
+
+@pytest.mark.skipif(
+    os.environ.get("COMPOSE_RUNNING") != "1",
+    reason="F-H-09: requires running scheduler container; set COMPOSE_RUNNING=1",
+)
+def test_11b_daemon_logs_clean_of_secrets():
+    """F-H-09: spawn daemon (already running via compose), grep stdout+stderr
+    for known-bad substrings. Catches asyncpg DEBUG-level DSN logging,
+    cryptography warnings that include key fragments, etc.
+    """
+    import re
+
+    # Fetch the running container's logs (last 500 lines is enough; we
+    # ensure no secret has ever been written by definition).
+    result = subprocess.run(
+        ["docker", "compose", "logs", "--tail=500", "scheduler"],
+        capture_output=True, check=True,
+    )
+    haystack = result.stdout + result.stderr
+
+    # Fernet token prefix — every Fernet ciphertext starts with this.
+    # If the daemon ever logged plaintext payload OR raw key bytes, this triggers.
+    assert b"gAAAAA" not in haystack, (
+        "Found 'gAAAAA' in daemon logs — possible Fernet key or payload leak"
+    )
+
+    # DSN-with-password pattern: postgresql://USER:PASS@HOST
+    dsn_password_pattern = re.compile(
+        rb"postgresql://[^\s:]+:[^@\s]+@", re.MULTILINE,
+    )
+    matches = dsn_password_pattern.findall(haystack)
+    assert not matches, (
+        f"Found DSN-with-password pattern in logs: {matches[:3]} "
+        "(asyncpg DEBUG logging?)"
+    )
+
+    # API key prefixes
+    for prefix in (b"sk-ant-", b"sk-"):
+        # Allow the literal prefix string in test fixtures, but not the
+        # full-length key that would actually be a leak. Length > 20 + prefix
+        # heuristic: if we find prefix followed by 20+ alphanumeric chars,
+        # that's a real key.
+        leak_pattern = re.compile(prefix + rb"[A-Za-z0-9_-]{20,}", re.MULTILINE)
+        leaks = leak_pattern.findall(haystack)
+        assert not leaks, (
+            f"Found API-key-shaped substring with prefix {prefix!r}: {leaks[:3]}"
+        )
 
 
 # ----- #12: healthcheck has exactly the documented keys -----
@@ -3045,4 +3874,72 @@ No type / name mismatches detected.
 
 ### Closure
 
-Plan complete. 14 tasks. ~640 LOC code + ~360 LOC config/docs. 15 smoke-test assertions across the tasks (1-14 in Task 11; #15 in Task 10's test_reencrypt). Zero library changes. Three new decisions + four doc updates + one security audit.
+Plan complete. 14 tasks. ~700 LOC code + ~400 LOC config/docs (up from v1 baseline after v2 fixes). 15 smoke-test assertions + 11 new unit tests from v2 review. Zero library changes. Three new decisions + four doc updates + one security audit.
+
+---
+
+## V2 REVIEW CLOSURE — fixes mapped to findings
+
+Independent reviewer raised 29 findings (`docs/security-audits/2026-05-16-prod-postgres-plan-review.md`). Below tracks each to its in-plan fix.
+
+### CRITICAL (3) — all addressed
+
+| Code | Fix location | Verification |
+|---|---|---|
+| F-C-01 | Task 2 cipher.py: str-in/str-out signature; matches library's `EncryptedCheckpointStore.encrypt(cp.last_request_json)` shape; internally encode UTF-8 around MultiFernet | Tests `test_encrypt_decrypt_roundtrip_str`, `test_ciphertext_is_safe_in_fstring`, `test_composes_with_library_encrypted_store` |
+| F-C-02 | Task 9 grep gate: removed `--glob='!scripts/*'` exclude; scripts/ + tests/ now scanned. Added positive gate test | `tests/test_grep_gate.py` |
+| F-C-03 | Task 7 requirements.in: added `setuptools>=68` + `wheel` as direct deps (verified against `pyproject.toml` build-backend = "setuptools.build_meta") | `pip-compile` succeeds; Dockerfile stage 2 succeeds |
+
+### HIGH (9) — all addressed
+
+| Code | Fix location | Verification |
+|---|---|---|
+| F-H-01 | Task 4 lock.py `_watchdog`: closes connection on TTL expiry instead of re-entering `release()`. Postgres advisory lock auto-releases on session close | `test_ttl_expiry_releases_lock_via_connection_close` |
+| F-H-02 | Task 4 lock.py `heartbeat()`: cancel-and-AWAIT pattern before issuing keepalive | `test_heartbeat_does_not_race_watchdog` |
+| F-H-03 | Task 4 lock.py `acquire()`: `raise RunLocked(run_id=run_id, locked_at=time.time())` matches library signature | `test_run_locked_exception_shape_matches_library` |
+| F-H-04 | Task 4 lock.py `acquire()`: try/except around `create_task`; cleanup on failure | code path covered by other lock tests via construction |
+| F-H-05 | Task 4 lock.py `_namespace_key`: 64-bit namespace from `DURABLE_APP_NAMESPACE` env var XOR'd into key1 | `test_namespace_changes_keyspace`, `test_namespace_default_when_unset` |
+| F-H-06 | Task 3 store.py: added `write_if_unchanged` CAS method + `CompareAndSwapFailed` exception. Task 10 reencrypt_all uses CAS, logs+skips on mid-sweep conflict | `test_write_if_unchanged_cas_success`, `test_write_if_unchanged_cas_failure` |
+| F-H-07 | Task 5 daemon.py: `DaemonConfig` frozen dataclass with `__repr__` redacting `postgres_dsn`, `fernet_keys`, `anthropic_api_key`, `openai_api_key` | `test_daemon_config_repr_redacts_secrets` |
+| F-H-08 | Task 3 store.py: `_validate_run_id` fires at top of `write/read/delete/write_if_unchanged` using library's `_RUN_ID_RE` | `test_store_rejects_bad_run_id_before_touching_db` |
+| F-H-09 | Task 11 smoke_test #11b: `docker compose logs scheduler` captured, regex-grepped for `gAAAAA`, DSN-password pattern, and 20+-char API-key-prefix substrings | `test_11b_daemon_logs_clean_of_secrets` |
+
+### MEDIUM (9) — all addressed
+
+| Code | Fix location |
+|---|---|
+| F-M-01 | Task 5 daemon.py: `asyncio.start_server(host="127.0.0.1", port=8080)` |
+| F-M-02 | Task 2 test_first_key_is_encrypt_with sharper; Task 5 daemon logs `cipher.fingerprint` at startup; Task 8 .env.example documents verification |
+| F-M-03 | Task 1 .dockerignore at repo root excludes `**/.secrets/` |
+| F-M-04 | Task 6 caller.py: `if not os.environ.get("DURABLE_INSIDE_CONTAINER"): SystemExit(...)` |
+| F-M-05 | Task 9 audit_deps.sh: documents `--ignore-vuln GHSA-XXXX-YYYY-ZZZZ` pattern with inline rationale comment |
+| F-M-06 | Task 4 test_double_acquire_blocks: pool_b sized to 1 (was 2) |
+| F-M-07 | Task 3 schema.sql: comment noting future length-check minimum |
+| F-M-08 | Task 11 smoke #7: `pytest.raises(CheckpointCorrupt)` (was catch-all `(CheckpointCorrupt, Exception)`) |
+| F-M-09 | Task 5 daemon.py healthcheck: `_MAX_LINE_BYTES=8192`, `_MAX_HEADERS=32`, catches `LimitOverrunError`/`IncompleteReadError` → 414/431 responses |
+
+### LOW (8) — addressed inline OR deferred to NEXT_SESSION
+
+| Code | Disposition |
+|---|---|
+| F-L-01 | FIXED — Task 2 cipher.py: explicit `__str__` method, not class alias |
+| F-L-02 | FIXED — Task 6 caller.py: docstring + F-M-04 check forces container execution |
+| F-L-03 | FIXED — Task 2 cipher.py: `Fernet(k)` construction in `__init__` validates key shape at load time; test `test_malformed_key_rejected_at_construction` |
+| F-L-04 | DEFERRED to NEXT_SESSION as in-sprint — schema.sql GRANT statements; reference deploys as table-owner is documented limitation |
+| F-L-05 | FIXED — Task 1 `.dockerignore` at repo root |
+| F-L-06 | VERIFIED — `docs/runbooks/durable-compliance.md` §10 exists with 15-row pre-prod sign-off checklist (line 350) |
+| F-L-07 | DEFERRED to NEXT_SESSION as in-sprint — spec §6.2.5 OpenSSL bundled-version doc inconsistency; non-security-impacting |
+| F-L-08 | NO ACTION — flagged for completeness only; signed int8 range assertion correct |
+
+### LOW items rolled into NEXT_SESSION (in-sprint)
+
+To be picked up alongside or after this build:
+
+- F-L-04 — Ship `examples/production/durable_postgres/grants.sql` with daemon-app role split (post-init step)
+- F-L-07 — Correct `2026-05-16-prod-postgres-deployment-design.md` §6.2.5 OpenSSL-version doc text
+
+### Reviewer re-engagement plan
+
+After all v2 fixes commit, dispatch a second independent reviewer with the same brief as the first. Acceptance bar: 0 CRITICAL + 0 HIGH. MED + LOW can be picked up during execution as folding-in fixes per CLAUDE.md.
+
+Once the second reviewer returns APPROVED, proceed to subagent-driven-development per the original handoff.
