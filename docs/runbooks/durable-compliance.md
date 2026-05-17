@@ -447,6 +447,8 @@ Items where the library makes a choice that compliance may need to override:
 
 ## §12 Workflow version drift
 
+> **Limitation (A10-H2):** This pinning detects accidental drift (a deploy landed while a run was paused) and records operator-accepted drift in `rounds_history`. It does NOT defend against an insider with write access to the checkpoint store. `EncryptedCheckpointStore` authenticates `last_request_json` only; `workflow_version_hash` and `rounds_history` are plaintext. For full attestation guarantees under 21 CFR Part 11, the operator must additionally enforce write-side IAM on the checkpoint store and audit-log every store mutation at the infrastructure layer. Full-Checkpoint AEAD lane is tracked at `docs/production-readiness-gaps.md` Tier 1.9.
+
 A run that paused under workflow v1.0 and is resumed under v1.1 produces a
 `WORKFLOW_VERSION_DRIFT` pause. This is the 21 CFR Part 11 attestation
 guardrail — the same prompt that produced rounds 1-N must produce round

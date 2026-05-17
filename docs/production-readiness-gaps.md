@@ -142,6 +142,23 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 **Effort:** 2 days. Mostly runbook + provisioning-script work.
 
+### 1.9 Full-Checkpoint AEAD (post-1.6 audit finding A10-H2)
+
+**Gap.** `EncryptedCheckpointStore` encrypts and authenticates `last_request_json` only. The `workflow_version_hash` field (introduced in Tier 1.6) and the full `rounds_history` list are stored in plaintext on the underlying store. An insider with write access to the checkpoint store can forge a `workflow_version_hash` that matches the current library, tamper with `rounds_history` to remove evidence of a force-accept or back-fill event, and the resume guard will pass silently.
+
+**Failure mode without it.** Regulator audits a clinical-trial recommendation chain. Defense counsel claims the workflow_version_hash on the paused checkpoint was edited by an operator between pause and resume; we cannot disprove. 21 CFR Part 11 attestation is defeated even though Tier 1.6 shipped the detection layer.
+
+**Deliverable:**
+- Extend the `Cipher` Protocol with `seal(checkpoint) -> bytes` / `unseal(bytes) -> checkpoint` that authenticates the entire serialized Checkpoint shape (not just `last_request_json`).
+- Library `EncryptedCheckpointStore` updated to call `seal`/`unseal` on the full row, not the single field.
+- Backward compat: legacy "field-only" ciphertext detection (warn + migrate on next write).
+- Re-encryption script (parallel to `reencrypt_all.py`) for migrating existing partial-AEAD checkpoints to full-AEAD shape.
+- Update `durable-compliance.md` §12 to remove the A10-H2 limitation callout.
+
+**Effort:** 1 week (library Protocol redesign + reference deployment update + migration script + tests).
+
+**Cross-references:** A10-H2 (cycle-10 audit), `docs/security-audits/2026-05-17-workflow-version-pinning-sweep.md`, Tier 1.6 (workflow-version pinning).
+
 ---
 
 ## Tier 2 — needed before multi-tenant or multi-team use

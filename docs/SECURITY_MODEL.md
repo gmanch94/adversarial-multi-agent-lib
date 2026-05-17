@@ -67,6 +67,7 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 
 | Gap | Status |
 |---|---|
+| workflow_version_hash + rounds_history NOT covered by EncryptedCheckpointStore AEAD | **Known limitation (A10-H2)** — `EncryptedCheckpointStore` encrypts and authenticates `last_request_json` only. The `workflow_version_hash` field and all of `rounds_history` are stored in plaintext. An insider with write access to the checkpoint store can forge a matching hash or tamper with the audit trail without detection. Full Cipher-over-Checkpoint redesign (authenticate every field, not just `last_request_json`) is deferred to a future lane. Mitigation: enforce write-side IAM on the checkpoint store and audit-log every store mutation at the infrastructure layer. |
 | No retry on API errors (rate-limit, 5xx, network) | **Open** — callers must wrap with their own retry; documented |
 | No structured audit log of model inputs/outputs | **Open** — add `Config.audit_log_path` if used in regulated context |
 | `from_dict` silently drops unknown keys | **Open by design** — schema migration would require versioning |
