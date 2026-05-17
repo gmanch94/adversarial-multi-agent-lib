@@ -1,6 +1,44 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 PM (final — Durable POC runbooks shipped)
+Last updated: 2026-05-16 PM (final — Postgres reference deployment shipped)
+
+---
+
+## 2026-05-16 PM (later) — Postgres reference deployment shipped
+
+Reference deployment for the durable subpackage at `examples/production/durable_postgres/`. Zero library changes; consumes existing Protocols (D-DURABLE-3 abstraction proven).
+
+**Shipped:**
+- 18 new files under `examples/production/durable_postgres/` (~640 LOC code, ~360 docs/config)
+- `PostgresCheckpointStore` + `PostgresAdvisoryLock` + `FernetCipher` reference impls
+- Two-pool model prevents lock-vs-query deadlock
+- SHA-256 two-key advisory lock (2^96 collision space)
+- `EncryptedCheckpointStore` decorator wraps PG store; `ENC:v1:` sentinel
+- `MultiFernet` rotation-ready; `scripts/reencrypt_all.py` closes the loop
+- Hardened container: non-root, read-only-rootfs, all caps dropped, no core dumps
+- Pinned + hashed + wheel-only deps; bandit B608 + pip-audit + grep gate
+- 15 smoke-test assertions (impl correctness only; live APIs via `caller.py`)
+- README walkthrough + key mgmt + supply chain + ops + pgbouncer warning
+- D-PROD-1/2/3 decisions appended
+
+**Status:** all 12 advisor items addressed in spec; all 15 smoke-test assertions designed; implementation per plan `docs/superpowers/plans/2026-05-16-prod-postgres-deployment.md`.
+
+### Next likely
+
+- Cycle-8 security audit on the new `examples/production/durable_postgres/` surface (scheduled per CLAUDE.md domain-ship audit cadence)
+- k8s manifests (kustomize) — sibling deployment under `examples/production/durable_postgres_k8s/` once compose pattern is validated
+- KMS / Vault cipher reference impls (separate package; library stays cipher-free)
+- Schema migration tool (`scripts/migrate_schema_version.py`) — bumps from spec §9 REFERENCE-IMPL-PENDING
+- `MetricsBackend` Protocol in library + OTel reference impl in `examples/production/`
+
+### In-sprint LOWs to pick up
+
+- F-L-04 — separate `daemon_app` role with `grants.sql`
+- F-L-07 — `cryptography` OpenSSL doc inconsistency (spec §6.2.5)
+- N-M-04 — surrogate-handling enforcement
+- N-L-03 — `.dockerignore` widening
+- N-L-04 — HTTP version validation
+- N-L-05 — `wrote_response` guard
 
 ---
 

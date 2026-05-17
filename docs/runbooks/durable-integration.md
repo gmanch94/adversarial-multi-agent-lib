@@ -149,7 +149,7 @@ class ClinicalTrialEligibilityDurableWorkflow(ClinicalTrialEligibilityWorkflow):
 |---|---|---|
 | `FileCheckpointStore` | SHIPPED | Single-process dev / POC; one filesystem; survives process restart |
 | `MemoryCheckpointStore` | SHIPPED | Tests only — does not survive process restart |
-| `PostgresCheckpointStore` | REFERENCE-IMPL-PENDING | Production multi-process. One table, `run_id` PK, `JSONB` payload column, B-tree index on `(status, wake_at)` |
+| `PostgresCheckpointStore` | REFERENCE-AT `examples/production/durable_postgres/store.py` | Production multi-process. One table, `run_id` PK, BYTEA payload column, partial index on `(wake_at) WHERE status='paused'`. See spec §4.2 for DDL. |
 | `S3CheckpointStore` | REFERENCE-IMPL-PENDING | Cross-region replication need; latency-tolerant |
 | `DynamoCheckpointStore` | REFERENCE-IMPL-PENDING | AWS-native serverless deploys |
 | Custom | CALLER-OWNED | Any storage satisfying the Protocol |
@@ -194,7 +194,7 @@ CREATE INDEX idx_durable_paused_wake
 |---|---|---|
 | `FileRunLock` | SHIPPED | Single-process / single-node. Uses `fcntl.flock` (POSIX) / `msvcrt.locking` (Windows) |
 | `MemoryRunLock` | SHIPPED | Tests only |
-| `PostgresAdvisoryLock` | REFERENCE-IMPL-PENDING | Production multi-process. Use `pg_try_advisory_lock(hashtext(run_id))` |
+| `PostgresAdvisoryLock` | REFERENCE-AT `examples/production/durable_postgres/lock.py` | Production multi-process. Two-key SHA-256 split (`pg_try_advisory_lock(int8, int4)`). Requires session-pooling mode if pgbouncer is in path. |
 | `RedisRunLock` (Redlock) | REFERENCE-IMPL-PENDING | Multi-region; Redlock quorum across N>=3 nodes |
 | Custom | CALLER-OWNED | Any lock service satisfying the Protocol |
 
@@ -306,7 +306,7 @@ from cryptography.fernet import Fernet
 
 
 class FernetCipher:
-    """Reference Cipher impl. NOT shipped by the library."""
+    """Reference Cipher impl. NOT shipped by the library. See examples/production/durable_postgres/cipher.py for the working reference."""
     def __init__(self, key: bytes) -> None:
         self._fernet = Fernet(key)
 
