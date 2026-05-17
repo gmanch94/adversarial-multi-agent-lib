@@ -1,0 +1,26 @@
+# Top-level third-party deps for the Postgres reference deployment.
+# DO NOT add adv-multi-agent here — it is installed from local source in
+# Dockerfile stage 2 (see spec §2.7).
+#
+# After editing this file, regenerate requirements.txt:
+#     pip install pip-tools
+#     pip-compile --generate-hashes --output-file=requirements.txt requirements.in
+#
+
+# Runtime deps
+asyncpg>=0.29,<0.30
+cryptography>=42,<43
+
+# F-C-03: build-time backends for stage 2 of Dockerfile (which installs the
+# library from local source with --no-build-isolation). Verified against the
+# library's pyproject.toml: build-backend = "setuptools.build_meta", requires
+# ["setuptools>=68", "wheel"]. Without these in the locked install, stage 2
+# fails with ModuleNotFoundError. Listed as direct deps to keep them in the
+# hashed lockfile.
+setuptools>=68
+wheel
+
+# Audit + SBOM tooling — installed in the image to enable scripts/*.sh
+pip-audit>=2.7,<3.0
+bandit>=1.7,<2.0
+cyclonedx-bom>=4.4,<5.0
