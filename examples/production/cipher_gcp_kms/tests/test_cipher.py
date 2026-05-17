@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+import os
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -220,3 +222,23 @@ def test_construction_does_not_call_kms(mock_kms_client):
     GcpKmsCipher(KEY_NAME, client=mock_kms_client)
     assert mock_kms_client.generate_data_key.call_count == 0
     assert mock_kms_client.decrypt.call_count == 0
+
+
+# 21. Live KMS p99 latency budget (env-gated)
+@pytest.mark.skipif(
+    not os.environ.get("GCP_KMS_KEY_NAME"),
+    reason="latency budget test requires live KMS",
+)
+def test_live_kms_decrypt_latency_under_p99_budget():
+    """p99 KMS Decrypt should be <200ms (D-CIPHER-GCP latency contract).
+    Run 10 cold decrypts; assert max < 200ms."""
+    c = GcpKmsCipher(os.environ["GCP_KMS_KEY_NAME"])
+    ct = c.encrypt("benchmark")
+    latencies = []
+    for _ in range(10):
+        c._cache._cache.clear()
+        t0 = time.perf_counter()
+        c.decrypt(ct)
+        latencies.append((time.perf_counter() - t0) * 1000)
+    worst = max(latencies)
+    assert worst < 200, f"p99 KMS decrypt = {worst:.0f}ms; threshold 200ms"

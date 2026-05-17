@@ -1,5 +1,10 @@
 """TTL-bounded LRU cache with asyncio single-flight for KMS DEKs.
 
+Note: ``get_or_load`` is currently unused by GcpKmsCipher (sync decrypt path
+uses get/set directly). Kept for future AsyncCipher Protocol; collapses
+concurrent first-decrypts of the same wrapped DEK into one KMS call when an
+async cipher impl lands.
+
 Why single-flight: process restart -> N concurrent decrypts of the same
 wrapped DEK -> N parallel KMS calls. Single-flight collapses them into one;
 losers await the in-flight loader's result.

@@ -55,7 +55,12 @@ class KmsDecryptError(InvalidToken):
 
 
 class GcpKmsCipher:
-    """Cipher Protocol impl via GCP Cloud KMS envelope encryption."""
+    """Cipher Protocol impl via GCP Cloud KMS envelope encryption.
+
+    Sync KMS call; library bridges to async via asyncio.to_thread in
+    EncryptedCheckpointStore (Task 0). Async cipher Protocol deferred —
+    defer until real workload shows event-loop contention.
+    """
 
     def __init__(
         self,
