@@ -1,0 +1,11 @@
+# Cipher backend
+google-cloud-kms>=3.0,<4
+cachetools>=5.3,<6
+
+# Match durable_postgres pins exactly for compose-side reuse
+asyncpg>=0.29,<0.30
+cryptography>=44.0,<45
+setuptools>=68
+wheel
+
+# adv-multi-agent installed from local source via Dockerfile stage 2
