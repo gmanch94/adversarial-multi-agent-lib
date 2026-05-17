@@ -28,6 +28,21 @@ class ClinicalTrialEligibilityDurableWorkflow(ClinicalTrialEligibilityWorkflow):
     pause decisions to real labs-ready / IRB-sign-off / regulatory-clock backends.
     """
 
+    def workflow_version_inputs(self) -> list[bytes]:
+        """Return bundled healthcare skill template bytes for D-DURABLE-4 hash.
+
+        Any edit to a trial skill template changes the hash, triggering
+        WORKFLOW_VERSION_DRIFT at resume (21 CFR Part 11 attestation chain).
+        """
+        from importlib import resources
+
+        pkg = resources.files("adv_multi_agent.healthcare.skills.templates")
+        return [
+            entry.read_bytes()
+            for entry in sorted(pkg.iterdir(), key=lambda p: p.name)
+            if entry.name.endswith(".md")
+        ]
+
     async def run_round(
         self,
         round_num: int,
