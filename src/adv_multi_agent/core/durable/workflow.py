@@ -6,9 +6,11 @@ shape, run_lock acquisition, and basic outcome reporting.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
+import warnings
 from dataclasses import asdict, dataclass, fields as dataclass_fields, is_dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -211,6 +213,37 @@ class DurableWorkflow:
             return self._config.reviewer_anthropic_model
         return self._config.reviewer_model
 
+    def _compute_workflow_version_hash(self) -> str:
+        """Compute identity hash for this workflow's code + prompt surface.
+
+        Cached on first call. See D-DURABLE-4.
+        """
+        cached: str | None = getattr(self, "_workflow_version_hash_cache", None)
+        if cached is not None:
+            return cached
+
+        cls = type(self._inner)
+        parts: list[bytes] = [cls.__module__.encode(), cls.__qualname__.encode()]
+
+        inputs_fn = getattr(self._inner, "workflow_version_inputs", None)
+        if callable(inputs_fn):
+            protocol_bytes = sorted(bytes(b) for b in inputs_fn())
+            parts.extend(protocol_bytes)
+        else:
+            warnings.warn(
+                f"{cls.__name__}.workflow_version_inputs() not implemented; "
+                f"checkpoint hash will not detect prompt edits. Implement "
+                f"HasWorkflowVersionInputs Protocol for 21 CFR Part 11 "
+                f"attestation (see docs/superpowers/specs/"
+                f"2026-05-17-workflow-version-pinning-design.md).",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        digest = hashlib.sha256(b"\n".join(parts)).hexdigest()[:16]
+        self._workflow_version_hash_cache = digest
+        return digest
+
     def _new_token(self, run_id: str, wake_at: str | None = None) -> ResumeToken:
         return ResumeToken(
             run_id=run_id,
@@ -220,6 +253,7 @@ class DurableWorkflow:
             schema_version=CURRENT_SCHEMA_VERSION,
             created_at=_now_iso(),
             wake_at=wake_at,
+            workflow_version_hash=self._compute_workflow_version_hash(),
         )
 
     async def start(self, request: Any) -> RunOutcome:
@@ -249,6 +283,7 @@ class DurableWorkflow:
                 created_at=token.created_at,
                 updated_at=_now_iso(),
                 wake_at=None,
+                workflow_version_hash=self._compute_workflow_version_hash(),
             )
             await self._store.write(cp)
 
