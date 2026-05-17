@@ -9,7 +9,8 @@ ENVELOPE PATTERN:
   encrypt():
     1. KMS.GenerateDataKey(key=AES_256) -> (plaintext_dek, wrapped_dek)
     2. AES-GCM(plaintext_dek).encrypt(payload) -> nonce + ciphertext+tag
-    3. Discard plaintext_dek (do NOT cache on encrypt path)
+    3. Warm DEK cache (D5: enables same-process round-trip; cross-process resume
+       always misses by design — fresh process never has the plaintext DEK)
     4. Return "GKMSv1:" + b64(wrapped_dek) + ":" + b64(nonce) + ":" + b64(ct)
   decrypt(s):
     1. Parse GKMSv1: prefix; split into wrapped_dek, nonce, ct
@@ -18,8 +19,9 @@ ENVELOPE PATTERN:
     4. Return payload
 
 DEK CACHE:
-  Keyed by sha256(wrapped_dek). TTL 5 min default. Single-flight collapses
-  concurrent decrypts of the same wrapped DEK into one KMS call.
+  Keyed by sha256(wrapped_dek). TTL 5 min default. hit_count / miss_count
+  exposed via dek_cache_stats() for healthcheck observability (A9-M-02).
+  Single-flight removed (A9-M-04 YAGNI); add back when AsyncCipher lands.
 """
 from __future__ import annotations
 
@@ -164,6 +166,10 @@ class GcpKmsCipher:
 
     def key_fingerprint(self) -> str:
         return self._fingerprint
+
+    def dek_cache_stats(self) -> dict[str, int]:
+        """Return DEK cache hit/miss counters for healthcheck observability (A9-M-02)."""
+        return self._cache.stats()
 
     def __repr__(self) -> str:
         return f"GcpKmsCipher(key=<redacted>, fingerprint={self._fingerprint})"
