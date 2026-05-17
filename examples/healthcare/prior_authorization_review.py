@@ -103,7 +103,7 @@ async def main() -> None:
     print(f"Medical-necessity flags: {result.metadata['medical_necessity_flags']}")
     print(f"Coverage flags:          {result.metadata['coverage_flags']}")
     print(f"Documentation flags:     {result.metadata['documentation_flags']}")
-    print(f"\nChecklist:")
+    print("\nChecklist:")
     for item in result.metadata["prior_auth_checklist"]:
         print(f"  {item}")
 

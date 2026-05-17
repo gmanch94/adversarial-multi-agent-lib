@@ -12,7 +12,6 @@ from adv_multi_agent.core.durable.checkpoint import (
     Checkpoint,
     RunNotFound,
 )
-from adv_multi_agent.core.durable.token import ResumeToken
 
 from examples.production.durable_postgres.tests.conftest import needs_postgres
 

@@ -110,9 +110,9 @@ async def main() -> None:
     )
 
     print("Running TreatmentPlanReviewWorkflow...")
-    print(f"Patient: 70yo CHF (EF 35%) + CKD3a (eGFR 42)")
-    print(f"Proposed: contrast-enhanced coronary angiography (60 mL iodinated contrast)")
-    print(f"Expected: VETO on contrast-nephropathy contraindication\n")
+    print("Patient: 70yo CHF (EF 35%) + CKD3a (eGFR 42)")
+    print("Proposed: contrast-enhanced coronary angiography (60 mL iodinated contrast)")
+    print("Expected: VETO on contrast-nephropathy contraindication\n")
 
     result = await wf.run(request=request)
 

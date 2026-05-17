@@ -8,9 +8,7 @@ from __future__ import annotations
 import pathlib
 import shlex
 import subprocess
-import tempfile
 
-import pytest
 
 
 GATE = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "check_no_fstring_sql.sh"

@@ -14,12 +14,10 @@ Or against a local Postgres (set POSTGRES_DSN):
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 
 import asyncpg
 import pytest
@@ -29,7 +27,6 @@ from adv_multi_agent.core.durable import EncryptedCheckpointStore
 from adv_multi_agent.core.durable.checkpoint import (
     Checkpoint,
     CheckpointCorrupt,
-    SchemaVersionMismatch,
 )
 from adv_multi_agent.core.durable.lock import RunLocked
 

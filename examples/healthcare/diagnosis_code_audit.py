@@ -66,7 +66,7 @@ async def main() -> None:
     print(f"Accuracy flags: {result.metadata['accuracy_flags']}")
     print(f"Compliance flags: {result.metadata['compliance_flags']}")
     print(f"Specificity flags: {result.metadata['specificity_flags']}")
-    print(f"\nChecklist:")
+    print("\nChecklist:")
     for item in result.metadata['audit_checklist']:
         print(f"  {item}")
 

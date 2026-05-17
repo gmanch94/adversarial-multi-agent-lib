@@ -109,7 +109,7 @@ async def main() -> None:
     print(f"Evidence flags:  {result.metadata['evidence_flags']}")
     print(f"Coverage flags:  {result.metadata['coverage_flags']}")
     print(f"Procedure flags: {result.metadata['procedure_flags']}")
-    print(f"\nAppeal checklist:")
+    print("\nAppeal checklist:")
     for item in result.metadata["appeal_checklist"]:
         print(f"  {item}")
     print(f"{'='*60}")

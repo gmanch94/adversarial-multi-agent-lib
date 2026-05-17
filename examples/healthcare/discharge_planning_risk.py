@@ -89,7 +89,7 @@ async def main() -> None:
     print(f"Readmission flags: {result.metadata['readmission_flags']}")
     print(f"Care-gap flags:    {result.metadata['care_gap_flags']}")
     print(f"SDOH flags:        {result.metadata['social_determinant_flags']}")
-    print(f"\nChecklist:")
+    print("\nChecklist:")
     for item in result.metadata["discharge_checklist"]:
         print(f"  {item}")
 
