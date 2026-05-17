@@ -348,6 +348,33 @@ class Cipher(Protocol):
 
 ---
 
+## 8a. Choose your cipher
+
+Use this table to pick the right `Cipher` impl for your deployment context.
+
+| Criterion | `FernetCipher` | `GcpKmsCipher` |
+|---|---|---|
+| **Use when** | Solo dev, proof-of-concept, non-PHI workloads | Any PHI/PII workload heading to production; regulated environments (HIPAA, 21 CFR Part 11, HITRUST) |
+| **Key custody** | Env var / secrets manager holds the key bytes | GCP IAM — key never leaves KMS HSM |
+| **Rotation** | Manual: MultiFernet + re-encrypt rows | Automatic via `scripts/rotate_kms_key_version.sh`; no daemon restart; no row re-encryption |
+| **Audit trail** | None | Cloud Audit Logs on every KMS Decrypt; queryable; exportable as HITRUST evidence |
+| **Cost** | Zero (cryptography lib only) | ~$0.06/key version/month + $0.03/10k ops (see README cost model) |
+| **Setup complexity** | Low — one `DURABLE_CHECKPOINT_KEYS` env var | Medium — GCP project, keyring, IAM bindings, ADC or Workload Identity |
+| **Compromise model** | Env leak = key plaintext = all data decryptable | SA credential leak ≠ key plaintext; KMS unwraps per-call |
+| **Reference impl** | `examples/production/durable_postgres/cipher.py` | `examples/production/cipher_gcp_kms/cipher.py` |
+
+**Decision rule:**
+
+- Solo dev / POC → `FernetCipher`
+- Any PHI/PII + production infra → `GcpKmsCipher`
+- On-prem or hybrid cloud → `VaultTransitCipher` (REFERENCE-IMPL-PENDING)
+- Azure-native → `AzureKeyVaultCipher` (REFERENCE-IMPL-PENDING)
+
+See `examples/production/cipher_gcp_kms/` for the full GcpKmsCipher reference deployment including
+threat model, cost model, setup steps, and operator action checklist.
+
+---
+
 ## 9. Smoke tests
 
 Run before declaring an integration ready:

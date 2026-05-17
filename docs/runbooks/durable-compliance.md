@@ -175,9 +175,71 @@ Library's `Cipher` Protocol is rotation-agnostic — caller's cipher impl decide
 
 **Frequency:** quarterly at minimum (HITRUST CSF KSP.02.05 floor for PHI-bearing systems); immediately on suspected compromise. The bundled clinical-trial workflow is in scope; defer to your regulator for any stricter cadence. Earlier guidance ("annually") was tightened post-A8-L-05.
 
-### 5.3 Key compromise response
+### 5.3 GCP KMS evidence path (GcpKmsCipher deployments)
 
-1. **Rotate immediately** per §5.2; halt at step 2 (do not deploy yet).
+For deployments using `GcpKmsCipher` from `examples/production/cipher_gcp_kms/`, key management
+evidence for HITRUST and 21 CFR Part 11 audits is available via GCP-native controls.
+
+**HITRUST CSF KSP.02.05 — quarterly rotation cadence:**
+
+- Rotation schedule: quarterly at minimum. Use `scripts/rotate_kms_key_version.sh` (idempotent).
+- Evidence export: `gcloud kms keys versions list --format=json` — shows creation timestamps for each
+  version; demonstrates rotation cadence to auditors.
+- No daemon restart required on rotation; no row re-encryption required (version ID embedded in
+  wrapped DEK).
+
+**IAM separation of duties:**
+
+| Principal | Role (key-scoped) | Permitted operations |
+|---|---|---|
+| Daemon SA (`daemon-sa@...`) | `roles/cloudkms.cryptoKeyEncrypterDecrypter` | Encrypt (generate DEK), Decrypt (unwrap DEK) |
+| Admin SA (`admin-sa@...`) | `roles/cloudkms.admin` | Create key versions, disable / destroy versions, update rotation schedule |
+
+Neither SA is granted the other's role. Admin SA cannot encrypt/decrypt data; daemon SA cannot
+rotate or destroy keys. IAM policy export is the audit artifact.
+
+**Audit log path:**
+
+```bash
+# All KMS operations on the payload-dek-wrapper key (last 7 days)
+gcloud logging read \
+  'resource.type="cloudkms_cryptokey" AND
+   resource.labels.key_id="payload-dek-wrapper" AND
+   timestamp >= "2026-05-10T00:00:00Z"' \
+  --project=YOUR_PROJECT \
+  --format=json
+```
+
+Fields to export for auditor evidence package:
+- `protoPayload.methodName` — `Encrypt` or `Decrypt`
+- `protoPayload.authenticationInfo.principalEmail` — which SA made the call
+- `timestamp` — UTC timestamp of every key use
+
+**Key destroy protection:**
+
+Enabled during provisioning via `--destroy-protection` flag. A key version cannot be destroyed
+without first disabling destroy protection — prevents accidental or malicious key destruction.
+Verify:
+
+```bash
+gcloud kms keys describe payload-dek-wrapper \
+  --keyring=durable-checkpoints --location=us-central1 --project=YOUR_PROJECT \
+  --format="value(destroyScheduledDuration,versionTemplate)"
+# Expect destroyScheduledDuration to be absent (protection on) or MAX value.
+```
+
+**Pre-deploy IAM gate:**
+
+```bash
+bash examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh \
+  YOUR_PROJECT us-central1 durable-checkpoints payload-dek-wrapper
+```
+
+Run before every production deploy. Fails if unexpected principals appear with encrypt/decrypt grants.
+
+### 5.4 Key compromise response
+
+1. **Rotate immediately** per §5.2 (Fernet) or `scripts/rotate_kms_key_version.sh` (GcpKms); halt at step 2 (do not deploy yet).
 2. **Audit access logs** to KMS / Vault — when was key last accessed? By what principal?
 3. **Inventory affected data** — list checkpoints encrypted with the compromised key.
 4. **Decision:** re-encrypt + retain (low-risk leak), OR delete + cancel-and-restart runs (high-risk leak).

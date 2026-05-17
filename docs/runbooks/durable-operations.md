@@ -386,3 +386,64 @@ The runbook split is intentional — many failures require eng + ops collaborati
 | New `*Store` / `*Lock` impl | Deploy | Author + contract-test |
 
 Use `docs/runbooks/durable-integration.md` §10 graduation checklist as the joint sign-off artifact.
+
+---
+
+## 13. GCP KMS key rotation (GcpKmsCipher deployments only)
+
+Applies when `CIPHER_BACKEND=gcp_kms`. `FernetCipher` deployments use the procedure in
+`docs/runbooks/durable-compliance.md` §5.2.
+
+### 13.1 Rotation procedure
+
+No daemon restart required. KMS version ID is embedded in the wrapped DEK; the KMS service routes
+decrypt calls to the correct version automatically.
+
+```bash
+# Step 1: create a new primary key version
+bash examples/production/cipher_gcp_kms/scripts/rotate_kms_key_version.sh \
+  YOUR_PROJECT us-central1 durable-checkpoints payload-dek-wrapper
+
+# Step 2: verify new version is primary
+gcloud kms keys versions list \
+  --keyring=durable-checkpoints --location=us-central1 \
+  --key=payload-dek-wrapper --project=YOUR_PROJECT \
+  --format="table(name, state)"
+# Expect exactly one ENABLED version marked as primary.
+
+# Step 3: no daemon restart needed — new encrypts use new primary; old ciphertext still decrypts.
+
+# Step 4: log the rotation event in your change management system.
+```
+
+Prior key versions remain ENABLED so that existing wrapped DEKs can still be decrypted. Disable old
+versions only after confirming all in-flight paused runs have resumed and completed (i.e., no
+checkpoint holds a wrapped DEK from the old version).
+
+**Frequency:** quarterly at minimum per HITRUST CSF KSP.02.05; immediately on suspected daemon SA compromise.
+
+### 13.2 KMS-specific alert thresholds
+
+Wire these to your log aggregator / Cloud Monitoring workspace. The `dek_cache_hit_count` and
+`dek_cache_miss_count` metrics are emitted by `GcpKmsCipher` when wired to a `MetricsBackend`
+(REFERENCE-IMPL-PENDING; structured logs are the interim surface).
+
+| Signal | Threshold | Severity | Action |
+|---|---|---|---|
+| `dek_cache_miss_rate > 50%` sustained 10 min | HIGH | Ticket | Cache may be thrashing (TTL too short, max_size too small) or process is restarting frequently. Check `DEK_CACHE_TTL_SECONDS` and `DEK_CACHE_SIZE`. |
+| KMS Decrypt p99 latency > 200 ms | MEDIUM | Ticket | Network path to KMS is degraded or KMS quota is being approached. Check Cloud Console KMS metrics. |
+| KMS Decrypt error rate > 0.1% sustained 5 min | HIGH | Page | Possible SA permission revocation, key version destroyed, or KMS API quota exceeded. Check Cloud Audit Logs. |
+| Cloud Audit Log gap > 15 min for `cloudkms_cryptokey` resource | HIGH | Page | Audit log export pipeline is broken. Compliance gap if log continuity is required. |
+| `status="failed"` + `error~="KmsDecryptError"` in daemon log | HIGH | Page | Daemon SA cannot decrypt. Verify IAM grants (`scripts/audit_iam_grants.sh`) and key version state. |
+
+### 13.3 IAM grant audit (pre-deploy gate)
+
+Run before every deploy that touches IAM or the compose file:
+
+```bash
+bash examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh \
+  YOUR_PROJECT us-central1 durable-checkpoints payload-dek-wrapper
+```
+
+Expected output: exactly two principals listed — daemon SA with `cryptoKeyEncrypterDecrypter`,
+admin SA with `cloudkms.admin`. Any additional principal is a finding.
