@@ -52,13 +52,13 @@ flowchart LR
             ParoleWf[ParoleAssessmentWorkflow]
         end
         subgraph RetailDomain["retail/ (8 workflows)"]
-            RetailWf[demand · labor · recall (veto)<br/>loyalty · promo · supplier<br/>inventory · private_label]
+            RetailWf["demand · labor · recall (veto)<br/>loyalty · promo · supplier<br/>inventory · private_label"]
         end
         subgraph PCDomain["pc/ (7 workflows · 2 tracks)"]
-            PCWf[Foundational: claims_reserve (veto) · coverage_decision (veto)<br/>commercial_underwriting · cyber_underwriting<br/><br/>Specialty: environmental_impairment (veto)<br/>parametric_crop · gig_platform_liability (veto)]
+            PCWf["Foundational: claims_reserve (veto) · coverage_decision (veto)<br/>commercial_underwriting · cyber_underwriting<br/><br/>Specialty: environmental_impairment (veto)<br/>parametric_crop · gig_platform_liability (veto)"]
         end
         subgraph IndustrialDomain["industrial/ (8 MVP · 27 catalog)"]
-            IndWf[Mfg Ops: make_vs_buy · supplier_qualification<br/>engineering_change_order · quality_incident_root_cause<br/><br/>Safety/Recall: product_liability_root_cause (veto)<br/>recall_scope_manufacturing (veto)<br/><br/>Strategic: supply_chain_resilience<br/>IoT: telematics_anomaly_triage]
+            IndWf["Mfg Ops: make_vs_buy · supplier_qualification<br/>engineering_change_order · quality_incident_root_cause<br/><br/>Safety/Recall: product_liability_root_cause (veto)<br/>recall_scope_manufacturing (veto)<br/><br/>Strategic: supply_chain_resilience<br/>IoT: telematics_anomaly_triage"]
         end
         subgraph HealthcareDomain["healthcare/ (8 MVP · 27 catalog)"]
             HW["Clinical Decisions: diagnosis_code_audit · discharge_planning_risk<br/>prior_authorization_review · claims_appeal_review<br/><br/>Pharma/Safety: drug_interaction_flagging (veto)<br/>adverse_event_triage (veto)<br/><br/>Clinical: treatment_plan_review (veto)<br/>Research: clinical_trial_eligibility (veto + bias)"]
