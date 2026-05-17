@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import uuid
 import warnings
@@ -420,6 +421,8 @@ class DurableWorkflow:
         fresh_inputs: Any | None = None,
         force_model_upgrade: bool = False,
         reconciliation_hook_override: ReconciliationHook | None = None,
+        *,
+        force_workflow_upgrade: bool = False,
     ) -> RunOutcome:
         handle = await self._lock.acquire(token.run_id, ttl_seconds=300)
         try:
@@ -484,6 +487,56 @@ class DurableWorkflow:
                     raise ModelRetired(
                         cp.pinned_reviewer_model,
                         f"swap target {cp.pinned_reviewer_model!r} also not in allowlist",
+                    )
+
+            # D-DURABLE-4: workflow-version drift guard
+            expected_hash = self._compute_workflow_version_hash()
+            if cp.workflow_version_hash is None:
+                # Pre-1.6 checkpoint — no hash recorded
+                warnings.warn(
+                    f"resume: checkpoint {cp.run_id!r} has no workflow_version_hash "
+                    f"(pre-1.6 checkpoint). 21 CFR Part 11 attestation chain has a "
+                    f"gap for this run. Set DURABLE_REFUSE_UNVERSIONED=1 to block.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                if os.environ.get("DURABLE_REFUSE_UNVERSIONED") == "1":
+                    raise RunNotResumable(cp.run_id, "unversioned")
+                # Back-fill and persist durably so the gap is closed even if the
+                # run subsequently faults.
+                cp.workflow_version_hash = expected_hash
+                await self._store.write(cp)
+            elif cp.workflow_version_hash != expected_hash:
+                if force_workflow_upgrade:
+                    cp.rounds_history.append({
+                        "round": cp.round,
+                        "event": "workflow_version_upgrade",
+                        "from": cp.workflow_version_hash,
+                        "to": expected_hash,
+                        "at": _now_iso(),
+                    })
+                    cp.workflow_version_hash = expected_hash
+                    await self._store.write(cp)
+                else:
+                    cp.status = "paused"
+                    cp.pause_reason = "WORKFLOW_VERSION_DRIFT"
+                    cp.pause_context = {
+                        "checkpoint_hash": cp.workflow_version_hash,
+                        "current_hash": expected_hash,
+                        "remediation": (
+                            "Re-run with force_workflow_upgrade=True to accept "
+                            "drift and log it in rounds_history, OR pin the "
+                            "deployed library to the version matching the "
+                            "checkpoint hash."
+                        ),
+                    }
+                    cp.updated_at = _now_iso()
+                    await self._store.write(cp)
+                    return RunOutcome(
+                        status="paused",
+                        token=token,
+                        pause_reason="WORKFLOW_VERSION_DRIFT",
+                        error=None,
                     )
 
             # Resolve reconciliation hook
