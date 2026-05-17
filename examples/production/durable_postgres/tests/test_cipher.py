@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+from cryptography.fernet import InvalidToken
 from cryptography.fernet import Fernet
 
 from examples.production.durable_postgres.cipher import FernetCipher
@@ -115,7 +116,9 @@ def test_multifernet_accepts_either_key_during_rotation(
 
     cipher_new_only = FernetCipher(keys=[key_b])
     assert cipher_new_only.decrypt(ciphertext_b) == payload
-    with pytest.raises(Exception):
+    # A8-L-01: assert the specific failure, not any Exception. Bare
+    # pytest.raises(Exception) accepts KeyboardInterrupt/SystemExit too.
+    with pytest.raises(InvalidToken):
         cipher_new_only.decrypt(ciphertext_a)
 
 
@@ -124,7 +127,8 @@ def test_first_key_is_encrypt_with(key_a: bytes, key_b: bytes) -> None:
     cipher = FernetCipher(keys=[key_a, key_b])
     ct_str = cipher.encrypt("x")
     assert Fernet(key_a).decrypt(ct_str.encode("ascii")) == b"x"
-    with pytest.raises(Exception):
+    # A8-L-01: tighten to InvalidToken (specific Fernet wrong-key failure).
+    with pytest.raises(InvalidToken):
         Fernet(key_b).decrypt(ct_str.encode("ascii"))
 
 

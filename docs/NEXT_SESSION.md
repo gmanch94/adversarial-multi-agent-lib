@@ -1,6 +1,54 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-16 PM (final — Postgres reference deployment shipped)
+Last updated: 2026-05-17 PM (cycle-8 full drain — 0/0/0/0 posture)
+
+---
+
+## 2026-05-17 PM — cycle-8 MED+LOW drain (all closed)
+
+After the morning HIGH drain (commit `75bda70`), the 9 MEDIUM + 10 LOW from `docs/security-audits/2026-05-17-prod-postgres-sweep.md` were all closed inline.
+
+**Closures (see POST-AUDIT CLOSURE 2 in the sweep doc):**
+
+- A8-M-01 / A8-L-07: full 64-bit namespace XOR'd across both keys (`lock.py`)
+- A8-M-02: narrowed exception catch in `cipher.py` `__init__` (`ValueError, TypeError, binascii.Error`)
+- A8-M-03 + N-L-05: `wrote_response` guard in `daemon.py` `_handle_inner`
+- A8-M-04 + N-L-04: strict request-line shape (`== 3 and HTTP/`)
+- A8-M-05: `assert` → explicit `ValueError` + frozenset allowlist in `daemon.workflow_factory`
+- A8-M-06: postgres service hardening (`cap_drop` + `cap_add` minimum set + `no-new-privileges` + `ulimits.core: 0`)
+- A8-M-07: postgres image digest-pinned `@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`
+- A8-M-08: test-DSN guard in `tests/conftest.py` `pg_pool` fixture
+- A8-M-09: explicit `errors="strict"` + BYTEA-only contract comment in `store._deserialize`
+- A8-L-01: `pytest.raises(Exception)` → `pytest.raises(InvalidToken)`
+- A8-L-02: `shlex.quote` in `tests/test_grep_gate.py`
+- A8-L-03: dropped bypass hint in `caller.py` SystemExit message
+- A8-L-04: `paused_runs` placeholder `-1` → `getattr(daemon, "_last_paused_count", None)`
+- A8-L-05: README cadence `annually` → `quarterly at minimum` (HITRUST KSP.02.05)
+- A8-L-06: safe `IGNORE_VULNS=()` declaration in `scripts/audit_deps.sh`
+- A8-L-08: `.env.example` compose-override warning
+- A8-L-09: narrowed `b"gAAAAA"` → `b"ENC:v1:gAAAAA"` + `b"gAAAAAB"` in `smoke_test.py`
+- A8-L-10: `[build-system]` block in `pyproject.toml`
+
+**Final cumulative posture across 8 cycles: 0 CRIT / 0 HIGH / 0 MED / 0 LOW.**
+
+### In-sprint LOWs cleared in this drain
+
+- N-L-04 → A8-M-04 (same fix surface)
+- N-L-05 → A8-M-03 (same fix surface)
+
+### Still in-sprint from prior cycles
+
+- F-L-04 — separate `daemon_app` role with `grants.sql`
+- F-L-07 — `cryptography` OpenSSL doc inconsistency (spec §6.2.5)
+- N-M-04 — surrogate-handling enforcement
+- N-L-03 — `.dockerignore` widening
+
+### Next likely
+
+- k8s manifests under `examples/production/durable_postgres_k8s/`
+- KMS / Vault cipher reference impls (separate package)
+- Schema migration tool (`scripts/migrate_schema_version.py`)
+- `MetricsBackend` Protocol + OTel reference impl
 
 ---
 

@@ -258,8 +258,14 @@ class PostgresCheckpointStore:
 
     @staticmethod
     def _deserialize(row: asyncpg.Record) -> Checkpoint:
+        # A8-M-09: payload column is BYTEA (opaque bytes) — NEVER migrate to
+        # TEXT without a coordinated client_encoding + collation audit.
+        # BYTEA round-trips arbitrary 8-bit bytes without collation
+        # interference; TEXT can silently mojibake valid-JSON-with-wrong-bytes
+        # and defeat this guard. Explicit errors="strict" so a future reader
+        # of this code sees the contract spelled out.
         try:
-            body = json.loads(bytes(row["payload"]).decode("utf-8"))
+            body = json.loads(bytes(row["payload"]).decode("utf-8", errors="strict"))
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise CheckpointCorrupt(f"payload parse failed for run {row['run_id']!r}: {exc}") from exc
         wake_at = row["wake_at"]

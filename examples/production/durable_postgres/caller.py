@@ -54,11 +54,16 @@ _SYNTHETIC_REQUEST = TrialEligibilityRequest(
 async def main() -> None:
     # F-M-04: refuse to run outside the scheduler container; prevents
     # accidental execution against developer's host environment.
+    # A8-L-03: dropped the inline "Set DURABLE_INSIDE_CONTAINER=1 to bypass"
+    # hint. Helpful-looking error messages that hand the reader the bypass
+    # token defeat the fence (same shape as L-PC-5). Operators that need
+    # an out-of-container run path should add an explicit dev-only entry
+    # to the README — not learn the bypass from a SystemExit message.
     if not os.environ.get("DURABLE_INSIDE_CONTAINER"):
         raise SystemExit(
-            "ERROR: caller.py is designed to run inside the scheduler container.\n"
+            "ERROR: caller.py must run inside the scheduler container.\n"
             "Invoke via: docker compose exec scheduler python caller.py\n"
-            "(Set DURABLE_INSIDE_CONTAINER=1 to bypass; Dockerfile sets this.)"
+            "See README.md for the full quickstart."
         )
 
     print(_DISCLAIMER)

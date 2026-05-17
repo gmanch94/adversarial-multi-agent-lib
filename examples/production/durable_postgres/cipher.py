@@ -20,6 +20,7 @@ Repr redaction:
 """
 from __future__ import annotations
 
+import binascii
 import hashlib
 from typing import Sequence
 
@@ -41,7 +42,12 @@ class FernetCipher:
         for k in keys:
             try:
                 fernets.append(Fernet(k))
-            except (ValueError, Exception) as exc:
+            except (ValueError, TypeError, binascii.Error) as exc:
+                # A8-M-02: name the actual failure shapes — Fernet rejects bad
+                # keys with ValueError, wrong types raise TypeError, base64
+                # decode raises binascii.Error. Bare `Exception` swallowed
+                # MemoryError / SystemError / RecursionError and re-raised
+                # them as "invalid Fernet key", masking the real failure.
                 raise ValueError(f"invalid Fernet key: {exc}") from exc
         self._multi = MultiFernet(fernets)
         # Fingerprint of the primary (encrypt-with) key for log correlation.

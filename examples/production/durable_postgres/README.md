@@ -96,7 +96,7 @@ DURABLE_CHECKPOINT_KEYS=<that-key>
    - Uses optimistic concurrency via `updated_at` — skips rows modified mid-sweep.
 5. **Drop old key:** `DURABLE_CHECKPOINT_KEYS=<new>`. Redeploy.
 
-**Cadence:** annually at minimum. Quarterly if PHI volumes warrant. Immediately on suspected compromise.
+**Cadence:** quarterly at minimum (A8-L-05). The PHI-bearing clinical-trial workflow bundled with this reference deployment is in scope for HIPAA + HITRUST CSF KSP.02.05, which expects active-encryption-key rotation at least quarterly. Defer to `docs/runbooks/durable-compliance.md` for the authoritative figure under your regulator. Immediately on suspected compromise.
 
 ### Compromise response
 

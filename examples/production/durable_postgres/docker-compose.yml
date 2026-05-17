@@ -12,7 +12,11 @@ networks:
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # A8-M-07: digest-pinned (pulled 2026-05-17). Refresh cadence: quarterly
+    # or on Postgres-team CVE alert. To rotate:
+    #   docker pull postgres:16-alpine
+    #   docker inspect postgres:16-alpine --format='{{index .RepoDigests 0}}'
+    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
     networks: [internal]
     environment:
       POSTGRES_DB: durable
@@ -23,6 +27,21 @@ services:
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     secrets:
       - postgres_password
+    # A8-M-06: hardening parity with scheduler service. Postgres on alpine
+    # needs CHOWN/DAC_OVERRIDE/FOWNER/SETGID/SETUID for initdb + data dir.
+    # read_only is NOT enabled — postgres writes to /var/lib/postgresql/data
+    # (a named volume) and /var/run/postgresql; mark those tmpfs/volume.
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "daemon", "-d", "durable"]
       interval: 5s

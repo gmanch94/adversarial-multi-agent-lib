@@ -7,18 +7,24 @@
 # --ignore-vuln GHSA-XXXX-YYYY-ZZZZ to the pip-audit invocation below, AND
 # add an inline comment naming the CVE and the rationale.
 #
-# Example ignore-list pattern (uncomment + customize as needed):
-#   IGNORE_VULNS=(
-#     --ignore-vuln GHSA-XXXX-YYYY-ZZZZ  # not exploitable: code path X never hit
-#   )
-#   pip-audit --require-hashes -r "$DIR/requirements.txt" --strict "${IGNORE_VULNS[@]}"
+# A8-L-06: ALWAYS declare IGNORE_VULNS as an empty array — `set -u` plus an
+# undeclared array reference (`"${IGNORE_VULNS[@]}"`) raises "unbound variable"
+# on bash < 4.4. Adding ignores: edit the array between the two markers below.
+#
+# Example: IGNORE_VULNS=(--ignore-vuln GHSA-XXXX-YYYY-ZZZZ) # not exploitable
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
+# BEGIN ignore-vulns
+IGNORE_VULNS=()
+# END ignore-vulns
+
 echo "==> pip-audit (CVE check on hashed lockfile)"
-pip-audit --require-hashes -r "$DIR/requirements.txt" --strict
+# Safe array expansion: ${arr[@]+"${arr[@]}"} avoids unbound-var error even
+# under `set -u` when the array is empty (pre-bash-4.4 portability).
+pip-audit --require-hashes -r "$DIR/requirements.txt" --strict ${IGNORE_VULNS[@]+"${IGNORE_VULNS[@]}"}
 
 echo "==> bandit B608 (SQL-injection patterns including concat + multi-line)"
 # F-C-02: scripts/ and tests/ are NOT excluded — both contain SQL that

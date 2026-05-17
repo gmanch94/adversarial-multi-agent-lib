@@ -6,6 +6,7 @@ known-bad SQL pattern, runs the gate against it, asserts exit 1.
 from __future__ import annotations
 
 import pathlib
+import shlex
 import subprocess
 import tempfile
 
@@ -22,11 +23,15 @@ def test_gate_catches_fstring_sql(tmp_path: pathlib.Path) -> None:
     # Run the gate against a controlled directory containing the bad file.
     # Build the wrapper script without f-string interpolation to avoid false positives.
     wrapper = tmp_path / "run_gate.sh"
+    # A8-L-02: shlex.quote(tmp_path) — Windows runners can place tmpdirs
+    # under paths with spaces (e.g. C:\Users\Some User\AppData\...). Raw
+    # interpolation breaks the bash command boundary; quoted is safe.
+    qpath = shlex.quote(str(tmp_path))
     wrapper_content = "#!/usr/bin/env bash\nset -e\n# Re-execute the gate logic against the test directory.\n"
     wrapper_content += 'if command -v rg >/dev/null 2>&1; then\n'
-    wrapper_content += '    rg -n --type py \'f"(SELECT|INSERT|UPDATE|DELETE)\' "' + str(tmp_path) + '" 2>/dev/null && exit 1\n'
+    wrapper_content += '    rg -n --type py \'f"(SELECT|INSERT|UPDATE|DELETE)\' ' + qpath + ' 2>/dev/null && exit 1\n'
     wrapper_content += "else\n"
-    wrapper_content += '    grep -rn --include=\'*.py\' \'f"\\(SELECT\\|INSERT\\|UPDATE\\|DELETE\\)\' "' + str(tmp_path) + '" 2>/dev/null && exit 1\n'
+    wrapper_content += '    grep -rn --include=\'*.py\' \'f"\\(SELECT\\|INSERT\\|UPDATE\\|DELETE\\)\' ' + qpath + ' 2>/dev/null && exit 1\n'
     wrapper_content += "fi\nexit 0\n"
     wrapper.write_text(wrapper_content)
     wrapper.chmod(0o755)

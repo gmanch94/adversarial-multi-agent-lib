@@ -179,16 +179,23 @@ class HealthcheckServer:
     async def _handle_inner(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        # A8-M-03 / N-L-05: track whether any response bytes have been written.
+        # If the first write succeeds and a later op crashes, the outer except
+        # must NOT append a 500 status-line to the same TCP stream — the client
+        # would otherwise see mixed bytes (200 OK + Content-Length + ... + 500).
+        wrote_response = False
         try:
             try:
                 request_line = await reader.readuntil(b"\r\n")
             except (asyncio.LimitOverrunError, asyncio.IncompleteReadError):
                 # F-M-09: oversized request line — slow-loris / DoS attempt
                 writer.write(b"HTTP/1.1 414 URI Too Long\r\n\r\n")
+                wrote_response = True
                 await writer.drain()
                 return
             if len(request_line) > self._MAX_LINE_BYTES:
                 writer.write(b"HTTP/1.1 414 URI Too Long\r\n\r\n")
+                wrote_response = True
                 await writer.drain()
                 return
             method_path = request_line.decode("ascii", errors="replace").split()
@@ -199,14 +206,20 @@ class HealthcheckServer:
                     line = await reader.readuntil(b"\r\n")
                 except (asyncio.LimitOverrunError, asyncio.IncompleteReadError):
                     writer.write(b"HTTP/1.1 431 Request Header Fields Too Large\r\n\r\n")
+                    wrote_response = True
                     await writer.drain()
                     return
                 if line == b"\r\n":
                     break
 
-            if (len(method_path) >= 2
+            # A8-M-04 / N-L-04: strict request-line shape. Require exactly
+            # `METHOD PATH HTTP/x.y` (three tokens, third begins with "HTTP/").
+            # Tolerating trailing garbage / 2-token requests loosens the parser
+            # unnecessarily.
+            if (len(method_path) == 3
                     and method_path[0] == "GET"
-                    and method_path[1] == "/health"):
+                    and method_path[1] == "/health"
+                    and method_path[2].startswith("HTTP/")):
                 state = self._get_state()
                 safe = {k: state[k] for k in HEALTHCHECK_KEYS if k in state}
                 body = json.dumps(safe).encode("utf-8")
@@ -214,17 +227,20 @@ class HealthcheckServer:
                 writer.write(f"Content-Length: {len(body)}\r\n".encode())
                 writer.write(b"Content-Type: application/json\r\n\r\n")
                 writer.write(body)
+                wrote_response = True
             else:
                 writer.write(b"HTTP/1.1 404 Not Found\r\n\r\n")
+                wrote_response = True
             await writer.drain()
         except Exception:
             # Never let a healthcheck handler error take down the daemon.
             # Outer _handle() owns writer.close() in its finally.
-            try:
-                writer.write(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
-                await writer.drain()
-            except Exception:
-                pass
+            if not wrote_response:
+                try:
+                    writer.write(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
+                    await writer.drain()
+                except Exception:
+                    pass
 
     async def close(self) -> None:
         if self._server is not None:
@@ -290,8 +306,16 @@ async def main() -> None:
     lock_registry = _ActiveLockRegistry()
     lock = PostgresAdvisoryLock(lock_pool, registry=lock_registry)
 
+    # A8-M-05: frozenset allowlist, raised explicitly. `assert` is stripped by
+    # `python -O`; using it as a security gate is convention-level error.
+    _WORKFLOW_ALLOWLIST = frozenset({_DEMO_WORKFLOW_CLASS})
+
     def workflow_factory(workflow_class: str) -> DurableWorkflow:
-        assert workflow_class.endswith("ClinicalTrialEligibilityDurableWorkflow")
+        if workflow_class not in _WORKFLOW_ALLOWLIST:
+            raise ValueError(
+                f"workflow_class not in allowlist: {workflow_class!r}. "
+                f"Allowed: {sorted(_WORKFLOW_ALLOWLIST)!r}"
+            )
         inner = ClinicalTrialEligibilityDurableWorkflow(config=agent_cfg)
         return DurableWorkflow(
             inner=inner,
@@ -316,11 +340,19 @@ async def main() -> None:
     )
 
     def get_health_state() -> dict[str, Any]:
+        # A8-L-04: paused_runs surfaced as `None` rather than placeholder -1.
+        # An ops dashboard graphing the value as a number would otherwise see
+        # a flat line at -1 and misinterpret it as "always zero paused". Use
+        # SchedulerDaemon._last_paused_count if exposed by the library; else
+        # null. Operators can also poll the DB directly with
+        #   SELECT count(*) FROM checkpoints WHERE status='PAUSED'
+        # for an authoritative figure outside this healthcheck.
+        paused = getattr(daemon, "_last_paused_count", None)
         return {
             "daemon_running": True,
             "last_poll_at": getattr(daemon, "_last_poll_ts",
                                     datetime.now(timezone.utc).isoformat()),
-            "paused_runs": -1,  # populated by daemon's internal counter
+            "paused_runs": paused,
             "quarantine_size": len(getattr(daemon, "_quarantine", set())),
             "cipher_fingerprint": cipher.key_fingerprint(),
         }

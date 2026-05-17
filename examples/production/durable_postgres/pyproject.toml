@@ -1,3 +1,10 @@
+# A8-L-10: [build-system] block required for `pip install -e .` against
+# this directory to succeed on PEP 517 builders. Without it, operators
+# trying to install for IDE/intellisense hit ModuleNotFoundError.
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "adv-multi-agent-prod-postgres"
 version = "0.1.0"

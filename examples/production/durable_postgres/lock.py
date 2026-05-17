@@ -8,12 +8,14 @@ TWO-POOL CONCURRENCY MODEL (spec §2.2, advisor #2):
       Connections released after each query.
   Pools never share connections; deadlock impossible by construction.
 
-KEY COLLISION DEFENSE (spec §2.2, advisor #8 + F-H-05):
+KEY COLLISION DEFENSE (spec §2.2, advisor #8 + F-H-05 + A8-M-01/A8-L-07):
   run_id hashed via SHA-256; first 8 bytes split as int4 + int4. Two-key form
   pg_try_advisory_lock(key1, key2). To prevent keyspace collision with
-  co-resident apps (pg_boss, other advisory-lock users), key1 is XOR'd
-  with a 64-bit namespace derived from DURABLE_APP_NAMESPACE env var
-  (default 'durable-checkpoints' if unset).
+  co-resident apps (pg_boss, other advisory-lock users), the 64-bit
+  namespace derived from DURABLE_APP_NAMESPACE is XOR'd across BOTH keys
+  (low 32 -> k1, high 32 -> k2). Effective namespace space is 2^64 — earlier
+  versions XOR'd only into k1 leaving k2 raw (2^32 birthday collisions at
+  ~93K namespaces).
 
 PGBOUNCER INCOMPATIBILITY (spec §7.8, advisor #3):
   Advisory locks are session-state. pgbouncer in transaction/statement
@@ -111,26 +113,37 @@ class PostgresAdvisoryLock:
 
         Postgres pg_try_advisory_lock(integer, integer) — both keys are int4.
         key1 = bytes 0-4; key2 = bytes 4-8.
-        key1 is XOR'd with the namespace at _ns_split_key time, NOT here —
-        keeps this method pure for testability.
+        Namespace XOR is applied to BOTH keys at _ns_split_key time (A8-M-01),
+        NOT here — keeps this method pure for testability.
         """
         digest = hashlib.sha256(run_id.encode("ascii")).digest()
         key1 = int.from_bytes(digest[0:4], "big", signed=True)
         key2 = int.from_bytes(digest[4:8], "big", signed=True)
         return key1, key2
 
+    @staticmethod
+    def _to_signed_int4(v: int) -> int:
+        """Wrap an int into the signed int4 range expected by Postgres."""
+        v &= 0xFFFFFFFF
+        if v >= 2**31:
+            v -= 2**32
+        return v
+
     def _ns_split_key(self, run_id: str) -> tuple[int, int]:
-        """Apply namespace XOR before passing to Postgres."""
+        """Apply namespace XOR across BOTH keys before passing to Postgres.
+
+        A8-M-01 / A8-L-07: prior version XOR'd only the low 32 bits of the
+        namespace into k1, leaving k2 raw. Effective namespace cardinality
+        was 2^32 (birthday collision at ~93K namespaces). Now we XOR low
+        32 -> k1 and high 32 -> k2, giving the full 2^64 namespace space.
+        """
         k1, k2 = self._split_key(run_id)
-        # XOR with namespace (truncated to 32 bits); constrain to signed int4
-        ns_bits = self._namespace & 0xFFFFFFFF  # low 32 bits of namespace
-        ns_k1 = k1 ^ ns_bits
-        # Reinterpret as signed int4
-        if ns_k1 >= 2**31:
-            ns_k1 -= 2**32
-        elif ns_k1 < -(2**31):
-            ns_k1 += 2**32
-        return ns_k1, k2
+        ns_unsigned = self._namespace & 0xFFFFFFFFFFFFFFFF
+        ns_low = ns_unsigned & 0xFFFFFFFF
+        ns_high = (ns_unsigned >> 32) & 0xFFFFFFFF
+        ns_k1 = self._to_signed_int4(k1 ^ ns_low)
+        ns_k2 = self._to_signed_int4(k2 ^ ns_high)
+        return ns_k1, ns_k2
 
     async def acquire(self, run_id: str, ttl_seconds: int) -> "_PgLockHandle":
         key1, key2 = self._ns_split_key(run_id)

@@ -228,10 +228,19 @@ def test_11b_daemon_logs_clean_of_secrets():
     )
     haystack = result.stdout + result.stderr
 
-    # Fernet token prefix -- every Fernet ciphertext starts with this.
-    # If the daemon ever logged plaintext payload OR raw key bytes, this triggers.
-    assert b"gAAAAA" not in haystack, (
-        "Found 'gAAAAA' in daemon logs -- possible Fernet key or payload leak"
+    # A8-L-09: narrowed Fernet-token-in-logs guard. Library wraps payload
+    # ciphertext with the literal "ENC:v1:" prefix before the Fernet token,
+    # so the most specific signal of a payload-leak is "ENC:v1:gAAAAA".
+    # We also keep a raw "gAAAAAB" check (Fernet version+timestamp prefix
+    # base64-encoded) — that catches direct token leaks if cipher.encrypt
+    # output is ever logged outside the encryption decorator. Plain
+    # "gAAAAA" alone would false-positive on any base64 string starting
+    # with a 0x80 byte.
+    assert b"ENC:v1:gAAAAA" not in haystack, (
+        "Found 'ENC:v1:gAAAAA' in daemon logs -- payload ciphertext leak"
+    )
+    assert b"gAAAAAB" not in haystack, (
+        "Found 'gAAAAAB' in daemon logs -- possible raw Fernet token leak"
     )
 
     # DSN-with-password pattern (URL shape): postgresql://USER:PASS@HOST

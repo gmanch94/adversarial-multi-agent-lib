@@ -496,6 +496,40 @@ All 6 HIGH findings closed inline same-session. MEDIUM + LOW deferred to NEXT_SE
 
 ---
 
+## POST-AUDIT CLOSURE 2 — 2026-05-17 (afternoon)
+
+All 9 MEDIUM and all 10 LOW findings closed inline same-session.
+
+| Code | Closure | Fix |
+|---|---|---|
+| **A8-M-01 / A8-L-07** | ✅ CLOSED | `lock.py` `_ns_split_key`: full 64-bit namespace now XOR'd across BOTH keys (low 32 → k1, high 32 → k2). Effective space 2^64. New `_to_signed_int4` helper. Docstring + module-header doc updated to reflect 2^64. |
+| **A8-M-02** | ✅ CLOSED | `cipher.py` `__init__`: narrowed `except (ValueError, Exception)` → `except (ValueError, TypeError, binascii.Error)`. Adds `import binascii`. OOM / RecursionError now propagate untouched. |
+| **A8-M-03 / N-L-05** | ✅ CLOSED | `daemon.py` `_handle_inner`: `wrote_response` boolean guard. 500 response only emitted when no prior bytes written to the socket. |
+| **A8-M-04 / N-L-04** | ✅ CLOSED | `daemon.py` `_handle_inner`: strict request-line shape `len(method_path) == 3 and method_path[2].startswith("HTTP/")`. |
+| **A8-M-05** | ✅ CLOSED | `daemon.py` `workflow_factory`: `assert` replaced with explicit `ValueError` raise gated on a `frozenset` allowlist. Survives `python -O`. |
+| **A8-M-06** | ✅ CLOSED | `docker-compose.yml` `postgres` service: `cap_drop:[ALL]` + `cap_add:[CHOWN,DAC_OVERRIDE,FOWNER,SETGID,SETUID]` + `security_opt:[no-new-privileges:true]` + `ulimits.core: 0`. read_only NOT set (postgres writes /var/lib/postgresql/data). |
+| **A8-M-07** | ✅ CLOSED | `docker-compose.yml` `postgres` image digest-pinned: `postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229` (pulled 2026-05-17). Refresh-cadence comment matches Python base image. |
+| **A8-M-08** | ✅ CLOSED | `tests/conftest.py` `pg_pool` fixture: refuses DROP-bearing run if DSN host is not in `{localhost,127.0.0.1,::1}` AND DSN doesn't contain `test` substring. Loud `RuntimeError` with current host segment redacted to avoid leaking creds. |
+| **A8-M-09** | ✅ CLOSED | `store.py` `_deserialize`: explicit `errors="strict"` on UTF-8 decode + comment block flagging BYTEA-only contract. Future TEXT-migration risk documented. |
+| **A8-L-01** | ✅ CLOSED | `tests/test_cipher.py`: `pytest.raises(Exception)` → `pytest.raises(InvalidToken)` on the rotation + wrong-key tests. Import added at module top. |
+| **A8-L-02** | ✅ CLOSED | `tests/test_grep_gate.py`: `shlex.quote(str(tmp_path))` before bash interpolation. Windows tmpdirs with spaces no longer break the gate test. |
+| **A8-L-03** | ✅ CLOSED | `caller.py`: dropped the `DURABLE_INSIDE_CONTAINER=1 to bypass` hint from SystemExit message. README is the source-of-truth path. |
+| **A8-L-04** | ✅ CLOSED | `daemon.py` `get_health_state`: `paused_runs` now `getattr(daemon, "_last_paused_count", None)` instead of `-1` placeholder. Comment points operators at the authoritative `SELECT count(*)` query. |
+| **A8-L-05** | ✅ CLOSED | `README.md` rotation cadence: `annually` → `quarterly at minimum`. Cites HITRUST CSF KSP.02.05 and defers to `durable-compliance.md` for regulator-specific figure. |
+| **A8-L-06** | ✅ CLOSED | `scripts/audit_deps.sh`: `IGNORE_VULNS=()` always declared; pip-audit invocation uses safe expansion `${IGNORE_VULNS[@]+"${IGNORE_VULNS[@]}"}` for pre-bash-4.4 portability. |
+| **A8-L-08** | ✅ CLOSED | `.env.example`: added note that `POSTGRES_DSN` here is the sole runtime value and adding an `environment:` block to compose silently overrides it. Verification command included. |
+| **A8-L-09** | ✅ CLOSED | `smoke_test.py`: narrowed `b"gAAAAA"` → `b"ENC:v1:gAAAAA"` (library prefix-shaped) + secondary `b"gAAAAAB"` (Fernet version-byte prefix). False-positive risk on unrelated base64 logging eliminated. |
+| **A8-L-10** | ✅ CLOSED | `pyproject.toml`: added `[build-system]` block (`setuptools>=68`, `wheel`, `setuptools.build_meta`). `pip install -e .` now succeeds on PEP 517 builders. |
+
+**Final cumulative posture after cycle-8 full drain: 0 CRIT / 0 HIGH / 0 MED / 0 LOW.**
+
+Unit-test re-verification:
+- `tests/test_cipher.py` + `tests/test_grep_gate.py`: 13/13 passing.
+- `lock.py` namespace test (`test_namespace_caching_at_instance_level`): logic still satisfies its differential check (keys still differ across namespaces — now both keys do, not just k1).
+- `daemon.py` healthcheck shape change: `method_path == 3 and HTTP/` is stricter than `>= 2`; smoke_test.py's healthcheck call uses `urllib.request.urlopen` which emits `GET /health HTTP/1.1` — passes.
+
+---
+
 
 ---
 

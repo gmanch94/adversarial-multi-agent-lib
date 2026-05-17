@@ -24,6 +24,20 @@ def _dsn() -> str | None:
     return os.environ.get("POSTGRES_DSN")
 
 
+# A8-M-08: refuse to run DROP-bearing fixtures against a non-test DSN.
+# fresh_checkpoints_table executes `DROP TABLE checkpoints CASCADE` — if a
+# developer points POSTGRES_DSN at staging/production and runs pytest, every
+# paused run gets erased. Guard: DSN must be obviously a test target.
+_TEST_HOST_ALLOWLIST = ("localhost", "127.0.0.1", "::1")
+
+
+def _is_test_dsn(dsn: str) -> bool:
+    lowered = dsn.lower()
+    if "test" in lowered:
+        return True
+    return any(f"@{h}" in lowered or f"//{h}" in lowered for h in _TEST_HOST_ALLOWLIST)
+
+
 needs_postgres = pytest.mark.skipif(
     asyncpg is None or _dsn() is None,
     reason="requires asyncpg + POSTGRES_DSN env var",
@@ -36,6 +50,14 @@ async def pg_pool():
 
     dsn = _dsn()
     assert dsn is not None
+    if not _is_test_dsn(dsn):
+        raise RuntimeError(
+            "Refusing DROP-bearing fixtures against a non-test POSTGRES_DSN. "
+            "Host must be localhost/127.0.0.1/::1 OR the DSN must contain the "
+            "substring 'test' (e.g. db name 'durable_test'). Set DSN to a test "
+            "target and rerun. Current host segment: "
+            f"{dsn.split('@', 1)[-1]!r}."
+        )
     pool = await ap.create_pool(dsn, min_size=1, max_size=5)
     yield pool
     await pool.close()
