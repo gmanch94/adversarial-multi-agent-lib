@@ -79,9 +79,15 @@ class _WorkflowWithProtocolSorted(_WorkflowNoProtocol):
 
 
 def _expected_hash(cls, *parts: bytes) -> str:
+    """Mirror of DurableWorkflow._compute_workflow_version_hash (A10-H1 length-prefix)."""
     mod = cls.__module__.encode()
     name = cls.__qualname__.encode()
-    return hashlib.sha256(b"\n".join([mod, name, *sorted(parts)])).hexdigest()[:16]
+    all_parts = [mod, name, *sorted(parts)]
+    h = hashlib.sha256()
+    for part in all_parts:
+        h.update(len(part).to_bytes(8, "big"))
+        h.update(part)
+    return h.hexdigest()[:16]
 
 
 def test_hash_class_identity_only_when_no_protocol(cfg):
@@ -437,6 +443,60 @@ def test_checkpoint_json_round_trip_with_hash():
     assert result.run_id == cp.run_id
     assert result.status == cp.status
     assert result.round == cp.round
+
+
+@pytest.mark.asyncio
+async def test_resume_pre_1_6_backfill_records_event(cfg):
+    """A10-M1: back-fill path appends workflow_version_backfill event to rounds_history."""
+    store = MemoryCheckpointStore()
+    lock = MemoryRunLock()
+    inner = _NoopRoundWorkflow(config=cfg)
+    dw = DurableWorkflow(inner=inner, config=cfg, checkpoint_store=store, run_lock=lock)
+    current_hash = dw._compute_workflow_version_hash()
+
+    cp = _make_paused_checkpoint("run-backfill-event-01", None)
+    await store.write(cp)
+    token = ResumeToken(
+        run_id="run-backfill-event-01",
+        workflow_class="test._NoopRoundWorkflow",
+        pinned_executor_model="claude-opus-4-7",
+        pinned_reviewer_model="gpt-4o",
+        schema_version=CURRENT_SCHEMA_VERSION,
+        created_at=cp.created_at,
+        wake_at=None,
+        workflow_version_hash=None,
+    )
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        await dw.resume(token)
+
+    persisted = await store.read("run-backfill-event-01")
+    backfill_events = [
+        e for e in persisted.rounds_history
+        if e.get("event") == "workflow_version_backfill"
+    ]
+    assert len(backfill_events) == 1
+    ev = backfill_events[0]
+    assert ev["from"] is None
+    assert ev["to"] == current_hash
+    assert "at" in ev
+    assert "note" in ev
+    assert "attestation chain has a gap" in ev["note"]
+
+
+def test_compute_hash_rejects_non_bytes_inputs(cfg):
+    """A10-M2: workflow_version_inputs() returning str raises TypeError."""
+    class _BadWorkflow(BaseWorkflow):
+        def workflow_version_inputs(self):
+            return ["str-not-bytes"]
+
+        async def run(self, request):
+            return WorkflowResult(final_output="x", rounds=1, final_score=1.0, converged=True, metadata={})
+
+    inner = _BadWorkflow(config=cfg)
+    dw = DurableWorkflow(inner=inner, config=cfg)
+    with pytest.raises(TypeError, match="must be bytes-like"):
+        dw._compute_workflow_version_hash()
 
 
 def test_checkpoint_json_round_trip_without_hash():

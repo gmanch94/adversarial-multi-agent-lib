@@ -228,7 +228,18 @@ class DurableWorkflow:
 
         inputs_fn = getattr(self._inner, "workflow_version_inputs", None)
         if callable(inputs_fn):
-            protocol_bytes = sorted(bytes(b) for b in inputs_fn())
+            # A10-M2: materialize the iterable eagerly (generator-safe) and
+            # reject non-bytes-like elements before coercion. bytes(int) produces
+            # b'\x00' * int — silent and wrong. Refuse to coerce (D-DURABLE-5).
+            raw = list(inputs_fn())
+            for i, b in enumerate(raw):
+                if not isinstance(b, (bytes, bytearray, memoryview)):
+                    raise TypeError(
+                        f"workflow_version_inputs()[{i}] must be bytes-like, "
+                        f"got {type(b).__name__}; refusing to coerce silently "
+                        f"(D-DURABLE-5)."
+                    )
+            protocol_bytes = sorted(bytes(b) for b in raw)
             parts.extend(protocol_bytes)
         else:
             warnings.warn(
@@ -241,7 +252,16 @@ class DurableWorkflow:
                 stacklevel=2,
             )
 
-        digest = hashlib.sha256(b"\n".join(parts)).hexdigest()[:16]
+        # A10-H1: length-prefix each part to prevent canonicalization collision.
+        # Naive b"\n".join([b"a\nb", b"c"]) == b"\n".join([b"a", b"b\nc"]) — an
+        # adversary controlling a skill template could craft a collision.
+        # Length-prefix pattern (8-byte big-endian len + raw bytes) makes each
+        # framing unique regardless of content.
+        h = hashlib.sha256()
+        for part in parts:
+            h.update(len(part).to_bytes(8, "big"))
+            h.update(part)
+        digest = h.hexdigest()[:16]
         self._workflow_version_hash_cache = digest
         return digest
 
@@ -502,8 +522,20 @@ class DurableWorkflow:
                 )
                 if os.environ.get("DURABLE_REFUSE_UNVERSIONED") == "1":
                     raise RunNotResumable(cp.run_id, "unversioned")
-                # Back-fill and persist durably so the gap is closed even if the
-                # run subsequently faults.
+                # A10-M1: record the back-fill as an explicit audit event BEFORE
+                # setting the hash, so the gap is visible in rounds_history even
+                # if a subsequent fault leaves the run in a failed state.
+                cp.rounds_history.append({
+                    "round": cp.round,
+                    "event": "workflow_version_backfill",
+                    "from": None,
+                    "to": expected_hash,
+                    "at": _now_iso(),
+                    "note": (
+                        "pre-1.6 checkpoint; back-filled with current library hash; "
+                        "attestation chain has a gap for rounds prior to this entry"
+                    ),
+                })
                 cp.workflow_version_hash = expected_hash
                 await self._store.write(cp)
             elif cp.workflow_version_hash != expected_hash:
