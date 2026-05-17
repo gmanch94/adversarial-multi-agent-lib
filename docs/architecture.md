@@ -22,7 +22,7 @@ The library has two activation modes. Every section below applies to both unless
 | Process model | Caller's Python process | Multi-tenant server with per-session sandboxes |
 | Persistence | Local JSON (`ledger.json`, `wiki.json`) via atomic writes | Postgres / SQLite per workspace |
 | Concurrency | Single-process; document the limit | File-locked or DB-backed; multi-process safe |
-| Skills | **139 bundled templates** (15 research + 6 parole + 25 retail + 29 pc + 32 industrial + 32 healthcare) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
+| Skills | **148 bundled templates** (15 research + 6 parole + 34 retail + 29 pc + 32 industrial + 32 healthcare) inside the wheel; local override via `Config(skills_dir=...)` | Versioned, signed, distributed via the registry |
 | Executor surface | Anthropic API direct | Anthropic + Bedrock + Vertex (per decision matrix in [decisions.md](decisions.md)) |
 | Observability | Caller wires their own logging | Built-in audit log + OpenTelemetry exporter |
 | Self-improvement adoption | Pending-only; caller approves out of band | Same, but approval is an authenticated UI action |

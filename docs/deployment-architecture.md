@@ -16,11 +16,11 @@ flowchart TB
     classDef fs fill:#fff7ed,stroke:#9a3412,color:#000
     classDef user fill:#f3f4f6,stroke:#374151,color:#000
 
-    Researcher([Researcher / pipeline operator]):::user
-    Env([Environment vars<br/>ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY<br/>EXECUTOR_PROVIDER · REVIEWER_PROVIDER · SKILLS_DOMAIN<br/>EFFORT_LEVEL · MAX_REVIEW_ROUNDS · SCORE_THRESHOLD]):::ext
-    Anthropic([Anthropic Messages API<br/>api.anthropic.com:443<br/>claude-opus-4-7]):::ext
-    Gemini([Google Gemini API<br/>generativelanguage.googleapis.com:443<br/>gemini-2.5-pro]):::ext
-    OpenAI([OpenAI Chat Completions<br/>api.openai.com:443<br/>gpt-4o]):::ext
+    Researcher(["Researcher / pipeline operator"]):::user
+    Env(["Environment vars<br/>ANTHROPIC_API_KEY · OPENAI_API_KEY · GEMINI_API_KEY<br/>EXECUTOR_PROVIDER · REVIEWER_PROVIDER · SKILLS_DOMAIN<br/>EFFORT_LEVEL · MAX_REVIEW_ROUNDS · SCORE_THRESHOLD"]):::ext
+    Anthropic(["Anthropic Messages API<br/>api.anthropic.com:443<br/>claude-opus-4-7"]):::ext
+    Gemini(["Google Gemini API<br/>generativelanguage.googleapis.com:443<br/>gemini-2.5-pro"]):::ext
+    OpenAI(["OpenAI Chat Completions<br/>api.openai.com:443<br/>gpt-4o"]):::ext
 
     subgraph Process["Caller's Python process (asyncio event loop)"]
         direction TB
@@ -51,7 +51,7 @@ flowchart TB
             subgraph CorePkg["core/"]
                 Agents["Agents<br/>ExecutorAgent (Anthropic or Gemini)<br/>ReviewerAgent (OpenAI or Anthropic)"]:::lib
                 Stores["Stores<br/>ClaimLedger · ResearchWiki"]:::lib
-                SkillsReg["SkillRegistry · MCP server<br/>(139 bundled templates · SKILLS_DOMAIN)"]:::lib
+                SkillsReg["SkillRegistry · MCP server<br/>(148 bundled templates · SKILLS_DOMAIN)"]:::lib
             end
 
             Caller --> Cfg
@@ -139,8 +139,8 @@ flowchart TB
     classDef ext fill:#fef3c7,stroke:#92400e,color:#000
     classDef user fill:#f3f4f6,stroke:#374151,color:#000
 
-    Dev([Maintainer terminal]):::user
-    Pyt([pytest + pytest-asyncio<br/>657 tests · mypy strict · ruff clean]):::user
+    Dev(["Maintainer terminal"]):::user
+    Pyt(["pytest + pytest-asyncio<br/>657 tests · mypy strict · ruff clean"]):::user
 
     subgraph Host["Host machine — Windows / macOS / Linux"]
         direction TB
@@ -152,13 +152,13 @@ flowchart TB
             direction TB
             Src["src/adv_multi_agent/<br/>core/ · research/ · parole/ · retail/ · pc/ · industrial/ · healthcare/"]:::lib
             Examples["examples/research/ · examples/parole/<br/>examples/retail/ · examples/pc/ · examples/industrial/ · examples/healthcare/"]:::lib
-            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole + 25 retail + 29 pc + 32 industrial + 32 healthcare = 139"]:::lib
+            SkillsDir["bundled templates (wheel)<br/>15 research + 6 parole + 34 retail + 29 pc + 32 industrial + 32 healthcare = 148"]:::lib
         end
     end
 
-    Anthro([Anthropic API — real key, live calls]):::ext
-    GeminiDev([Gemini API — real key, live calls]):::ext
-    OAI([OpenAI API — real key, live calls]):::ext
+    Anthro(["Anthropic API — real key, live calls"]):::ext
+    GeminiDev(["Gemini API — real key, live calls"]):::ext
+    OAI(["OpenAI API — real key, live calls"]):::ext
 
     Dev --> Py
     Pyt --> Py
