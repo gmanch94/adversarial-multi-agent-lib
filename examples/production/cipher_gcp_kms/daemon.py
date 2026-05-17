@@ -52,6 +52,8 @@ HEALTHCHECK_KEYS: set[str] = {
     "paused_runs",
     "quarantine_size",
     "cipher_fingerprint",
+    "dek_cache_hit_count",   # A9-M-02: cache-bypass DoS detection
+    "dek_cache_miss_count",  # A9-M-02: cache-bypass DoS detection
 }
 
 
@@ -415,6 +417,10 @@ async def main() -> None:
         #   SELECT count(*) FROM checkpoints WHERE status='PAUSED'
         # for an authoritative figure outside this healthcheck.
         paused = getattr(daemon, "_last_paused_count", None)
+        # A9-M-02: expose DEK cache hit/miss for cache-bypass DoS detection.
+        # Monotonically increasing counters; never reset. A miss_count that
+        # grows faster than hit_count signals TTL too short or LRU thrash.
+        cache_stats = cipher.dek_cache_stats() if hasattr(cipher, "dek_cache_stats") else {}
         return {
             "daemon_running": True,
             "last_poll_at": getattr(daemon, "_last_poll_ts",
@@ -422,6 +428,8 @@ async def main() -> None:
             "paused_runs": paused,
             "quarantine_size": len(getattr(daemon, "_quarantine", set())),
             "cipher_fingerprint": cipher.key_fingerprint(),
+            "dek_cache_hit_count": cache_stats.get("hit_count", 0),
+            "dek_cache_miss_count": cache_stats.get("miss_count", 0),
         }
 
     healthcheck = HealthcheckServer(get_state=get_health_state, port=8080)

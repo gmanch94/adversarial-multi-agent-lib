@@ -1,13 +1,13 @@
-"""TTL-bounded LRU cache with asyncio single-flight for KMS DEKs.
+"""TTL-bounded LRU cache for KMS DEKs.
 
-Note: ``get_or_load`` is currently unused by GcpKmsCipher (sync decrypt path
-uses get/set directly). Kept for future AsyncCipher Protocol; collapses
-concurrent first-decrypts of the same wrapped DEK into one KMS call when an
-async cipher impl lands.
+A9-M-04: single-flight (get_or_load / _inflight) removed — YAGNI. The sync
+decrypt path calls get/set directly and the AsyncCipher Protocol does not yet
+exist. When async cipher lands, add get_or_load back at that time.
 
-Why single-flight: process restart -> N concurrent decrypts of the same
-wrapped DEK -> N parallel KMS calls. Single-flight collapses them into one;
-losers await the in-flight loader's result.
+A9-M-02: hit_count / miss_count are atomic ints (CPython GIL makes int +=
+effectively atomic for single-threaded async; no explicit lock needed).
+Exposed via DekCache.stats() and surfaced on the daemon healthcheck endpoint
+so operators can detect cache-bypass (DEK_CACHE_TTL_SECONDS=1 or LRU thrash).
 
 Why TTL: bounds the window during which a DEK lives in process memory.
 Process-memory dump of a compromised daemon should not yield DEKs older
@@ -15,57 +15,35 @@ than TTL. 5 minutes is the durable-poll-interval scale.
 """
 from __future__ import annotations
 
-import asyncio
 import time
-from typing import Awaitable, Callable
 
 from cachetools import TTLCache
 
 
 class DekCache:
-    """Bounded LRU + TTL + asyncio single-flight."""
+    """Bounded LRU + TTL cache with hit/miss metrics."""
 
     def __init__(self, max_size: int, ttl_seconds: int) -> None:
         self._cache: TTLCache[bytes, bytes] = TTLCache(
             maxsize=max_size, ttl=ttl_seconds, timer=time.monotonic
         )
-        self._inflight: dict[bytes, asyncio.Future[bytes]] = {}
+        self._hit_count: int = 0
+        self._miss_count: int = 0
 
     def get(self, key: bytes) -> bytes | None:
-        return self._cache.get(key)
+        value = self._cache.get(key)
+        if value is not None:
+            self._hit_count += 1
+        else:
+            self._miss_count += 1
+        return value
 
     def set(self, key: bytes, value: bytes) -> None:
         self._cache[key] = value
 
-    async def get_or_load(
-        self,
-        key: bytes,
-        loader: Callable[[], Awaitable[bytes]],
-    ) -> bytes:
-        hit = self._cache.get(key)
-        if hit is not None:
-            return hit
-
-        # D7: atomic check-and-set across these lines. NO `await` between
-        # them — CPython asyncio guarantees no other coroutine runs in this
-        # span, which is the only thing keeping the single-flight invariant.
-        # Adding `await` here (e.g. `await logger.adebug(...)`) silently
-        # breaks single-flight: two concurrent misses can both create
-        # futures, two KMS calls fire, one future gets orphaned. Load-bearing
-        # comment; do not refactor away.
-        inflight = self._inflight.get(key)
-        if inflight is not None:
-            return await inflight
-
-        future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
-        self._inflight[key] = future
-        try:
-            value = await loader()
-            self._cache[key] = value
-            future.set_result(value)
-            return value
-        except BaseException as exc:
-            future.set_exception(exc)
-            raise
-        finally:
-            del self._inflight[key]
+    def stats(self) -> dict[str, int]:
+        """Return hit/miss counters (monotonically increasing; never reset)."""
+        return {
+            "hit_count": self._hit_count,
+            "miss_count": self._miss_count,
+        }

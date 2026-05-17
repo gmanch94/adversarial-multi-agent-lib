@@ -1,10 +1,11 @@
-"""Unit tests for DekCache — TTL + LRU + single-flight."""
+"""Unit tests for DekCache — TTL + LRU + hit/miss metrics.
+
+A9-M-04: single-flight tests removed (get_or_load deleted — YAGNI).
+A9-M-02: hit/miss counter tests added.
+"""
 from __future__ import annotations
 
-import asyncio
 import time
-
-import pytest
 
 from examples.production.cipher_gcp_kms.dek_cache import DekCache
 
@@ -41,53 +42,34 @@ def test_ttl_expiry(monkeypatch):
     assert c.get(b"k") is None
 
 
-@pytest.mark.asyncio
-async def test_single_flight_collapses_concurrent_misses():
-    """100 parallel get_or_load calls for the same key → loader called once."""
+def test_hit_counter_increments_on_cache_hit():
     c = DekCache(max_size=4, ttl_seconds=60)
-    call_count = 0
-
-    async def loader():
-        nonlocal call_count
-        call_count += 1
-        await asyncio.sleep(0.01)
-        return b"loaded_dek"
-
-    results = await asyncio.gather(*[
-        c.get_or_load(b"k", loader) for _ in range(100)
-    ])
-    assert all(r == b"loaded_dek" for r in results)
-    assert call_count == 1
+    c.set(b"k", b"v")
+    c.get(b"k")
+    c.get(b"k")
+    assert c.stats()["hit_count"] == 2
+    assert c.stats()["miss_count"] == 0
 
 
-@pytest.mark.asyncio
-async def test_single_flight_loader_exception_propagates_to_all_waiters():
+def test_miss_counter_increments_on_cache_miss():
     c = DekCache(max_size=4, ttl_seconds=60)
-
-    async def boom():
-        await asyncio.sleep(0.01)
-        raise RuntimeError("kms down")
-
-    with pytest.raises(RuntimeError, match="kms down"):
-        await asyncio.gather(*[
-            c.get_or_load(b"k", boom) for _ in range(10)
-        ])
+    c.get(b"absent1")
+    c.get(b"absent2")
+    assert c.stats()["hit_count"] == 0
+    assert c.stats()["miss_count"] == 2
 
 
-@pytest.mark.asyncio
-async def test_single_flight_retries_after_loader_failure():
-    """First call fails, second call (after first resolves) retries loader."""
+def test_stats_mixed_hits_and_misses():
     c = DekCache(max_size=4, ttl_seconds=60)
-    attempts = []
+    c.set(b"k", b"v")
+    c.get(b"k")       # hit
+    c.get(b"absent")  # miss
+    c.get(b"k")       # hit
+    assert c.stats() == {"hit_count": 2, "miss_count": 1}
 
-    async def maybe_boom():
-        attempts.append(1)
-        if len(attempts) == 1:
-            raise RuntimeError("transient")
-        return b"ok"
 
-    with pytest.raises(RuntimeError):
-        await c.get_or_load(b"k", maybe_boom)
-    result = await c.get_or_load(b"k", maybe_boom)
-    assert result == b"ok"
-    assert len(attempts) == 2
+def test_set_does_not_increment_counters():
+    """set() pre-populates cache but must not affect hit/miss counters."""
+    c = DekCache(max_size=4, ttl_seconds=60)
+    c.set(b"k", b"v")
+    assert c.stats() == {"hit_count": 0, "miss_count": 0}

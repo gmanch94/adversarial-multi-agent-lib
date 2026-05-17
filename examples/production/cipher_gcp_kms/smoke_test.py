@@ -5,17 +5,15 @@ SCOPE:
     (no KMS credentials, no DSN passwords, no API keys), healthcheck key set,
     container hardening, startup fingerprint log shape.
   - KMS-specific: daemon logs clean of ADC material, fingerprint present at
-    startup, dek_cache metrics pending wire-up (xfail until daemon exposes
-    them on healthcheck endpoint).
+    startup, dek_cache hit/miss metrics wired to healthcheck (A9-M-02).
   - Does NOT verify: real model API integration, real KMS round-trip end-to-end
     (mock KMS is used by default). Use caller.py for live integration.
 
 Run modes
 ---------
-Mock KMS (default -- no GCP credentials required):
-    Set KMS_MOCK=1 before starting the daemon. The daemon must be started with
-    a MockKmsClient injected (see examples/production/cipher_gcp_kms/tests/conftest.py).
-    Currently this injection is manual operator burden -- see follow-up task below.
+Default (in-process mock KMS -- no GCP credentials required):
+    Most tests in this file use the inline mock_kms_client fixture and run
+    entirely in-process. No daemon process is started.
 
     pytest examples/production/cipher_gcp_kms/smoke_test.py -v
 
@@ -26,14 +24,11 @@ Compose-dependent tests (tests 11b, 11c, 13, 14) require the stack running:
     docker compose -f examples/production/cipher_gcp_kms/docker-compose.yml up -d
     COMPOSE_RUNNING=1 pytest examples/production/cipher_gcp_kms/smoke_test.py -v
 
-KMS_MOCK=1 / MockKmsClient wiring
-----------------------------------
-LocalStack CE does not ship Cloud KMS. The mock path uses the in-memory
-MockKmsClient from tests/conftest.py. To activate it, the daemon entry point
-must accept a KMS_MOCK=1 env var and instantiate GcpKmsCipher with
-client=MockKmsClient(). That wiring is NOT yet in daemon.py -- it is operator
-burden for now. Track follow-up: add KMS_MOCK env branch to daemon.py __main__
-and document it in the operator runbook.
+    Compose-mode requires live KMS credentials (GCP_KMS_KEY_NAME + valid ADC).
+    KMS_MOCK=1 is NOT supported by the daemon (A9-M-05: mock-in-daemon is
+    dev-only complexity that was removed). Use the in-process mock_kms_client
+    fixture (below) for mock coverage; use real GCP credentials for compose
+    tests.
 """
 from __future__ import annotations
 
@@ -391,25 +386,15 @@ def test_12_healthcheck_keys_locked() -> None:
     expected = {
         "daemon_running", "last_poll_at", "paused_runs",
         "quarantine_size", "cipher_fingerprint",
+        "dek_cache_hit_count", "dek_cache_miss_count",  # A9-M-02
     }
     assert HEALTHCHECK_KEYS == expected
 
 
-# ----- #12b: dek_cache metrics in healthcheck (PENDING) -----
+# ----- #12b: dek_cache metrics in healthcheck -----
 
-@pytest.mark.xfail(
-    reason=(
-        "dek_cache_hit_count / dek_cache_miss_count not yet wired to healthcheck. "
-        "To fix: (1) add hit/miss counters to DekCache.get() in dek_cache.py, "
-        "(2) add dek_cache_stats() method to GcpKmsCipher delegating to self._cache, "
-        "(3) add 'dek_cache_hit_count' and 'dek_cache_miss_count' to HEALTHCHECK_KEYS "
-        "in daemon.py, (4) spread cipher.dek_cache_stats() into get_health_state(). "
-        "Update test_12_healthcheck_keys_locked expected set after wiring."
-    ),
-    strict=False,
-)
 def test_12b_dek_cache_metrics_present_in_healthcheck() -> None:
-    """Healthcheck must expose dek_cache_hit_count and dek_cache_miss_count."""
+    """Healthcheck must expose dek_cache_hit_count and dek_cache_miss_count (A9-M-02)."""
     assert "dek_cache_hit_count" in HEALTHCHECK_KEYS, (
         "dek_cache_hit_count not in HEALTHCHECK_KEYS"
     )
