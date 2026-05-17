@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 @pytest.fixture

@@ -4,13 +4,12 @@ from __future__ import annotations
 import base64
 import os
 import time
-from unittest.mock import MagicMock
 
 import pytest
 from cryptography.fernet import InvalidToken
 
 from examples.production.cipher_gcp_kms.cipher import (
-    GcpKmsCipher, KmsDecryptError, _CIPHERTEXT_PREFIX,
+    GcpKmsCipher, KmsDecryptError,
 )
 
 KEY_NAME = (
