@@ -477,3 +477,59 @@ N+1 unless an operator explicitly accepts the drift.
 Force-accept defeats the attestation chain. Document the reason in writing.
 
 Surface each to your compliance lead during pre-production sign-off.
+
+
+---
+
+## §13 KMS-key unrecoverable scenarios (Tier 1.8)
+
+Three scenarios in which paused runs become cryptographically unrecoverable, ranked by likelihood × blast radius. Mitigations land in `examples/production/cipher_gcp_kms/scripts/provision_keyring.sh`.
+
+### Scenario A — admin-SA compromise schedules key destruction
+
+**Threat.** A compromised `admin-sa@…` (the SA holding `roles/cloudkms.admin`) calls `gcloud kms keys versions destroy <VERSION>`. Default GCP behavior: 30-day soft delete; after the window, the version is unrecoverable. Every checkpoint encrypted under a destroyed version becomes ciphertext-only.
+
+**Mitigation (shipped):** `--prevent-destroy` applied to every ENABLED version by `provision_keyring.sh` and chained automatically by `rotate_kms_key_version.sh`. Lifting requires admin-SA to ALSO call `--remove-prevent-destroy` first — a two-step that adds friction and an extra audit-log row.
+
+**Operator action:**
+- Audit `cloudkms_cryptokey.UpdateCryptoKeyVersion` events filtered by `protoPayload.request.cryptoKeyVersion.state=DESTROY_SCHEDULED` weekly.
+- Alert on any `--remove-prevent-destroy` call (high-signal event; should be zero in steady state).
+
+### Scenario B — GCP project deletion cascades into KMS
+
+**Threat.** Operator deletes the GCP project (intentionally or accidentally). KMS keyring + keys are deleted with the project. 30-day project-deletion soft delete window applies.
+
+**Mitigation (shipped):** project-deletion lien applied by `provision_keyring.sh` via `gcloud resource-manager liens create --restrictions resourcemanager.projects.delete`. The lien blocks deletion until explicitly removed by a principal with `resourcemanager.projects.delete` + `resourcemanager.projects.update`.
+
+**Operator action:**
+- Verify lien presence in monthly KMS audit: `gcloud resource-manager liens list --project YOUR_PROJECT`.
+- Treat lien removal as a P1 alert.
+
+### Scenario C — single-region keyring outage
+
+**Threat.** GCP regional outage on the keyring's location (e.g. `us-central1`). Daemon cannot reach KMS, decrypt calls fail, every paused run blocks at resume until the region recovers. RPO is unaffected (data is intact) but RTO is bounded by GCP's regional recovery.
+
+**Mitigation (upgrade path, NOT shipped):** multi-region keyring via location `global` or `us` (multi-region). Tradeoffs:
+- `global` location: highest availability, but key material exists across more PoPs (slightly larger attack surface).
+- Multi-region (`us`, `europe`): availability across the region's sub-regions.
+- Single-region (`us-central1`): least attack surface, single-region availability.
+
+**Operator decision:**
+- POC / low-availability: keep single-region (current default in `.env.example`).
+- Production / HA-required: provision a `global` or multi-region keyring. Re-run `provision_keyring.sh LOCATION=global`. Migrate existing checkpoints via a re-encrypt pass (re-encrypt with new key; old single-region key remains until cutover verified).
+
+### Recovery posture summary
+
+| Scenario | Default RTO | With Tier-1.8 mitigations | Notes |
+|---|---|---|---|
+| A — destroy initiated | 30 days (soft delete) | Indefinite (prevent-destroy) | Requires two-step admin action to break |
+| B — project deletion | 30 days (project soft delete) | Indefinite (lien) | Requires admin to remove lien first |
+| C — regional outage | Bounded by GCP recovery | Same as default for single-region | Multi-region is upgrade path |
+| D — single-region KMS hard outage (data loss at GCP) | Catastrophic for single-region; mitigated by multi-region | Multi-region | GCP SLA does not cover this; cipher choice does |
+
+### Cross-references
+
+- `examples/production/cipher_gcp_kms/scripts/provision_keyring.sh` — applies mitigations A + B.
+- `examples/production/cipher_gcp_kms/scripts/rotate_kms_key_version.sh` — chains `--prevent-destroy` on every new version.
+- `examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh` — IAM gate covering principal who can call destroy.
+- `docs/decisions.md` — D-CIPHER-GCP-3 (destroy protection), D-CIPHER-GCP-4 (`CIPHER_BACKEND` selector enabling fallback to FernetCipher if KMS becomes unavailable for an extended period — operator-decision tradeoff documented in §13.C above).

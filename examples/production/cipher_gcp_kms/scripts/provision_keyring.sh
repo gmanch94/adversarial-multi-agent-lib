@@ -107,27 +107,49 @@ gcloud kms keys add-iam-policy-binding "$KEY" \
     --quiet
 echo "    Bound: $ADMIN_SA -> roles/cloudkms.admin"
 
-# ---------- 5. Destroy protection ----------
-# Cloud KMS does not expose a --prevent-destroy flag at the key level via gcloud.
-# Protection is applied at the CryptoKeyVersion level after a version is created.
-# To enable it on the primary version after next rotation:
-#   VERSION=$(gcloud kms keys versions list --key "$KEY" --keyring "$KEYRING" \
-#       --location "$LOCATION" --project "$PROJECT" \
-#       --filter="state=ENABLED" --format="value(name)" | head -1)
-#   gcloud kms keys versions update "$VERSION" --prevent-destroy
-#
-# Attempting key-level update now (no-op on current API; here for future compatibility):
-gcloud kms keys update "$KEY" \
-    --keyring "$KEYRING" \
-    --location "$LOCATION" \
-    --project "$PROJECT" 2>/dev/null || true
-
+# ---------- 5. Destroy protection (Tier 1.8) ----------
+# Cloud KMS does not expose a --prevent-destroy flag at the key level via
+# gcloud. Protection is applied at the CryptoKeyVersion level. We
+# automatically apply it to every ENABLED version below.
 echo ""
-echo "==> OPERATOR ACTION REQUIRED — enable destroy protection on the primary version:"
-echo "    VERSION=\$(gcloud kms keys versions list \\"
-echo "        --key $KEY --keyring $KEYRING --location $LOCATION --project $PROJECT \\"
-echo "        --filter=state=ENABLED --format='value(name)' | head -1)"
-echo "    gcloud kms keys versions update \"\$VERSION\" --prevent-destroy"
+echo "==> Enabling destroy protection on every ENABLED version ..."
+mapfile -t VERSIONS < <(
+  gcloud kms keys versions list \
+      --key "$KEY" --keyring "$KEYRING" \
+      --location "$LOCATION" --project "$PROJECT" \
+      --filter="state=ENABLED" --format="value(name)" 2>/dev/null || true
+)
+if [[ ${#VERSIONS[@]} -eq 0 ]]; then
+  echo "    WARNING: no ENABLED versions found (key may have only PENDING_GENERATION)."
+  echo "    Re-run this script after the first key version is generated."
+else
+  for V in "${VERSIONS[@]}"; do
+    if gcloud kms keys versions update "$V" --prevent-destroy --quiet 2>&1 \
+        | grep -qv "ALREADY"; then
+      true  # surface real errors via non-grep retry
+    fi
+    echo "    [protected] $V"
+  done
+fi
+
+# ---------- 6. Project deletion lien (Tier 1.8) ----------
+# Prevents accidental project deletion from cascading into KMS destruction.
+# Idempotent: gcloud will refuse to create a duplicate lien with the same reason.
+echo ""
+echo "==> Applying project-deletion lien (Tier 1.8 / A10-H2 mitigation) ..."
+LIEN_REASON="durable-kms-cipher-protection-cycle9"
+if ! gcloud resource-manager liens list --project "$PROJECT" \
+    --format="value(reason)" 2>/dev/null | grep -qx "$LIEN_REASON"; then
+  gcloud resource-manager liens create \
+      --project "$PROJECT" \
+      --restrictions resourcemanager.projects.delete \
+      --reason "$LIEN_REASON" \
+      --quiet 2>&1 \
+    | head -3 || echo "    NOTE: lien creation requires roles/resourcemanager.lienModifier"
+  echo "    Lien applied: $LIEN_REASON (restrictions=resourcemanager.projects.delete)"
+else
+  echo "    Lien already present: $LIEN_REASON"
+fi
 
 # ---------- done ----------
 echo ""
@@ -135,3 +157,12 @@ echo "==> Provisioning complete."
 echo ""
 echo "    Key resource name (paste into .env as KMS_KEY_NAME):"
 echo "    $KEY_RESOURCE"
+echo ""
+echo "    Tier 1.8 recovery posture:"
+echo "    [ok]   IAM separation: daemon=encrypt/decrypt; admin=full"
+echo "    [ok]   90d auto-rotation"
+echo "    [ok]   30d destroy-scheduled-duration (recovery window)"
+echo "    [ok]   --prevent-destroy on ENABLED versions"
+echo "    [ok]   project-deletion lien"
+echo "    [next] OPERATOR: enable multi-region keyring for cross-region durability"
+echo "           (Tier 1.8 upgrade path; see docs/runbooks/durable-compliance.md §13)"

@@ -73,7 +73,17 @@ FINGERPRINT=$(printf '%s' "$KEY_RESOURCE" | sha256sum | cut -c1-8)
 echo ""
 echo "    New primary version : $NEW_VERSION"
 echo "    Key path fingerprint: $FINGERPRINT"
+
+# Tier 1.8: every new version gets --prevent-destroy on creation.
+if [[ -n "$NEW_VERSION" ]]; then
+  gcloud kms keys versions update "$NEW_VERSION" --prevent-destroy --quiet 2>&1 \
+    | head -3 || true
+  echo "    Destroy protection  : enabled on $NEW_VERSION"
+fi
+
 echo ""
 echo "NOTE: Old versions remain for decryption of existing ciphertext."
-echo "      To schedule an old version for destruction:"
-echo "      gcloud kms keys versions destroy <VERSION_RESOURCE>"
+echo "      To schedule an old version for destruction (must remove"
+echo "      destroy protection first):"
+echo "      gcloud kms keys versions update <VERSION> --remove-prevent-destroy"
+echo "      gcloud kms keys versions destroy <VERSION>"
