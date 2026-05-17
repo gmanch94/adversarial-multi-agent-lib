@@ -31,17 +31,23 @@ User stepped away with "roll with tasks that move us in the right direction." Th
 - Multi-region keyring documented as operator upgrade path
 - cipher_gcp_kms README operator-checklist items ticked for destroy-protection + recovery procedure
 
-**Tier 1.1 — Observability scaffold (PARTIAL)** — `ccdad61`..`b8803fd` (2 commits)
+**Tier 1.1 — Observability scaffold + extension (PARTIAL)** — `ccdad61`..`2659d44` (4 commits)
 - `src/adv_multi_agent/core/durable/metrics.py` — `MetricsBackend` Protocol (counter/gauge/histogram/timing) + `NoopMetricsBackend` zero-overhead default
 - `DurableWorkflow.__init__` accepts `metrics=` kwarg; default Noop
-- 3 representative wire points: `durable.workflow.start` counter, `durable.lock.acquire_failed` counter, `durable.workflow.pause` counter (with `pause_reason` tag)
-- 12 unit tests (Noop perf + Recording backend wired in DurableWorkflow)
-- **NOT shipped yet:** OTel sibling reference deployment, histograms (round latency), gauges (budget, lock-pool saturation), Grafana dashboards, alert rules, Tier 1.7 PII-redaction SpanProcessor
+- **8 metric names wired** across both happy and failure paths:
+  - `durable.workflow.start` (counter, workflow tag)
+  - `durable.workflow.pause` (counter, workflow + pause_reason tags)
+  - `durable.lock.acquire_failed` (counter, workflow + phase tags)
+  - `durable.lock.acquire_latency_seconds` (histogram, workflow + phase tags)
+  - `durable.round.latency_seconds` (histogram, success-path only)
+  - `durable.budget.tokens_in` / `tokens_out` / `usd_spent` (gauges, per-round when budget tracker present)
+- 18 unit tests (12 scaffold + 6 extension) including zero-overhead Noop perf test
+- **NOT shipped yet:** OTel sibling reference deployment (`examples/production/durable_postgres_otel/`), lock-acquire wiring on `resume()` path, lock-pool saturation gauge, schema_version distribution gauge, cipher decrypt-failure counter, distributed traces (requires `MetricsBackend.span(name)` extension), Grafana dashboards, alert rules, Tier 1.7 PII-redaction SpanProcessor
 
 ### Audit + meta
 
 - Cycle-10 audit posture: 0 CRIT / 0 HIGH / 1 MED (A10-M3 backlog → Tier 3.2) / 5 LOW
-- Repo posture: 685 tests pass · ruff clean · mypy clean on durable subpackage
+- Repo posture: **698 tests pass** · ruff clean · mypy clean on durable subpackage
 - Stale-shell-redirect artifacts cleaned in `4fda541`
 
 ### Outstanding work (queued, in order of recommended next pickup)
