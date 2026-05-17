@@ -125,9 +125,11 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 **Effort:** 3–5 days. Lives in the OTel sibling deployment (Tier 1.1).
 
-### 1.8 KMS-key-destroyed recovery (advisor D3)
+### 1.8 KMS-key-destroyed recovery (advisor D3) — **SHIPPED 2026-05-17**
 
-**Gap.** Spec for the GCP KMS cipher (`docs/superpowers/specs/2026-05-17-gcp-kms-cipher-design.md`) covers daemon-SA destroy prevention via IAM separation. Doesn't cover:
+**Status:** closed. `provision_keyring.sh` auto-applies `--prevent-destroy` to every ENABLED version + creates a project-deletion lien. `rotate_kms_key_version.sh` chains `--prevent-destroy` on every new version. Multi-region keyring documented as operator upgrade path in `docs/runbooks/durable-compliance.md` §13. Three unrecoverable-scenarios + mitigations documented in same §13.
+
+**Gap (historic).** Spec for the GCP KMS cipher (`docs/superpowers/specs/2026-05-17-gcp-kms-cipher-design.md`) covers daemon-SA destroy prevention via IAM separation. Doesn't cover:
 - Admin-SA compromise
 - GCP project deletion
 - Single-region keyring outage

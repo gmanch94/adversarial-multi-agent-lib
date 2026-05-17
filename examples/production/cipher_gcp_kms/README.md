@@ -212,11 +212,11 @@ Until the re-encryption script ships, `CIPHER_BACKEND=fernet` is the safe defaul
 Complete before routing production traffic.
 
 - [ ] Provision keyring + key + IAM bindings via `scripts/provision_keyring.sh`
-- [ ] Confirm key destroy protection is enabled on the primary cryptoKeyVersion (`gcloud kms keys describe`)
+- [x] Confirm key destroy protection is enabled on the primary cryptoKeyVersion — auto-applied by `provision_keyring.sh` (Tier 1.8). Verify with `gcloud kms keys versions list --filter=state=ENABLED --format='value(name,destroyProtection)'`.
 - [ ] Configure ADC for local dev OR Workload Identity Federation for GKE / Cloud Run (do not mount JSON key files)
 - [ ] Set rotation cadence — quarterly minimum per HITRUST CSF KSP.02.05; configure a calendar reminder or Cloud Scheduler job to run `scripts/rotate_kms_key_version.sh`
 - [ ] Run `scripts/audit_iam_grants.sh` and verify only daemon-SA and admin-SA appear with encrypt/decrypt grants
 - [ ] Wire `dek_cache_hit_count` / `dek_cache_miss_count` metrics to your healthcheck endpoint (pending — see `smoke_test.py` test 12b xfail)
-- [ ] Document key-destroy recovery procedure in your deployment runbook (see Tier 1.8 in `docs/production-readiness-gaps.md` — multi-region key replication + project lien as mitigations)
+- [x] Document key-destroy recovery procedure in your deployment runbook — shipped 2026-05-17. See `docs/runbooks/durable-compliance.md` §13 for the three scenarios (admin-SA compromise / project deletion / regional outage) and `scripts/provision_keyring.sh` for the auto-applied mitigations (`--prevent-destroy` + project deletion lien). Multi-region keyring remains an operator decision.
 - [ ] Execute BAA with Anthropic and OpenAI if this deployment processes PHI (HIPAA requirement; library cannot help with BAA)
 - [ ] Complete graduation checklist in `docs/runbooks/durable-integration.md` §10
