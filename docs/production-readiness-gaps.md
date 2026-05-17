@@ -14,9 +14,27 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 ### 1.1 Observability — metrics + traces + structured logs (PARTIAL — scaffold shipped 2026-05-17)
 
-**Progress 2026-05-17:** library-side scaffold landed. `core/durable/metrics.py` defines `MetricsBackend` Protocol + `NoopMetricsBackend` default. `DurableWorkflow.__init__` accepts `metrics=` kwarg. Three representative metric calls wired: `durable.workflow.start` counter, `durable.lock.acquire_failed` counter, `durable.workflow.pause` counter (with `pause_reason` tag). 12 unit tests including zero-overhead Noop perf test.
+**Progress 2026-05-17 (EVE):** library-side scaffold + wire points landed in 2 commits (`ccdad61` scaffold, `464490c` extension). `core/durable/metrics.py` defines `MetricsBackend` Protocol + `NoopMetricsBackend` default. `DurableWorkflow.__init__` accepts `metrics=` kwarg.
 
-**Still pending:** OTel sibling reference deployment (`examples/production/durable_postgres_otel/`), histogram wiring for round latency, gauge for budget+lock-pool saturation, Grafana dashboards, alert rules, PII-redaction `SpanProcessor` (Tier 1.7 depends on this).
+Wired metric emissions (8 distinct names):
+- `durable.workflow.start` (counter, workflow tag)
+- `durable.workflow.pause` (counter, workflow + pause_reason tags)
+- `durable.lock.acquire_failed` (counter, workflow + phase tags)
+- `durable.lock.acquire_latency_seconds` (histogram, workflow + phase tags)
+- `durable.round.latency_seconds` (histogram, workflow tag; success-path only)
+- `durable.budget.tokens_in` (gauge, per-round; workflow tag)
+- `durable.budget.tokens_out` (gauge, per-round)
+- `durable.budget.usd_spent` (gauge, per-round)
+
+18 unit tests including zero-overhead Noop perf test + 6 wire-point tests covering both happy and pause/failure paths.
+
+**Still pending:**
+- OTel sibling reference deployment (`examples/production/durable_postgres_otel/`) — OTLP exporter shim implementing MetricsBackend
+- More wire points: lock-acquire path on `resume()`, lock-pool saturation gauge, schema_version distribution gauge, cipher decrypt-failure counter
+- Distributed traces (one trace per run, spans per round) — requires `MetricsBackend.span(name)` Protocol extension
+- Pre-built Grafana dashboard JSON
+- Default alert rules: p95 round latency, decrypt failure rate, pause-vs-resume ratio
+- PII-redaction `SpanProcessor` (Tier 1.7 depends on this)
 
 **Gap.** Today the daemon emits allowlist-filtered INFO logs and a JSON `/health` endpoint. That is not enough to operate. There is no:
 
