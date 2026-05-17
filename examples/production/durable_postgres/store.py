@@ -28,6 +28,7 @@ import asyncpg
 
 from adv_multi_agent.core.durable.checkpoint import (
     Checkpoint,
+    CheckpointCorrupt,
     RunNotFound,
     _RUN_ID_RE,
 )
@@ -257,7 +258,10 @@ class PostgresCheckpointStore:
 
     @staticmethod
     def _deserialize(row: asyncpg.Record) -> Checkpoint:
-        body = json.loads(bytes(row["payload"]).decode("utf-8"))
+        try:
+            body = json.loads(bytes(row["payload"]).decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise CheckpointCorrupt(f"payload parse failed for run {row['run_id']!r}: {exc}") from exc
         wake_at = row["wake_at"]
         # v4 NOTE: Checkpoint dataclass has no workflow_class field;
         # we read row["workflow_class"] only when constructing ResumeTokens
