@@ -1,6 +1,31 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 PM (Tier 1.9 SHIPPED — A10-H2 closed via 2-slice AEAD arc)
+Last updated: 2026-05-18 EVE (Tier 1.2 SHIPPED — k8s deployment sibling, ~30 files, cycle-13 clean)
+
+## 2026-05-18 EVE — Tier 1.2 SHIPPED (k8s deployment sibling)
+
+**Single mechanical slice translating compose hardening to kustomize.**
+
+- **New tree:** `examples/production/durable_postgres_k8s/` — base + 3 overlays + 2 components + scripts + tests + README. ~30 files. Library + `pyproject.toml` UNCHANGED.
+- **Base:** namespace, daemon (Deployment+Service+SA+PDB), postgres (StatefulSet+Service+PVC), secrets template, NetworkPolicy (default-deny, daemon-egress, postgres-ingress).
+- **Overlays:** dev (1 replica + emptyDir + no NP), staging (2 replicas + PVC + NP + AlertManager logs sink), prod (3 replicas + HPA on lock-pool-saturation w/ CPU fallback + podAntiAffinity + topologySpreadConstraints + PDB minAvailable=2 + SealedSecret REQUIRED via $patch:delete on plain Secret).
+- **Components:** `otel/` (collector + jaeger + prometheus + grafana w/ inlined ConfigMaps from existing otel compose sibling), `sealed-secrets/` (bitnami SealedSecret template).
+- **Tests:** `tests/test_kustomize_renders.py` — skip-if-kustomize-binary-absent. Asserts each overlay renders clean, D-K8S-3 hardening keys present, resource limits present, automountServiceAccountToken=false, dev drops default-deny, staging+prod enforce default-deny, prod refuses plain Secret, prod has HPA+SealedSecret, otel component renders when included, probe split present in all overlays. Root `testpaths = ["tests"]` excludes this dir from library run.
+
+**Decisions:** D-K8S-1..9 appended to `docs/decisions.md`. Cover kustomize-over-Helm, overlay matrix, hardening parity, NetworkPolicy flows, secret-as-file, HPA design, PDB, probe split, OTel as component.
+
+**Cycle-13 audit** — `docs/security-audits/2026-05-18-tier-1-2-cycle-13-sweep.md`. 0 CRIT / 0 HIGH / 2 MEDIUM (both operator-action, documented) / 3 LOW (all accepted/documented). MEDIUM-2 (/ready + /live endpoints not yet served by daemon image) is sibling-level future work — tracked. **Deviation logged:** subagent dispatch unavailable; inline structured walk per plan fallback.
+
+**Library tests:** 722 unchanged (baseline measured pre-work).
+
+**Open follow-ups:**
+- **Tier 1.4** (separate dispatch) — Postgres scheduler hot-path tests against live DB (compose).
+- **Tier 1.5** (separate dispatch) — runbook for cipher-key rotation operator drill.
+- **Tier 1.2 follow-up** — add /ready + /live to the daemon image (sibling daemon.py wrapper, NOT library).
+
+**Standing autonomy (2026-05-17):** active. Pick secure → durable → scalable when user unavailable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
 
 ## 2026-05-18 PM — Tier 1.9 SHIPPED (A10-H2 closed)
 
