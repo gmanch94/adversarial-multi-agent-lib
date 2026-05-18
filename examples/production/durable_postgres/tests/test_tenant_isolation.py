@@ -300,6 +300,53 @@ async def test_rls_update_rejects_tenant_migration(
 
 
 @needs_postgres
+async def test_rls_quarantine_insert_rejects_cross_tenant(
+    pg_pool, fresh_checkpoints_table,
+):
+    """Audit 2026-05-18 Q7 follow-up: quarantine table RLS WITH CHECK rejects
+    cross-tenant INSERT (parallel to test_rls_insert_requires_matching_guc
+    which covered checkpoints only)."""
+    import asyncpg
+    with pytest.raises(asyncpg.exceptions.PostgresError):
+        async with pg_pool.acquire() as conn:
+            async with conn.transaction():
+                # GUC says A, INSERT tries to land tenant_id=B.
+                await conn.execute(
+                    "SELECT set_config('app.tenant_id', 'tenant-a', true)"
+                )
+                await conn.execute(
+                    "INSERT INTO quarantine "
+                    "(run_id, tenant_id, failure_count, reason) "
+                    "VALUES ($1, $2, $3, $4)",
+                    "q-cross", "tenant-b", 3, "manual",
+                )
+
+
+async def test_quarantine_sync_seen_retry_correctness_after_skip():
+    """Audit 2026-05-18 Q7 follow-up: when _snapshot_and_insert skips a run
+    due to missing tenant_id, it MUST NOT add that run to _seen — otherwise
+    the next poll would also skip + the run never gets persisted."""
+    from examples.production.durable_postgres.quarantine import QuarantineSync
+    from .test_quarantine import _FakeDaemon, _FakePool
+
+    # First poll: no tenant for r1.
+    daemon = _FakeDaemon(quarantine={"r1"}, tenants_for_runs={})
+    pool = _FakePool()
+    sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
+    await sync._snapshot_and_insert()
+    assert "r1" not in sync._seen, "skipped run must not enter _seen"
+    assert all("INSERT" not in q for q, _ in pool.conn.executed)
+
+    # Second poll: cache populated; r1 must now INSERT (proves retry works).
+    daemon._tenants_for_runs = {"r1": "_default"}
+    pool.conn.executed.clear()
+    await sync._snapshot_and_insert()
+    insert_queries = [q for q, _ in pool.conn.executed if "INSERT INTO quarantine" in q]
+    assert len(insert_queries) == 1, "second poll must insert r1 now tenant is known"
+    assert "r1" in sync._seen, "after successful INSERT r1 enters _seen"
+
+
+@needs_postgres
 async def test_store_write_with_default_tenant_emits_warning(
     pg_pool, fresh_checkpoints_table, recwarn, monkeypatch,
 ):

@@ -404,7 +404,42 @@ psql "$POSTGRES_DSN" -c "ALTER TABLE quarantine  DISABLE ROW LEVEL SECURITY;"
 # tenant_id column stays — re-enable RLS once sibling deploy succeeds.
 ```
 
-**Transitional state warning (D-TENANT-0):** between Tier 2.1a-merge and Tier 2.1c-merge, the deployment is in "multi-tenant schema preparation" state. Daemon BYPASSRLS for poll AND single keyring decrypts all payloads. Do NOT advertise as multi-tenant isolated until Tier 2.1c (per-tenant cipher) ships.
+**Phase 7 — Final hardening (run AFTER daemon role split from migration role):**
+```sql
+-- D-TENANT-3-FORCE: prevent table-owner RLS bypass.
+-- Run as a SEPARATE STEP after the daemon connects with a non-owner role.
+ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
+ALTER TABLE quarantine  FORCE ROW LEVEL SECURITY;
+```
+**Why separate:** running FORCE during migration would block the backfill UPDATE because the script's owner connection has no `app.tenant_id` GUC set. FORCE must come AFTER backfill AND after operator confirms the daemon role is NOT the table owner.
+
+**Verify role split before phase 7:**
+```sql
+SELECT current_user, session_user;  -- run from daemon's connection
+SELECT relowner::regrole FROM pg_class WHERE relname = 'checkpoints';
+-- These two roles MUST differ. If they match, daemon bypasses RLS — DO NOT
+-- skip phase 7.
+```
+
+---
+
+> **⚠️ ONBOARDING GATE — Tier 2.1a transitional state (D-TENANT-0)**
+>
+> Between Tier 2.1a-merge and Tier 2.1c-merge, the deployment is in **"multi-tenant schema preparation"** state. Daemon SELECT is RLS-unscoped (scheduler poll spans tenants) AND a **single Fernet/KMS keyring decrypts every tenant's payloads**. Worst-case blast radius if a tenant credential leaks: **all tenants' ciphertext is decryptable by the daemon process**.
+>
+> **HARD RULE: do NOT onboard a second tenant until Tier 2.1c (per-tenant cipher) ships.**
+>
+> Acceptable 2.1a use cases:
+> - Single-tenant deployment using `tenant_id='_default'` indefinitely (zero functional change vs pre-2.1)
+> - Internal staging where all "tenants" share the same trust boundary
+> - Schema-and-policy preparation against a NOT-YET-LIVE multi-tenant deployment
+>
+> Forbidden 2.1a use cases:
+> - Onboarding a second customer/team/business unit as a real tenant
+> - Promoting a 2.1a deployment to "multi-tenant supported" in marketing / sales / docs
+> - Treating RLS WITH CHECK as the durable confidentiality boundary (it isn't — encryption is)
+>
+> Cross-references: `docs/SECURITY_MODEL.md`, `docs/production-readiness-gaps.md` §2.1, design spec D-TENANT-0.
 
 ---
 

@@ -24,12 +24,21 @@
 ALTER TABLE checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quarantine  ENABLE ROW LEVEL SECURITY;
 
--- Optional: FORCE row security for table owner too. Without this, the role
--- that owns the table bypasses RLS even when ENABLE ROW LEVEL SECURITY is on.
--- Operators typically run migrations as the owner role, so toggle this only
--- after migrations are settled. Documented in runbook §5.6.
--- ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
--- ALTER TABLE quarantine  FORCE ROW LEVEL SECURITY;
+-- D-TENANT-3-FORCE (audit 2026-05-18 Q1): FORCE row security for table owner.
+-- Without FORCE, the role that owns the table bypasses RLS even when
+-- ENABLE ROW LEVEL SECURITY is on — operator running pg_dump or psql as
+-- the owner role reads ALL tenants' rows without GUC. This is the daemon
+-- BYPASSRLS hole at the role level.
+--
+-- INTENTIONALLY COMMENTED — must be run as a SEPARATE OPERATOR STEP
+-- AFTER backfill (phase 2) AND AFTER the daemon role is split from the
+-- migration role. Running this DURING the migration window would block
+-- the migration script's backfill UPDATE because the script holds the
+-- owner connection without a GUC set.
+--
+-- Operator runs this as a final hardening step. See runbook §5.6 phase 7.
+--   ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
+--   ALTER TABLE quarantine  FORCE ROW LEVEL SECURITY;
 
 -- =========================================================================
 -- CHECKPOINTS policies

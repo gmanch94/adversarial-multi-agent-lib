@@ -66,6 +66,16 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 
 ## 4. Known gaps
 
+> **⚠️ Tier 2.1a transitional state (2026-05-18, D-TENANT-0)**
+>
+> Tier 2.1a shipped multi-tenant **schema preparation only**: `tenant_id` column + RLS policies + sibling wiring + operator script flags. The deployment is **NOT** yet multi-tenant isolated because:
+>
+> 1. Daemon SELECT is RLS-unscoped (scheduler poll spans tenants) — required for the cross-tenant poll model
+> 2. A **single Fernet/KMS keyring decrypts every tenant's payloads** — per-tenant cipher (D-TENANT-7) is deferred to Tier 2.1c
+> 3. Per-tenant budget enforcement is deferred to Tier 2.1c (single global cap today)
+>
+> **HARD ONBOARDING GATE:** do NOT onboard a second tenant until Tier 2.1c (per-tenant cipher + budget) ships. Single-tenant deployments using `tenant_id='_default'` are unaffected. Cross-references: `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` §D-TENANT-0, `docs/runbooks/durable-compliance.md` §5.6 onboarding gate, `docs/production-readiness-gaps.md` §2.1.
+
 | Gap | Status |
 |---|---|
 | workflow_version_hash + rounds_history NOT covered by EncryptedCheckpointStore AEAD | **CLOSED 2026-05-18 (A10-H2)** — Tier 1.9 full-Checkpoint AEAD ships `integrity_tag` covering every field except itself. See §3 row "Checkpoint write/read full-field integrity" for the enforcement detail. Migration: `examples/production/durable_postgres/scripts/reseal_all_checkpoints.py`. Spec: `docs/superpowers/specs/2026-05-18-full-checkpoint-aead-design.md`. |

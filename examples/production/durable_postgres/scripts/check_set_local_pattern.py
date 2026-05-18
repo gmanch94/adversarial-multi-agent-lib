@@ -72,23 +72,55 @@ _SET_CONFIG_RE = re.compile(
 )
 
 
+def _strip_comments(line: str) -> str:
+    """Strip Python `#` comments from a code line, preserving string content.
+
+    Audit 2026-05-18 Q8 follow-up: prevents false positives when comments
+    contain DML keywords (e.g. `# DELETE pattern goes here`). Simplified
+    parser — handles `# inside string` correctly enough for the codebase
+    convention (no `#` inside f-strings + no escaped quotes inside SQL).
+    """
+    in_str: str | None = None
+    out_chars: list[str] = []
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if in_str is not None:
+            out_chars.append(ch)
+            if ch == in_str and (i == 0 or line[i - 1] != "\\"):
+                in_str = None
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            in_str = ch
+            out_chars.append(ch)
+            i += 1
+            continue
+        if ch == "#":
+            break  # rest of line is comment
+        out_chars.append(ch)
+        i += 1
+    return "".join(out_chars)
+
+
 def _check_file(path: Path) -> list[str]:
     """Return list of error messages; empty list means file passes."""
     errors: list[str] = []
     source = path.read_text(encoding="utf-8")
-    lines = source.splitlines()
+    raw_lines = source.splitlines()
+    # Audit Q8 follow-up: strip comments before regex matching so docstring/
+    # comment mentions of DML keywords don't trigger false positives.
+    lines = [_strip_comments(ln) for ln in raw_lines]
 
-    # Walk acquire() blocks. For each, find the next non-blank line(s) and
-    # verify it opens conn.transaction(); then verify the first non-comment
-    # line inside the txn body matches _SET_CONFIG_RE (when DML follows
-    # later in the same block).
+    # Walk acquire() blocks. For each, verify the conn.transaction() wrapper
+    # AND that set_config precedes any DML by line number.
     for i, line in enumerate(lines):
         m = _ACQUIRE_RE.search(line)
         if not m:
             continue
 
         # Check if this acquire block belongs to a SELECT-only method.
-        method_name = _find_enclosing_method(lines, i)
+        method_name = _find_enclosing_method(raw_lines, i)
         if method_name in _SELECT_ONLY_METHODS:
             continue
 
@@ -105,14 +137,24 @@ def _check_file(path: Path) -> list[str]:
                 break
             block_lines.append((j, ln))
 
-        # Does the block contain DML?
-        block_text = "\n".join(ln for _, ln in block_lines)
-        if not _DML_RE.search(block_text):
+        # Find first DML line + first set_config line by index.
+        first_dml_idx: int | None = None
+        first_set_config_idx: int | None = None
+        first_txn_idx: int | None = None
+        for j, ln in block_lines:
+            if first_dml_idx is None and _DML_RE.match(ln):
+                first_dml_idx = j
+            if first_set_config_idx is None and _SET_CONFIG_RE.search(ln):
+                first_set_config_idx = j
+            if first_txn_idx is None and _TRANSACTION_RE.search(ln):
+                first_txn_idx = j
+
+        if first_dml_idx is None:
             continue  # no DML in this block; SELECT-only path
 
-        # Block contains DML — must have conn.transaction() AND set_config.
-        has_txn = any(_TRANSACTION_RE.search(ln) for _, ln in block_lines)
-        if not has_txn:
+        # Block contains DML — must have conn.transaction() AND set_config
+        # BEFORE the DML line.
+        if first_txn_idx is None:
             errors.append(
                 f"{path.name}:{i + 1}: pool.acquire() block contains DML but "
                 f"no `async with conn.transaction():` wrapper. D-TENANT-3 "
@@ -120,12 +162,21 @@ def _check_file(path: Path) -> list[str]:
             )
             continue
 
-        has_set_config = any(_SET_CONFIG_RE.search(ln) for _, ln in block_lines)
-        if not has_set_config:
+        if first_set_config_idx is None:
             errors.append(
                 f"{path.name}:{i + 1}: pool.acquire() block contains DML but "
                 f"no `set_config('app.tenant_id', ...)` call. D-TENANT-3 "
                 f"requires SET LOCAL via set_config before DML."
+            )
+            continue
+
+        # Audit Q8 follow-up: set_config must precede DML by line number.
+        if first_set_config_idx >= first_dml_idx:
+            errors.append(
+                f"{path.name}:{first_dml_idx + 1}: DML at line "
+                f"{first_dml_idx + 1} appears BEFORE `set_config` at line "
+                f"{first_set_config_idx + 1}. D-TENANT-3 requires SET LOCAL "
+                f"before any DML in the same transaction."
             )
 
     return errors
