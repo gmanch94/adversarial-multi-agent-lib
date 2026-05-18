@@ -371,7 +371,7 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 3-5 days. Sibling-only (no library impact).
 
-### 3.6 SchedulerDaemon kwarg mismatch in sibling daemons — pre-existing latent bug
+### 3.6 SchedulerDaemon kwarg mismatch in sibling daemons — **SHIPPED 2026-05-18 LATE NIGHT** (advisor pre-flip catch)
 
 **Gap.** All 3 production sibling daemons (`durable_postgres/daemon.py`, `cipher_gcp_kms/daemon.py`, `cipher_aws_kms/daemon.py`) and `durable_postgres_otel/daemon.py` construct `SchedulerDaemon(checkpoint_store=store, ...)` but the library `SchedulerDaemon.__init__` takes `scheduler: PollingScheduler` as the first kwarg. The siblings would TypeError at first daemon construction if run end-to-end. Pre-dates the Tier 2.1 sweep (introduced by commit `b8dc7cae` 2026-05-17); surfaced by Tier 2.1c-sibling-2 pre-commit audit.
 

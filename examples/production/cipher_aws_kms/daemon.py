@@ -400,7 +400,7 @@ async def main() -> None:
         EncryptedCheckpointStore,
         MergeFreshInputsHook,
     )
-    from adv_multi_agent.core.durable.scheduler import SchedulerDaemon
+    from adv_multi_agent.core.durable.scheduler import PollingScheduler, SchedulerDaemon
     from adv_multi_agent.healthcare.workflows.clinical_trial_eligibility import (
         TrialEligibilityRequest,
     )
@@ -598,7 +598,7 @@ async def main() -> None:
         )
 
     daemon = SchedulerDaemon(
-        checkpoint_store=store,
+        scheduler=PollingScheduler(checkpoint_store=store),
         workflow_factory=workflow_factory,
         poll_interval_seconds=cfg.poll_interval,
         max_retries=3,
