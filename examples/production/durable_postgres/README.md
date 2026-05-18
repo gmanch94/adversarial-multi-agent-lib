@@ -219,6 +219,22 @@ This is spec §7.8 and a real production gotcha. Document loudly in your own dep
 
 ---
 
+## Backup / restore / PITR (Tier 1.5)
+
+**Status:** OPERATIONAL. Reference scripts ship in `scripts/`; runbook in `docs/runbooks/durable-backup-restore.md`.
+
+Pipeline (D-BACKUP-1 / D-BACKUP-6):
+
+- `scripts/backup.sh` — `pg_dump --format=custom` → `age` encrypt with public-key recipients → upload via `STORAGE_BACKEND` (`s3` / `gcs` / `azure-blob` / `file`) → writes `manifest.json` sibling (`backup_id`, `checkpoint_count`, `wal_segment_at_backup`, `age_recipients`, `tool_version`).
+- `scripts/restore.sh` — fetch + decrypt + `pg_restore --clean --if-exists` → verify (Postgres responds, checkpoint count matches manifest, `integrity_tag` round-trips on 10 random checkpoints). DRY-RUN by default; `--confirm` or `RESTORE_NONINTERACTIVE=1` to proceed.
+- `scripts/verify_integrity_sample.py` — Python helper (~100 LOC) imported by `restore.sh`; uses `adv_multi_agent.core.durable.encryption.EncryptedCheckpointStore` to verify each sample. Exits 0 / 1 on all-pass / any-failure.
+- `scripts/setup_wal_archiving.sh` — PRINT-ONLY (operator owns `postgresql.conf`). Companion `postgresql.conf.snippet` is the mergeable block.
+- `scripts/recipients.txt` — placeholder; operator MUST populate with PUBLIC age keys before any backup runs. `backup.sh` refuses to proceed if it finds an `AGE-SECRET-KEY-` line.
+
+RPO ≤ 1 WAL segment under PITR; RTO ≤ 2 h. Monthly restore-drill cadence (D-BACKUP-5). Full procedure: [`docs/runbooks/durable-backup-restore.md`](../../../docs/runbooks/durable-backup-restore.md).
+
+---
+
 ## SQL-injection posture
 
 See spec §4.1 for the full table. Summary:
@@ -271,4 +287,10 @@ These are intentional gaps. Each is mapped to a row in the relevant runbook.
 | `scripts/audit_deps.sh` | pip-audit + bandit B608 + grep gate |
 | `scripts/generate_sbom.sh` | CycloneDX SBOM |
 | `scripts/reencrypt_all.py` | Rotation completion helper |
+| `scripts/backup.sh` | Encrypted pg_dump + manifest + cloud upload (D-BACKUP-1..6) |
+| `scripts/restore.sh` | Fetch + decrypt + pg_restore + integrity sample (dry-run default) |
+| `scripts/verify_integrity_sample.py` | Restore-time integrity verifier (Python) |
+| `scripts/setup_wal_archiving.sh` | Prints postgresql.conf snippet for PITR (D-BACKUP-3) |
+| `scripts/recipients.txt` | age PUBLIC keys (placeholder; operator populates) |
+| `postgresql.conf.snippet` | Mergeable WAL archiving config block |
 | `tests/` | Unit tests (run via `pytest`; require `POSTGRES_DSN`) |

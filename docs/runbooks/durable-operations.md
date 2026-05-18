@@ -253,7 +253,7 @@ spec:
 | Impl | Backup approach |
 |---|---|
 | `FileCheckpointStore` | Snapshot the `base_dir`; tar + offsite. Cadence ≥ daily. Test restore monthly |
-| `PostgresCheckpointStore` (REF-PENDING) | Standard Postgres backup — pg_dump or PITR. Treat the table as source of truth |
+| `PostgresCheckpointStore` (OPERATIONAL — Tier 1.5) | See [`durable-backup-restore.md`](durable-backup-restore.md). `scripts/backup.sh` (encrypted pg_dump + manifest + cloud upload), `scripts/restore.sh` (fetch + decrypt + pg_restore + integrity sample), `postgresql.conf.snippet` (WAL archiving for PITR). RPO ≤ 1 WAL segment under PITR; RTO ≤ 2h. |
 | `S3CheckpointStore` (REF-PENDING) | S3 versioning + cross-region replication |
 
 **Restore verification:**
