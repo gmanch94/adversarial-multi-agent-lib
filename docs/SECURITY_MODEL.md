@@ -81,6 +81,34 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 | Distributed multi-process scheduler (durable POC) | **Open — Protocol-ready** — `RunLock` + `SchedulerBackend` Protocols are pluggable; POC ships single-process `FileRunLock` + `PollingScheduler`. Postgres advisory-lock + pg_boss is the production path |
 | Schema migration tooling for durable runs | **Open** — `schema_version` reserved on `ResumeToken` + `Checkpoint`; first version bump triggers tool build. Until then, version mismatch raises `SchemaVersionMismatch` rather than silently restarting |
 
+## 4a. Observability surface (Tier 1.1 OTel deployment)
+
+**Trust boundary:** the OTLP export from `daemon` to the in-cluster OTel Collector is a new trust boundary. Anything emitted as a span attribute or metric tag crosses the daemon process boundary, hits the collector, and ends up in the operator-chosen backend (Jaeger, Prometheus, plus any downstream — Tempo, Honeycomb, Datadog) with whatever retention the backend enforces.
+
+**PII redaction posture (D-OTEL-2):**
+- **Span attributes:** `PIIRedactionSpanProcessor` (sibling `pii_redaction_span_processor.py`) wraps the BatchSpanProcessor and strips non-allowlisted attributes before export. Allowlist `_ALLOWED_ATTRS` is an explicit frozenset of library-emitted keys (workflow class, round number, phase, cipher_backend, lock_backend, status, error_class, model_fingerprint, etc.). Exception events keep `exception.type` only — `exception.message` + `exception.stacktrace` are dropped (PHI carrier vectors).
+- **Metric tags:** no runtime processor seam exists for Prometheus metric labels — once a tag value is set in the OTel SDK, it propagates straight through to Prometheus. Primary defense is the library cardinality fixture test (`tests/unit/durable/test_metrics_cardinality.py`) that asserts every emitted tag key is in the allowlist + tag values are in bounded-cardinality sets. Secondary defense is the integration test `examples/production/durable_postgres_otel/tests/test_phi_grep_gate.py` that runs a synthetic PHI-leaking workflow through the redactor and greps emitted span JSON for PHI markers.
+
+**Tag-value cardinality discipline (D-OTEL-4):** runtime fixture test, not grep gate. Per CLAUDE.md convention-level-error-compounding rule — regex against `tags={...}` literals doesn't catch tag values computed two function calls upstream from a per-request variable. Same shape that broke twice (M-PC-1, H-IND-1); not shipping a third copy of the broken pattern.
+
+**Residual risks (documented; not closable in library):**
+- Once PHI lands in a Prometheus retention window OR a Jaeger trace store, it is unrecoverable through any library-side intervention. Defense is the test layer (fixture + integration grep gate), not redaction.
+- Caller can pass PHI as a `workflow_class` name OR an `error_class` (e.g. raising a custom exception type whose class name embeds a patient identifier). Allowlist catches the key but not the value shape. Recommend reviewers reject any custom exception type whose name could contain caller-controlled string interpolation.
+- Operator-side dashboard editing in Grafana could introduce a custom PromQL query that aggregates over a sensitive label combination (e.g. `by (workflow, model_fingerprint, round)` could reveal per-run patterns). No library control prevents this; Grafana RBAC + dashboard provisioning from version-controlled JSON is the mitigation.
+
+**Operator-owned controls (required before non-local deploy — `docs/runbooks/otel-operations.md` section 1):**
+1. Replace Grafana admin default credential (`GRAFANA_ADMIN_PASSWORD`).
+2. Configure mTLS for the OTel Collector OTLP receiver + downstream exporter (M-OTEL-SB-3 carried as documented gap).
+3. Set retention policy on Jaeger / Tempo (PHI residency window).
+4. Document chosen backend in this file (add row to operator-owned table when populated).
+5. Wire Prometheus AlertManager to PagerDuty / Slack; runbook URLs in `alerts.yml` resolve to `otel-operations.md` section 2.
+
+Additionally: container digest refresh procedure (M-OTEL-SB-1) lives in `otel-operations.md` section 4 — replace placeholder `@sha256:...` strings for otel-collector / jaeger / prometheus / grafana with real digests before first deploy.
+
+**Sensitive-op row (additive to §3):** *Span / metric emission from `DurableWorkflow.start()` + `resume()` per-round loop.* Enforcement: `PIIRedactionSpanProcessor` (span attrs) + `test_metrics_cardinality.py` runtime fixture + `test_phi_grep_gate.py` integration test (sibling). Failure mode if redaction breaks: span attrs export un-redacted to operator-chosen backend; defense-in-depth via the cardinality test + grep gate catches a regression at PR time, but does not catch operator-side dashboard mis-aggregation.
+
+**Cross-references:** spec `docs/superpowers/specs/2026-05-18-otel-deployment-design.md`; decision rows D-OTEL-1..5 in `docs/decisions.md`; sibling threat model in `examples/production/durable_postgres_otel/README.md`; closing audits `docs/security-audits/2026-05-18-otel-slice-b-sweep.md` + `docs/security-audits/2026-05-18-otel-slice-c-sweep.md`.
+
 ## 5. Last security review
 
 **2026-05-16 PM (final closure)** — Durable-POC LOW drain. All 5 L-DUR-* findings closed in commit `a7f1d84`: strict run_id regex (L-DUR-1), `deserialize_token` shape validation (L-DUR-2), POSIX directory fsync (L-DUR-3), `SchedulerDaemon` quarantine after `max_retries` (L-DUR-4), `BudgetExceeded` mid-round contract documented (L-DUR-5). **Durable surface now 0 CRIT / 0 HIGH / 0 MEDIUM / 0 LOW.** 657 tests pass. All 7 audit cycles closed — cumulative posture zero open findings across 36 workflows + durable subpackage.
