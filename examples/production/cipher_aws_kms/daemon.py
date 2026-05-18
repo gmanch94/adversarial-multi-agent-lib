@@ -27,7 +27,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
@@ -68,96 +67,13 @@ def redacted_log_record(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k in LOG_FIELD_ALLOWLIST}
 
 
-def _parse_budget_caps_map(raw: str, env_var_name: str) -> dict[str, Any]:
-    """D-TENANT-2.1c-2-sibling: parse per-tenant BudgetCaps env JSON."""
-    from adv_multi_agent.core.durable import BudgetCaps
-
-    parsed = _parse_json_map(raw, env_var_name)
-    caps: dict[str, BudgetCaps] = {}
-    allowed = {"max_tokens_in", "max_tokens_out", "max_usd"}
-    for tid, fields in parsed.items():
-        if not isinstance(fields, dict):
-            raise ValueError(
-                f"{env_var_name} tenant {tid!r} value must be an object"
-            )
-        unknown = set(fields) - allowed
-        if unknown:
-            raise ValueError(
-                f"{env_var_name} tenant {tid!r} has unknown fields: "
-                f"{sorted(unknown)!r}"
-            )
-        if not any(fields.get(k) is not None for k in allowed):
-            raise ValueError(
-                f"{env_var_name} tenant {tid!r} has no caps set"
-            )
-        # MEDIUM audit fold-in: validate types + non-negativity.
-        for axis in ("max_tokens_in", "max_tokens_out"):
-            v = fields.get(axis)
-            if v is not None and (
-                isinstance(v, bool) or not isinstance(v, int) or v < 0
-            ):
-                raise ValueError(
-                    f"{env_var_name} tenant {tid!r} {axis}={v!r}: "
-                    f"must be a non-negative int"
-                )
-        usd = fields.get("max_usd")
-        if usd is not None and (
-            isinstance(usd, bool)
-            or not isinstance(usd, (int, float))
-            or usd < 0
-        ):
-            raise ValueError(
-                f"{env_var_name} tenant {tid!r} max_usd={usd!r}: "
-                f"must be a non-negative number"
-            )
-        caps[tid] = BudgetCaps(
-            max_tokens_in=fields.get("max_tokens_in"),
-            max_tokens_out=fields.get("max_tokens_out"),
-            max_usd=fields.get("max_usd"),
-        )
-    return caps
-
-
-def _make_resolver(
-    per_tenant: dict[str, Any], env_var_name: str
-) -> Callable[[str], Any]:
-    """D-TENANT-7: fails-closed resolver — UnknownTenantError on miss."""
-    from adv_multi_agent.core.durable import UnknownTenantError
-
-    def _resolve(tid: str) -> Any:
-        try:
-            return per_tenant[tid]
-        except KeyError as exc:
-            raise UnknownTenantError(
-                f"no cipher configured for tenant_id={tid!r}; "
-                f"{env_var_name} has {len(per_tenant)} configured tenants"
-            ) from exc
-
-    return _resolve
-
-
-_TENANT_ID_BOOT_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
-
-
-def _parse_json_map(raw: str, env_var_name: str) -> dict[str, Any]:
-    """Parse non-empty JSON object env var; fail-loud on malformed input.
-
-    M1 audit fold-in: charset-validate each tenant_id key at boot against
-    library's Checkpoint.tenant_id regex.
-    """
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"{env_var_name} not valid JSON: {e}") from e
-    if not isinstance(parsed, dict) or not parsed:
-        raise ValueError(f"{env_var_name} must be a non-empty JSON object")
-    for tid in parsed:
-        if not isinstance(tid, str) or not _TENANT_ID_BOOT_RE.fullmatch(tid):
-            raise ValueError(
-                f"{env_var_name}: tenant_id {tid!r} violates charset "
-                f"{_TENANT_ID_BOOT_RE.pattern}"
-            )
-    return parsed
+# Tier 2.1d / SMELL-S1 hoist — see examples/production/_shared/tenant_env.py
+from examples.production._shared.tenant_env import (  # noqa: E402
+    _TENANT_ID_BOOT_RE as _TENANT_ID_BOOT_RE,
+    make_resolver as _make_resolver,
+    parse_budget_caps_map as _parse_budget_caps_map,
+    parse_json_map as _parse_json_map,
+)
 
 
 @dataclass(frozen=True)
