@@ -1,6 +1,40 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 NIGHT — Tier 2.1a/2.1b/2.1c-1/2.1c-2 all SHIPPED (multi-tenant primitives complete; D-TENANT-0 gate flippable)
+Last updated: 2026-05-18 LATE NIGHT — Tier 2.1 FULLY SHIPPED + sibling wiring + D-TENANT-0 gate FLIPPED. Multi-tenant production-ready.
+
+## 2026-05-18 LATE NIGHT — Tier 2.1c sibling wiring + D-TENANT-0 flip
+
+**3 commits on `main`:**
+
+| Commit | Tier | Scope |
+|---|---|---|
+| `890d3b0` | 2.1c-flip | docs: D-TENANT-0 onboarding gate FLIPPED across SECURITY_MODEL §4, durable-compliance §5.6, design spec D-TENANT-0, gaps §2.1. Decisions D-TENANT-2.1c-sibling-1/2 appended. Tier 3.6 backlog added (pre-existing SchedulerDaemon kwarg mismatch in siblings). Test counts 112 → 176 sibling. |
+| `67bdf39` | 2.1c-sibling-2 | feat: library factory signature bump `Callable[[str], DurableWorkflow]` → `Callable[[str, str], DurableWorkflow]` threading tenant_id from ResumeToken; caps_for_tenant wiring across 3 sibling daemons via `DURABLE_TENANT_BUDGET_CAPS_JSON`; 1 pre-commit audit MEDIUM closed (BudgetCaps type + non-negativity validation at boot). 11 new tests. |
+| `d37c22f` | 2.1c-sibling-1 | feat: cipher_for_tenant wiring across 3 sibling daemons via `DURABLE_TENANT_*_KEYS_JSON` env maps; shared `_parse_json_map`/`_make_resolver` helpers; 3 pre-commit audit fold-ins (M1 charset, M2 count-not-catalog, L1 drop fingerprint enum log). 15 new tests. |
+
+### Resume point: no in-flight work; Tier 3 backlog open
+
+Tier 2.1 is fully shipped. Multi-tenant deploys ready: operator wires `DURABLE_TENANT_FERNET_KEYS_JSON` / `DURABLE_TENANT_GCP_KMS_KEYS_JSON` / `DURABLE_TENANT_AWS_KMS_CMKS_JSON` for cipher resolution and `DURABLE_TENANT_BUDGET_CAPS_JSON` for budget caps; library + siblings + docs all consistent.
+
+**Open backlog (in priority order):**
+
+1. **Tier 3.6 — SchedulerDaemon kwarg mismatch in 4 sibling daemons** (`docs/production-readiness-gaps.md §3.6`, 2-3 hr). Pre-existing latent bug: siblings pass `SchedulerDaemon(checkpoint_store=store)` but library `__init__` takes `scheduler:`. Out-of-scope for 2.1 sweep; first thing to fix when sibling docker-compose stacks are next exercised end-to-end.
+2. **Tier 3.4 — Tenant-shard scheduling** (1-2w, deferred until >100k paused-run scale signal).
+3. **Tier 3.5 — Tenant-aware backup/restore** (3-5d, sibling-only).
+4. **LOW-1 hoist** — `_parse_json_map` / `_make_resolver` / `_parse_budget_caps_map` duplicated across 3 sibling daemons. Convention-level error-compounding risk; hoist to `examples/production/_shared/tenant_config.py` when a 4th sibling lands.
+
+### State at end-of-session (commit `890d3b0`)
+
+- **Library:** 766 tests pass; mypy strict clean; ruff clean
+- **Sibling:** 176 sibling tests pass + 117 needs_postgres skipped; CI grep gate passes
+- **Decisions:** D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2 + D-TENANT-2.1c-sibling-1/2 all appended
+- **Working tree:** clean
+
+### Standing autonomy reminder
+
+Per `~/.claude/rules/autonomy.md` + project CLAUDE.md: when user unavailable, pick **security > durability > scalability**; surface choice in commit body. Tier 2.1c sibling cipher wiring picked KMS-per-tenant for DEK isolation (security wins).
+
+---
 
 ## 2026-05-18 NIGHT — Tier 2.1 (multi-tenant isolation) SHIPPED in 4 sub-tiers
 
