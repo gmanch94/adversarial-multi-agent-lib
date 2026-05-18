@@ -57,13 +57,13 @@ Wall clock: 12 tests in **21s** against fresh schema.
 
 `examples/production/durable_postgres/scripts/rotation_drill.py` — 9-phase end-to-end exercise of the §5.2 rotation procedure. Compliance runbook gets §5.4 documenting cadence + invocation + post-drill audit-evidence pattern.
 
-Drill PASS on shipping commit: 20 seed rows under cipher A + 10 mixed rows under cipher B + reencrypt sweep + B-only verify + negative path (A-only must reject B-encrypted rows). 1.3s wall clock. Captured 95 warnings in `report["captured_warnings"]` (see open finding below). Reference artifact: `reports/rotation-drill-2026-05-18.json`.
+Drill PASS on shipping commit: 20 seed rows under cipher A + 10 mixed rows under cipher B + reencrypt sweep + B-only verify + negative path (A-only must reject B-encrypted rows). 1.3s wall clock. Captured 95 warnings in `report["captured_warnings"]` (finding closed by Tier 1.9 closure commit `1df0c0f` — see top entry). Reference artifact: `reports/rotation-drill-2026-05-18-pre-fix.json` (preserved as evidence; previously committed at `e786b5b` as `rotation-drill-2026-05-18.json`).
 
 Phase 9 except is narrowed to `(InvalidToken, CheckpointCorrupt)` only — pattern parity with cycle-14 A14-L-02 fix. Anything else propagates and fails the drill loudly.
 
 **Standing autonomy applied:** advisor flagged 3 pre-commit issues — narrow except, stage report JSON as audit evidence, investigate the LegacyPartialAEADWarning. Resolved all three before commit. The third investigation surfaced a real sibling bug (see Open finding) rather than suppressing the warning.
 
-### Open finding — sibling `_serialize` / `_deserialize` does not round-trip `integrity_tag`
+### ~~Open finding~~ **[CLOSED 2026-05-18 LATE in commit `1df0c0f`]** — sibling `_serialize` / `_deserialize` does not round-trip `integrity_tag`
 
 **Surface:** Tier 1.9 added the `integrity_tag` column to `examples/production/durable_postgres/schema.sql` + the `reseal_all_checkpoints.py` script. The `PostgresCheckpointStore._serialize` and `_deserialize` helpers (in `store.py`) build/parse the JSON body of the `payload` column but DO NOT include `integrity_tag`. So:
 
@@ -77,7 +77,7 @@ Phase 9 except is narrowed to `(InvalidToken, CheckpointCorrupt)` only — patte
 
 **Mitigation (operator-side, until library fix lands):** in production rotations, run `reseal_all_checkpoints.py` BEFORE `reencrypt_all.py` so the sweep operates on integrity-tag-bearing rows. Documented in compliance runbook §5.4.
 
-**Fix path (sibling slice, next session):**
+**Fix path (sibling slice, next session) — SHIPPED 2026-05-18 LATE in commit `1df0c0f`; also folded in `workflow_version_hash` round-trip per CLAUDE.md fold-in policy. See top entry for the closure record + audit trail.**
 - `PostgresCheckpointStore._serialize`: add `"integrity_tag": cp.integrity_tag` to body dict.
 - `PostgresCheckpointStore._deserialize`: read `body.get("integrity_tag")` into the Checkpoint constructor.
 - Update the schema column-mirror INSERT to write `cp.integrity_tag` alongside payload (denormalized for the reseal partial index).

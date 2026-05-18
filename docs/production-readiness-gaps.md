@@ -12,7 +12,9 @@ Ordered by impact-per-week-of-work. Each row names the artifact, the gap, the fa
 
 ## Tier 1 — must-haves before someone runs this on a real workload
 
-### 1.1 Observability — metrics + traces + structured logs (PARTIAL — scaffold shipped 2026-05-17)
+### 1.1 Observability — metrics + traces + structured logs — **SHIPPED 2026-05-18** (D-OTEL-1..4)
+
+**Final status:** 3-slice arc closed 2026-05-18. Library scaffold (Slice A, commit `52388a4`) + OTel sibling `examples/production/durable_postgres_otel/` with `OtelMetricsBackend` + `PIIRedactionSpanProcessor` + docker-compose stack (Slice B, commits `4f97968`..`9b8a669`) + Grafana dashboard + Prometheus alerts + operator runbook `docs/runbooks/otel-operations.md` (Slice C). 5 alerts now wired (DurableHighRoundLatency, DurableCipherDecryptFailureSpike, DurablePauseResumeImbalance, DurableLockPoolNearSaturation, DurableQuarantineGrowing + DurableQuarantineSpike + DurableQuarantineNonZero per Tier 2.4).
 
 **Progress 2026-05-17 (EVE):** library-side scaffold + wire points landed in 2 commits (`ccdad61` scaffold, `464490c` extension). `core/durable/metrics.py` defines `MetricsBackend` Protocol + `NoopMetricsBackend` default. `DurableWorkflow.__init__` accepts `metrics=` kwarg.
 
@@ -57,7 +59,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 1–2 weeks.
 
-### 1.2 Kubernetes deployment target
+### 1.2 Kubernetes deployment target — **SHIPPED 2026-05-18 EVE** (D-K8S-1..9)
+
+**Final status:** new sibling `examples/production/durable_postgres_k8s/` — base + 3 overlays (dev/staging/prod) + 2 components (otel/sealed-secrets) + scripts + tests + README. ~30 files. Library and `pyproject.toml` untouched. Cycle-13 audit clean (0 CRIT / 0 HIGH / 2 MED / 3 LOW all documented).
 
 **Gap.** Compose is fine for local dev and demos. Real workloads run on k8s (or ECS / GKE / EKS / a managed runner). The same hardening posture needs to translate:
 
@@ -74,7 +78,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 1 week.
 
-### 1.3 KMS-backed Cipher implementations
+### 1.3 KMS-backed Cipher implementations — **SHIPPED 2026-05-17/18** (D-CIPHER-GCP-1..N + D-CIPHER-AWS-1..10)
+
+**Final status:** two independent siblings under `examples/production/cipher_gcp_kms/` + `examples/production/cipher_aws_kms/`. Envelope encryption + per-payload DEK + per-version prefix (`GKMSv1:` / `AKMSv1:` / Fernet `gAAAAA...` — refuses cross-backend confusion). Daemon dispatch via `CIPHER_BACKEND=fernet|gcp_kms|aws_kms`. IMDSv1 refuse-start gate on AWS sibling. Fail-closed on KMS unavailability. ~$2.80/mo at 1k workflows/day (see `docs/capacity-model.md` §5).
 
 **Gap.** `FernetCipher` requires raw key bytes in env vars. Real prod uses KMS (AWS KMS, GCP Cloud KMS, HashiCorp Vault Transit). Three properties we lose without KMS:
 
@@ -91,7 +97,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 3–5 days each; 2 weeks for all three with shared test harness.
 
-### 1.4 Schema migration tool
+### 1.4 Schema migration tool — **SHIPPED** (`scripts/migrate_schema.py` + `_migrate_helpers.py` + `test_migrate_schema_smoke.py` + `scripts/0002_add_integrity_tag.sql` + `scripts/0003_add_quarantine.sql`)
+
+**EVE follow-up (2026-05-18 OVERNIGHT):** `tests/test_scheduler_hot_path.py` — 12 integration tests against live Postgres exercising `PollingScheduler` + `SchedulerDaemon` SQL semantics, quarantine accumulation, token-resolver hook, stop semantics. Commit `767e73b`.
 
 **Gap.** Spec §9 has `REFERENCE-IMPL-PENDING` next to the migration story. Today: the `schema.sql` is run on first DB init. If we ever change a column, every existing deployment needs a migration plan we have not written.
 
@@ -104,7 +112,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 4–5 days including doc.
 
-### 1.5 Backup + restore + point-in-time-recovery story
+### 1.5 Backup + restore + point-in-time-recovery story — **SHIPPED** (`scripts/backup.sh` + `scripts/restore.sh` + `scripts/setup_wal_archiving.sh` + `docs/runbooks/durable-backup-restore.md`)
+
+**EVE follow-up (2026-05-18 OVERNIGHT):** quarterly cipher-key rotation drill — `scripts/rotation_drill.py` + `docs/runbooks/durable-compliance.md` §5.4. 9-phase end-to-end exercise of the rotation procedure. Commit `e786b5b`. Inaugural drill surfaced the Tier 1.9 round-trip gap (now closed; see 1.9 below).
 
 **Gap.** Today: `postgres_data` is a named docker volume. If the host disk dies, every paused run is gone. No PITR. No off-host backup. No tested restore.
 
@@ -119,7 +129,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 1 week.
 
-### 1.6 Workflow-version pinning in checkpoints (advisor D1)
+### 1.6 Workflow-version pinning in checkpoints (advisor D1) — **SHIPPED**
+
+**Final status:** `Checkpoint.workflow_version_hash` (16-char lowercase hex) pinned at pause time. `DURABLE_REFUSE_UNVERSIONED=1` env gates resume of pre-1.6 unversioned rows. `tests/unit/durable/test_workflow_version_pinning.py` covers the attestation chain. **Note (2026-05-18 LATE):** Tier 1.9 closure ensured the hash actually round-trips through `PostgresCheckpointStore` — see 1.9 below.
 
 **Gap.** Today `Checkpoint` pins `pinned_executor_model` and `pinned_reviewer_model` strings. It does NOT pin workflow class version or executor prompt template hash. Concrete failure: v1.0 ships a clinical-trial workflow with prompt P1; run pauses 11 days; operator deploys v1.1 with refined prompt P2; daemon resumes the v1.0 run with v1.1's P2 prompt. The audit log says nothing about which prompt produced the recommendation. Downstream this breaks 21 CFR Part 11 attestation (Tier 3.2).
 
@@ -133,7 +145,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 3–4 days. Library change; touches `Checkpoint`, `DurableWorkflow`, schema migration.
 
-### 1.7 PII redaction in observability path (advisor D2)
+### 1.7 PII redaction in observability path (advisor D2) — **SHIPPED 2026-05-18** (in Tier 1.1 Slice B)
+
+**Final status:** `examples/production/durable_postgres_otel/pii_redaction_span_processor.py` strips message + stacktrace + non-allowlisted attrs at export time. Span attribute allowlist `_ALLOWED_ATTRS` enforces cardinality budget. Library cardinality fixture test pins the allowlist (D-OTEL-4 in `tests/unit/durable/test_metrics_cardinality.py`).
 
 **Gap.** Tier 1.1 OTel deployment will export trace spans containing exception attributes, asyncpg query parameter values, and `record_exception()` events. The in-process `LOG_FIELD_ALLOWLIST` filters log lines but does NOT extend to spans. The OTel exporter becomes the highest-bandwidth PII leak channel the moment it goes on.
 
@@ -166,7 +180,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 2 days. Mostly runbook + provisioning-script work.
 
-### 1.9 Full-Checkpoint AEAD (post-1.6 audit finding A10-H2)
+### 1.9 Full-Checkpoint AEAD (post-1.6 audit finding A10-H2) — **SHIPPED + CLOSED 2026-05-18** (D-AEAD-1..N + D-RESEAL-1..2)
+
+**Final status:** library-side seal/unseal + integrity_tag binding shipped earlier in May. Schema column + `reseal_all_checkpoints.py` script for legacy migration. The 2026-05-18 LATE Tier 1.9-closure commit (`1df0c0f`) wired `PostgresCheckpointStore._serialize` / `_deserialize` to round-trip both `integrity_tag` AND `workflow_version_hash` — surfaced by the inaugural rotation drill (95 captured warnings → 0 post-fix). See `docs/runbooks/durable-compliance.md` §5.4 for the CLOSED finding audit trail.
 
 **Gap.** `EncryptedCheckpointStore` encrypts and authenticates `last_request_json` only. The `workflow_version_hash` field (introduced in Tier 1.6) and the full `rounds_history` list are stored in plaintext on the underlying store. An insider with write access to the checkpoint store can forge a `workflow_version_hash` that matches the current library, tamper with `rounds_history` to remove evidence of a force-accept or back-fill event, and the resume guard will pass silently.
 
@@ -207,7 +223,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 2 weeks. Touches library + reference deployment + tests.
 
-### 2.2 Library API stability — public/private split + semver
+### 2.2 Library API stability — public/private split + semver — **SHIPPED** (D-API-1..3)
+
+**Final status:** `core/durable/__init__.py` `__all__` pinned with 14 net additions. `EncryptedCheckpointStore.seal()` + `unseal()` + `inner` property are public; `reencrypt_all.py` migrated off `_inner` / `_encrypt_request_json` reach-throughs. `tests/unit/durable/test_public_api_stability.py` golden frozenset prevents accidental removal. `docs/semver-policy.md` documents the bump contract.
 
 **Gap.** `reencrypt_all.py` reaches through `EncryptedCheckpointStore._inner` and `._encrypt_request_json` (A8-H-06 noted this; we added `hasattr` guards but the underlying coupling is still there). Library has no documented public API surface vs internal. A library bump can silently break operator scripts.
 
@@ -221,7 +239,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 3–5 days.
 
-### 2.3 Budget enforcement — hard caps, not just tracking
+### 2.3 Budget enforcement — hard caps, not just tracking — **SHIPPED** (D-BUDGET-1..5)
+
+**Final status:** `BudgetTracker.record()` enforces caps + raises `BudgetExceeded`. `DurableWorkflow.start`/`resume` catch it; status flips to `"budget_exceeded"`; `resume()` refuses non-paused. `DurableWorkflow.acknowledge_budget_exceeded(token)` is the operator recovery primitive — flips status back to paused + reseals via `store.write()` for integrity_tag recomputation. `docs/runbooks/durable-operations.md` §5.5 documents the 4-step recovery flow. Per-tenant caps deferred until Tier 2.1.
 
 **Gap.** `BudgetTracker` records `tokens_in` / `tokens_out` / `usd_spent`. It does not enforce. A runaway workflow can blow past `MAX_USD=50.0` and the daemon will keep running it.
 
@@ -234,7 +254,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 2–3 days.
 
-### 2.4 Quarantine / dead-letter handling
+### 2.4 Quarantine / dead-letter handling — **SHIPPED 2026-05-18** (D-QUAR-1..7)
+
+**Final status:** sibling-only. `examples/production/durable_postgres/quarantine.py` `QuarantineSync` async task mirrors in-memory `_quarantine` set to Postgres `quarantine` table. Operator scripts `scripts/list_quarantined.py` + `scripts/requeue.py` (env-DSN-only, regex-gated, hard-coded redacted column allowlist). OTel sibling adds `durable.quarantine.size` gauge + 3 alerts (Growing >10 for 15m, Spike gauge-delta >5 in 10m, NonZero >0 for 1h floor). Runbook `otel-operations.md` §2.5/2.6/2.7. Cycle-14 audit: 0 CRIT / 2 HIGH fixed / 2 MED fixed / 5 LOW accepted.
 
 **Gap.** Today `quarantine_size` shows in healthcheck. There is no operator workflow for: list quarantined runs, inspect why, manually re-queue or delete, alert on quarantine-size-growing.
 
@@ -248,7 +270,9 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 3–4 days.
 
-### 2.5 Cost / capacity model — published
+### 2.5 Cost / capacity model — published — **SHIPPED 2026-05-18** (D-COST-1..9)
+
+**Final status:** `docs/capacity-model.md` — 8 sections. 19-row pinned Assumptions table, Methodology with formulas + measured PromQL queries, per-scale table at 100/1K/10K/100K with MEASURED vs MODELED labels, Cost-line itemization (Anthropic / OpenAI / KMS / OTLP egress / Postgres storage / backup), Refresh cadence. `scripts/load_test.py` (populate-soak-cleanup skeleton runnable at 100-run scale). `scripts/check_capacity_model_freshness.py` (WARN 90d / FAIL 180d). `.github/workflows/docs-freshness.yml` weekly cron. 100-run row's populate+schema cells are MEASURED (`reports/load-test-2026-05-18.json`); API + KMS + latency cells remain MODELED (skeleton does not spawn the daemon by design). Per-tenant cells deferred until Tier 2.1.
 
 **Gap.** Spec §7 has sizing math for `max_concurrent_runs` and the two-pool model. Nowhere documented: "for X paused runs and Y rounds/day, here's the postgres instance class you want, here's the executor budget, here's the expected Anthropic/OpenAI spend."
 

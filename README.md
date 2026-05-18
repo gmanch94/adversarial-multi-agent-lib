@@ -4,7 +4,7 @@ A reusable Python library implementing the adversarial multi-agent collaboration
 
 Pair an **executor** (Claude Opus 4.7 or Gemini 2.5 Pro) with a **reviewer from a different model family** (GPT-4o by default). Cross-model pairing prevents the echo-chamber effect: the reviewer cannot reuse the executor's reasoning shortcuts. The loop runs until the reviewer's score exceeds a threshold **and** every domain-specific FLAGS class is clear (and, for veto-using workflows, no reviewer veto fires) — or the round cap is reached.
 
-**36 workflows across 6 domains** — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog), healthcare (8 MVP of 27-workflow catalog). 11 workflows use the reviewer-veto pattern for irreversible-class decisions (recall, claims reserve, coverage decision, environmental impairment, gig platform liability, product-liability root-cause, recall-scope manufacturing, clinical trial risk, treatment exception, care protocol, patient safety). **550 tests** passing; ruff + mypy clean.
+**36 workflows across 6 domains** — research (4), parole (1), retail (8), pc (7), industrial (8 MVP of 27-workflow catalog), healthcare (8 MVP of 27-workflow catalog). 11 workflows use the reviewer-veto pattern for irreversible-class decisions (recall, claims reserve, coverage decision, environmental impairment, gig platform liability, product-liability root-cause, recall-scope manufacturing, clinical trial risk, treatment exception, care protocol, patient safety). **746 library tests + 106 sibling tests** passing (post Tier 1.9 closure 2026-05-18); ruff + mypy clean. Plus 4 production sibling deployments: `durable_postgres` (compose + cipher + lock + store + scheduler + scripts), `durable_postgres_k8s` (kustomize), `durable_postgres_otel` (OTel collector + Prometheus + Grafana + alerts), `cipher_gcp_kms` / `cipher_aws_kms` (KMS envelope encryption).
 
 ```
 Task → Executor generates → Reviewer scores + critiques
@@ -365,7 +365,7 @@ class MyWorkflow(BaseWorkflow):
 ## Tests
 
 ```bash
-python -m pytest tests/          # 550 tests
+python -m pytest tests/          # 746 library tests
 python -m mypy src/ tests/ --strict
 python -m ruff check src/ tests/
 ```

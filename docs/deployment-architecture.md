@@ -140,7 +140,7 @@ flowchart TB
     classDef user fill:#f3f4f6,stroke:#374151,color:#000
 
     Dev(["Maintainer terminal"]):::user
-    Pyt(["pytest + pytest-asyncio<br/>657 tests · mypy strict · ruff clean"]):::user
+    Pyt(["pytest + pytest-asyncio<br/>746 lib + 106 sibling tests · mypy strict · ruff clean"]):::user
 
     subgraph Host["Host machine — Windows / macOS / Linux"]
         direction TB
@@ -179,7 +179,7 @@ flowchart TB
 | Workspace | Repo root (`./ledger.json`, `./wiki.json` auto-created and sandboxed there) | Caller-controlled (`Config(workspace_dir="/var/lib/research")`) |
 | Skill files | Bundled in wheel (148 templates across 6 domains); local override via `Config(skills_dir=...)` | Same |
 | Network | Live API calls — costs real money per run | Same — there is no mock mode |
-| Tests | **657 tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 6 domains + durable subpackage | Caller writes their own tests against their workflows |
+| Tests | **746 library tests + 106 sibling tests** (post Tier 1.9 closure 2026-05-18): `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 6 domains + durable subpackage + 4 production sibling deployments | Caller writes their own tests against their workflows |
 
 ### How to run the canonical example
 
