@@ -1,6 +1,49 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 NIGHT — Tier 2.2 SHIPPED + CI green
+Last updated: 2026-05-18 NIGHT — Tier 2.3 SHIPPED (budget-exceeded recovery)
+
+## 2026-05-18 NIGHT — Tier 2.3 SHIPPED (budget recovery primitive)
+
+**Tiny 0.3d slice. Library closes the loop on already-shipped budget enforcement.**
+
+Closes gaps doc §2.3. Library tests **743 → 746** (+3 acknowledge_budget_exceeded tests).
+
+**Discovery during scoping:** the original gap (`BudgetTracker.check_and_charge` raise + library catch + status flip) is ALREADY SHIPPED — `BudgetTracker.record()` enforces caps, `DurableWorkflow.start`/`resume` catch `BudgetExceeded`, status flips to `"budget_exceeded"`, `resume()` refuses non-paused. The residual was a recovery-path bug: `docs/runbooks/durable-operations.md` §5.5 step 3 said "call resume(token)" which raises `RunNotResumable`. A probe confirmed raw operator status edits would break the Tier-1.9 integrity_tag → recovery MUST go through the library.
+
+**What shipped:**
+- `DurableWorkflow.acknowledge_budget_exceeded(token)` — atomic flip (status `budget_exceeded` → `paused`) + reseal via `store.write()` so integrity_tag is recomputed. Raises `RuntimeError` on wrong status (not idempotent — surface unexpected state). Appends `budget_cap_acknowledged` audit row to `rounds_history` with budget snapshot at acknowledge time. D-BUDGET-1.
+- 3 tests: happy path + wrong-status raises + end-to-end through `EncryptedCheckpointStore` (proves no `IntegrityViolation`).
+- `docs/runbooks/durable-operations.md` §5.5 rewritten — 4-step recovery flow + code skeleton + audit-trail mention. Corrected the prior "call resume(token)" mistake.
+- `docs/superpowers/specs/2026-05-18-budget-acknowledge-design.md` — D-BUDGET-1..5 rationale (advisor revision: rejected runbook-only + full convenience-method options).
+- `docs/decisions.md` — D-BUDGET-1..5 rows appended.
+
+**Operator recovery flow (the new runbook §5.5):**
+```python
+# 1. Inspect rounds_history; cancel if runaway
+# 2. Construct new DurableWorkflow with higher-cap BudgetTracker
+dw_higher = DurableWorkflow(inner=..., config=..., budget=BudgetTracker(max_usd=200.0))
+# 3. Acknowledge (library does atomic flip + reseal)
+await dw_higher.acknowledge_budget_exceeded(token)
+# 4. Resume
+outcome = await dw_higher.resume(token)
+```
+
+**Per-tenant budget enforcement DEFERRED** per gaps doc + D-BUDGET-4 until Tier 2.1 (multi-tenant isolation) ships.
+
+**Posture at close:**
+- `python -m pytest -q`: 746 passed ✓
+- `python -m ruff check .`: pending
+- `python -m mypy src`: pending
+- Operator recovery flow now end-to-end testable through library ✓
+
+**Next recommended lanes:**
+- **Tier 1.3** — AWS KMS or Vault Transit Cipher sibling (cipher_gcp_kms is the reference; ~1d each)
+- **Tier 2.4** — Quarantine / dead-letter handling (operator CLI + alert)
+- **Tier 2.5** — Cost / capacity model (published per-workflow cost benchmarks)
+
+**Standing autonomy (2026-05-17):** active. Pick secure → durable → scalable when user unavailable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
 
 ## 2026-05-18 NIGHT — Tier 2.2 SHIPPED (API stability + semver contract)
 

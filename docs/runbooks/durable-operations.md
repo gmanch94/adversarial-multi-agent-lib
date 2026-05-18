@@ -173,13 +173,28 @@ outcome = await durable.resume(token, force_model_upgrade=False)
 3. Daemon resumes polling; previously-paused runs are picked up on next poll.
 4. **Quarantine resets** — daemon's in-memory `_quarantine` is empty on start. Persist quarantine to checkpoint metadata in production impl.
 
-### 5.5 Budget cap raise mid-run
+### 5.5 Budget cap raise mid-run (Tier 2.3 / D-BUDGET-1)
 
-A run in `status="budget_exceeded"`:
+A run in `status="budget_exceeded"` requires an explicit operator action — `resume(token)` alone will raise `RunNotResumable` because the status is non-paused. The fail-closed default is intentional: a silent retry against the same cap would just re-exceed.
 
-1. Confirm legitimate (not runaway loop) — read `rounds_history`, count rounds, inspect last round's claim count.
-2. Update `BudgetTracker` instance with new cap.
-3. Call `resume(token)`. Library reconciles budget on resume (closure of L-DUR-5 — double-billing prevented).
+1. **Inspect.** Read `rounds_history`, count rounds, inspect last round's claim count. Confirm legitimate (not runaway loop). If runaway: skip step 2 and `cancel(token, reason="runaway_detected")`.
+2. **Construct a NEW `DurableWorkflow` with a higher-cap `BudgetTracker`.** The cap must exceed the row's accumulated `budget_used` — otherwise the next `record()` call trips `BudgetExceeded` again on the first round and the checkpoint flips back to `budget_exceeded`.
+3. **Acknowledge.** `await dw.acknowledge_budget_exceeded(token)` — flips status `budget_exceeded` → `paused` and appends a `budget_cap_acknowledged` audit row to `rounds_history` with the budget snapshot at acknowledge time. Library does the flip + reseal in one `store.write()`, so the integrity_tag is recomputed against the new canonical bytes. Raw operator edits to the row would leave the integrity tag stale and the next read would raise `IntegrityViolation`.
+4. **Resume.** `await dw.resume(token)`. Library reconciles budget on resume (closure of L-DUR-5 — double-billing prevented).
+
+```python
+# Recovery skeleton
+dw_higher_cap = DurableWorkflow(
+    inner=inner_workflow,
+    config=config,
+    checkpoint_store=store,
+    budget=BudgetTracker(max_usd=200.0),  # was 50.0; check rounds_history first
+)
+await dw_higher_cap.acknowledge_budget_exceeded(token)
+outcome = await dw_higher_cap.resume(token)
+```
+
+Audit log: every acknowledge is recorded in `rounds_history` as `{event: "budget_cap_acknowledged", at: <ts>, budget_used_at_ack: {...}}`. Compliance reviewers can reconstruct who raised the cap and when by joining this trail with the operator's deployment logs.
 
 ---
 
