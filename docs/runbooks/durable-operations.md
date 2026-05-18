@@ -88,6 +88,8 @@ Inherits from design spec §5 + audit cycle 7 closures. Each row maps a runtime 
 
 ## 4. Capacity sizing
 
+**See [`docs/capacity-model.md`](../capacity-model.md) for the published cost + capacity table at 100 / 1K / 10K / 100K paused runs** (Tier 2.5 ship). The numbers below are the operational rules-of-thumb the model is built on; the published table is the source of truth for sizing decisions.
+
 POC posture is single-process; production swaps the three Protocols. Numbers below are for the `PostgresCheckpointStore` reference target (REFERENCE-IMPL-PENDING).
 
 ### 4.1 Storage

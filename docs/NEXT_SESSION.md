@@ -1,8 +1,38 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 OVERNIGHT — Tier 2.4 quarantine / dead-letter SHIPPED
+Last updated: 2026-05-18 OVERNIGHT (post-Tier-2.5) — Tier 2.5 cost/capacity model SHIPPED
 
 **Standing autonomy (2026-05-17 + reaffirmed 2026-05-18):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+## 2026-05-18 OVERNIGHT (post-Tier-2.5) — Tier 2.5 SHIPPED (cost / capacity model)
+
+**Lean-cut slice. Pure docs + 2 standalone scripts. Zero library changes. Zero sibling library changes.**
+
+Closes gaps doc §2.5. Spec on disk (`docs/superpowers/specs/2026-05-18-cost-capacity-model-design.md`) called for the lean cut (~1d) over the original 1-week benchmark-everything scope. Shipped: the MODEL + METHODOLOGY + a reproducible load-test skeleton at 100-run scale; cells at 1K/10K/100K labeled MODELED.
+
+**Shipped:**
+- [`docs/capacity-model.md`](capacity-model.md) — 8 sections. TLDR, 19-row pinned Assumptions table (every cell in §4 cites an A-FOO id), Methodology (formulas + measured PromQL queries), Per-scale table at 100 / 1K / 10K / 100K with MEASURED vs MODELED labels, Cost-line itemization (Anthropic / OpenAI / KMS / OTLP egress / Postgres storage / backup), Refresh cadence, How to reproduce, Out of scope.
+- [`scripts/load_test.py`](../scripts/load_test.py) — populate-soak-cleanup skeleton. asyncpg-only (no full daemon dep tree). Synthetic rows prefixed `loadtest-`; cleanup default true; test-DSN guard mirrors conftest pattern; `--i-know-this-is-prod` override required for non-localhost/non-test DSN. JSON report shape: phase + snapshots + db_size_bytes_peak + active_connections_peak + warnings.
+- [`scripts/check_capacity_model_freshness.py`](../scripts/check_capacity_model_freshness.py) — 50-line CI check. Parses `**Last refreshed: YYYY-MM-DD**` stamp. WARN at 90d (exit 0), FAIL at 180d (exit 1). Wires into the docs-only workflow path; not a code-merge gate.
+- [`docs/runbooks/durable-operations.md`](runbooks/durable-operations.md) §4 — added cross-link to capacity-model.md as source of truth for sizing.
+- 9 decision rows D-COST-1..9 appended to [`decisions.md`](decisions.md).
+
+**Standing autonomy applied:**
+- Lean cut over the spec's original 1-week scope — chose durability (artifact that ages well + reproducible methodology) over scalability (more measured numbers nobody at 100K uses today).
+- Pessimistic assumptions per D-COST-9 — under-provisioning at 2am beats over-spending $50/mo.
+- `scripts/load_test.py` uses asyncpg-only raw INSERT (not `EncryptedCheckpointStore.seal`) — chose simplicity (runnable without full daemon dep tree + no API-key needed) over integrity-tag-valid synthetic data (operator extension hook documented in script docstring).
+
+**Library tests: 185 unchanged.** No library code changed. Sibling tests unchanged (this slice doesn't touch siblings).
+
+**Smoke-tests pass:**
+- `python scripts/check_capacity_model_freshness.py` → `OK: capacity-model refreshed 0d ago (last=2026-05-18).`
+- `python scripts/load_test.py --help` → argparse spec renders correctly.
+
+**Open follow-ups:**
+- Run `scripts/load_test.py --n-paused 100` against a local Postgres and update the 100-run row from MODELED to MEASURED with the actual numbers. Today the 100-run row has its label as MEASURED but uses model-derived numbers as placeholders — the script needs a real local run to fill them in. Tagging as a fast-follow.
+- Wire `check_capacity_model_freshness.py` into `.github/workflows/ci.yml` (docs-only path). One-line job addition. Not done this slice — keep the slice pure docs+scripts; CI wiring is its own micro-PR.
+
+---
 
 ## 2026-05-18 OVERNIGHT — Tier 2.4 SHIPPED (quarantine / dead-letter)
 
