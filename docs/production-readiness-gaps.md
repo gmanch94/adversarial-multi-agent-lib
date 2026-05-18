@@ -203,7 +203,21 @@ Wired metric emissions (8 distinct names):
 
 ## Tier 2 — needed before multi-tenant or multi-team use
 
-### 2.1 Multi-tenant isolation
+### 2.1 Multi-tenant isolation — **SHIPPED 2026-05-18 NIGHT** in 4 sub-tiers (D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2)
+
+**Final status:**
+- **2.1a (commit `48e394f` + audit closure `ddd78df`):** schema preparation — `tenant_id` column + 3 SQL migrations (`0004_add_tenant_id.sql`, `0005_enable_tenant_rls.sql`, `0006_tenant_id_not_null.sql`) + 8 RLS policies (SELECT unscoped, INSERT/UPDATE/DELETE scoped via `current_setting('app.tenant_id')`) + sibling store/daemon/quarantine wiring + operator scripts gain `--tenant` flag + `check_set_local_pattern.py` CI grep gate.
+- **2.1b (commit `a0c9e44` + audit closure `dc3baf0`):** library breaking change — `Checkpoint.tenant_id` required field; `DurableWorkflow.start(request, *, tenant_id)` keyword-only required; `ResumeToken.tenant_id` additive optional with `_default` legacy compat; sibling 2.1a transitional plumbing (ContextVar, `_default` fallback, `_tenants_for_runs` cache, refresh task, `read_with_tenant`/`list_paused_with_tenants` extensions) all removed since `cp.tenant_id` is canonical.
+- **2.1c-1 (commit `d15a199`):** `EncryptedCheckpointStore` accepts `cipher_for_tenant: Callable[[str], Cipher]` resolver (additive) + new `UnknownTenantError(KeyError)` public exception. Mutual-exclusion with single-cipher path enforced at construction.
+- **2.1c-2 (commit `8bd5a59`):** `BudgetCaps` frozen value object + `BudgetTracker(caps=...)` additive kwarg. Per-tenant caps via caller-owned resolver pattern.
+
+**Remaining for next session:** sibling daemon wiring across 3 production siblings (`durable_postgres`, `cipher_gcp_kms`, `cipher_aws_kms`) to use the new resolvers + flip D-TENANT-0 onboarding gate banner across SECURITY_MODEL/runbook/spec/this-doc. Per-tenant cipher pattern recommended for KMS siblings (security>durability>scalability — DEK isolation means single-tenant compromise leaks one tenant, not all). Tier 3.4 (tenant-shard scheduling, >100k paused runs ceiling) and Tier 3.5 (tenant-aware backup/restore) remain on backlog.
+
+**Test counts post-2.1c-2:** 251 library tests + 49 sibling tests + 63 needs_postgres skipped.
+
+---
+
+### 2.1 (original gap statement, preserved for audit trail) — Multi-tenant isolation
 
 **Gap.** `DURABLE_APP_NAMESPACE` separates advisory-lock keyspace across deployments. It does NOT separate:
 
