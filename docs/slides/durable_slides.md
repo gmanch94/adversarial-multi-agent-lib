@@ -7,14 +7,14 @@ paginate: true
 <!-- _class: lead -->
 
 # Durable Long-Running Agents
-## Pause / Resume / Never Lose Context — Days-to-Weeks Horizon
+## Pause / Resume / Multi-Tenant / Encrypted at Rest — Days-to-Weeks Horizon
 
-Composition wrapper over any `AdversarialWorkflow` · Pluggable storage, locks, scheduler · POC validated against `ClinicalTrialEligibilityWorkflow`
+Composition wrapper over any `AdversarialWorkflow` · 5 production sibling deployments · Per-tenant cipher + budget · Postgres RLS + FORCE RLS · OTel + Prometheus + Grafana
 
 &nbsp;
 
 *Library extension of the adv-multi-agent template*
-*Durable execution layer · core/durable/ · May 2026*
+*Durable execution + multi-tenant layer · core/durable/ + examples/production/ · May 2026*
 
 &nbsp;
 
@@ -25,208 +25,206 @@ Composition wrapper over any `AdversarialWorkflow` · Pluggable storage, locks, 
 <!-- _class: section -->
 
 # Problem Statement
-*Why durable execution for adversarial multi-agent?*
+*Why durable + multi-tenant execution for adversarial multi-agent?*
 
-ARIS-style review loops were designed for synchronous decisions: one request, N rounds, one converged answer. Real high-stakes domains stretch the loop across days or weeks:
+ARIS-style review loops were designed for synchronous decisions. Production stretches them across days or weeks AND across multiple customers/tenants/business units:
 
-| Domain trigger | Pause horizon | What moves during the pause |
+| Domain trigger | Pause horizon | Multi-tenant dimension |
 |---|---|---|
-| Rolling clinical data (labs pending) | Hours-to-days | New lab values, biomarker results, imaging |
-| Human-approver SLA (IRB / pharmacovigilance) | Days-to-weeks | Approver returns critique, sponsor amends protocol |
-| Regulatory clock (FDA 21 CFR 312 7/15-day) | Fixed-window | External clock; agent must wake on schedule |
-| Multi-day appeal / underwriting / safety review | Days | Counterparty responds, evidence arrives |
-| Budget breach mid-round | Indefinite | Caller raises cap, resumes |
+| Rolling clinical data (labs pending) | Hours-to-days | Per-sponsor trial protocols |
+| Human-approver SLA (IRB / pharmacovigilance) | Days-to-weeks | Per-payer reviewer pools |
+| Regulatory clock (FDA 21 CFR 312 7/15-day) | Fixed-window | Per-jurisdiction clock |
+| Multi-day appeal / underwriting / safety review | Days | Per-account budget caps |
+| Budget breach mid-round | Indefinite | Per-tenant resolver isolates |
 
-> Without durability, every pause = full context replay. Cost compounds. Drift surface widens. Audit trail fragments.
+> Without durability: every pause = full context replay; cost compounds; drift surface widens; audit fragments.
+> Without multi-tenancy: one shared cipher decrypts all customers; one budget pool exhausts on a noisy tenant; one daemon process per tenant.
 
 ---
 
-# Wedge vs. Generic Durable-Execution Frameworks
+# Wedge vs. Generic Durable + Multi-Tenant Frameworks
 
-Temporal, Restate, Inngest, AWS Step Functions, LangGraph checkpointing all exist. The wedge here is **agent-native + adversarial-pattern-native**:
+Temporal, Restate, Inngest, AWS Step Functions, LangGraph checkpointing are activity-replay. Postgres SaaS templates handle row-scope but don't speak agent semantics. The wedge here is **agent-native + adversarial-pattern-native + multi-tenant-by-resolver**:
 
-| Generic durable framework | This library |
+| Generic | This library |
 |---|---|
-| Activity-replay log of every step | Compacted `rounds_history` (executor draft + critique + flags + score per round) |
-| "Pause anywhere" | Named pause gates only — `rolling_data` / `approver_sla` / `regulatory_clock` |
+| Activity-replay log per step | Compacted `rounds_history` (executor draft + critique + flags + score per round) |
+| "Pause anywhere" | Named gates only — `rolling_data` · `approver_sla` · `regulatory_clock` |
 | Tool-state drift = caller's problem | `ReconciliationHook` Protocol — first-class seam |
-| Storage / locks coupled to runtime | Three Protocols (`CheckpointStore` · `RunLock` · `SchedulerBackend`) — POC ships file + memory, prod swaps Postgres / Redis |
-| Replay determinism required | Forward-only resume; agent calls are non-deterministic by design |
+| Storage / locks coupled to runtime | 4 Protocols (`CheckpointStore` · `RunLock` · `SchedulerBackend` · `Cipher`) — file POC + Postgres sibling + KMS siblings ship |
+| Replay determinism required | Forward-only resume; agent calls non-deterministic by design |
+| Multi-tenancy = caller layer above | `tenant_id` first-class on `Checkpoint` + `ResumeToken` + RLS + per-tenant cipher resolver |
+| Per-tenant budget = caller's accounting | `BudgetCaps(max_tokens_in, max_tokens_out, max_usd)` resolver in workflow_factory |
 
-**Wedge claim:** smaller checkpoint, narrower trust boundary, domain-shaped pause semantics. Generic frameworks underneath remain valid for non-agent durable workloads.
+**Wedge claim:** smaller checkpoint · narrower trust boundary · domain-shaped pause semantics · DEK isolation by tenant_id without coordinated fleet downtime on key rotation.
 
 ---
 
-# Architecture — Composition, Not Inheritance
+# Architecture — Composition + Resolver Pattern
 
 ```
 src/adv_multi_agent/core/durable/
-├── workflow.py      # DurableWorkflow — wraps any AdversarialWorkflow
-├── checkpoint.py    # CheckpointStore Protocol + File + Memory impls
-├── token.py         # ResumeToken (frozen dataclass, schema-versioned)
-├── budget.py        # BudgetTracker (asyncio.Lock; USD + token caps)
+├── workflow.py      # DurableWorkflow — wraps any AdversarialWorkflow; tenant_id required
+├── checkpoint.py    # CheckpointStore Protocol; Checkpoint.tenant_id first-class
+├── token.py         # ResumeToken (frozen, schema-versioned, tenant_id optional with _default)
+├── budget.py        # BudgetTracker + BudgetCaps value object (per-tenant resolver pattern)
 ├── lock.py          # RunLock Protocol + File (fcntl/msvcrt) + Memory
-├── scheduler.py     # SchedulerBackend + PollingScheduler + SchedulerDaemon
+├── scheduler.py     # SchedulerBackend + SchedulerDaemon (workflow_factory(class, tenant_id))
 ├── hooks.py         # ReconciliationHook Protocol + 4 reference impls
-├── encryption.py    # EncryptedCheckpointStore decorator (Cipher Protocol)
+├── encryption.py    # EncryptedCheckpointStore decorator + Cipher + cipher_for_tenant + UnknownTenantError
 └── protocols.py     # Public Protocols
+
+examples/production/
+├── _shared/tenant_env.py      # parse_json_map, make_resolver, parse_budget_caps_map (M-PC-1 hoist)
+├── durable_postgres/          # compose + Fernet + advisory lock + Postgres store + RLS + scheduler
+├── durable_postgres_k8s/      # kustomize overlays + RBAC + network policies
+├── durable_postgres_otel/     # OTel collector + Prometheus + Grafana + 8 alerts (4 fleet + 4 tenant)
+├── cipher_gcp_kms/            # envelope encryption + DEK cache + IAM split (daemon vs admin SA)
+└── cipher_aws_kms/            # AWS KMS + IMDSv2 hardening + IRSA-aware credential refusal
 ```
 
 **Invariants enforced by the layout:**
 
-- Composition wraps any existing `AdversarialWorkflow` unchanged — healthcare/retail/PC/industrial workflows do not move
-- Scheduler optional and isolated — explicit-resume callers ignore it
-- No magic: every pause is `await ctx.pause(...)`, a budget breach, or a reviewer veto
-- Public surface — 10 names: `DurableWorkflow, ResumeToken, BudgetExceeded, ReconciliationHook, RunOutcome, PauseContext, EncryptedCheckpointStore, Cipher, RunHaltedByVeto, RunNotResumable`
+- Composition wraps any existing `AdversarialWorkflow` unchanged — domain workflows do not know they are durable or multi-tenant
+- Multi-tenancy is opt-in via env JSON maps — single-tenant deploys leave `DURABLE_TENANT_*_JSON` unset; tenant_id="_default" path is first-class
+- Per-tenant cipher and budget are independent resolvers — asymmetric configs warn at boot (BUG-B1 audit fold-in)
+- `FORCE ROW LEVEL SECURITY` is in schema.sql for fresh deploys; migration 0007 adds it for existing 2.1a/b/c deploys
+- Public surface — 13 names: `DurableWorkflow`, `ResumeToken`, `BudgetExceeded`, `BudgetCaps`, `ReconciliationHook`, `RunOutcome`, `PauseContext`, `EncryptedCheckpointStore`, `Cipher`, `RunHaltedByVeto`, `RunNotResumable`, `UnknownTenantError`, `MemoryCheckpointStore`
 
 ---
 
-# Core Data Shapes
+# Multi-Tenant Pattern — Resolver Over Per-Process Daemon
 
-`ResumeToken` (returned by every `start()` / `resume()` — caller persists it):
+Operator wires per-tenant cipher + per-tenant budget via env JSON maps; daemon constructs resolvers at boot; workflow_factory receives `tenant_id` and builds the right `BudgetTracker`:
 
-```python
-@dataclass(frozen=True)
-class ResumeToken:
-    run_id: str                    # ASCII charset: ^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$
-    workflow_class: str
-    pinned_executor_model: str     # pinned across pauses — survives model retirement
-    pinned_reviewer_model: str
-    schema_version: int            # bump on incompatible Checkpoint shape changes
-    created_at: str                # ISO-8601 UTC
-    wake_at: str | None
+```bash
+# durable_postgres sibling .env
+DURABLE_TENANT_FERNET_KEYS_JSON='{"sponsor_a":"k1,k2","sponsor_b":"k3"}'
+DURABLE_TENANT_BUDGET_CAPS_JSON='{"sponsor_a":{"max_usd":50.0},"sponsor_b":{"max_tokens_in":2000000,"max_usd":10.0}}'
 ```
 
-`Checkpoint` (persisted via `CheckpointStore`):
+```python
+# Sibling daemon
+cipher_for_tenant = make_resolver(per_tenant_ciphers, "DURABLE_TENANT_FERNET_KEYS_JSON")
+caps_for_tenant   = make_resolver(per_tenant_caps,    "DURABLE_TENANT_BUDGET_CAPS_JSON")
 
-| Field | Why |
-|---|---|
-| `status` | `running / paused / completed / vetoed / budget_exceeded / failed` |
-| `round`, `rounds_history` | Full audit trail; preserves L-IND-2 first-draft-on-veto invariant |
-| `last_request_json` | Caller can rehydrate on resume — sanitized at `to_prompt_text()` time, never raw |
-| `pause_reason`, `pause_context` | Named gate + caller free-form context |
-| `budget_used` | `BudgetSnapshot(tokens_in, tokens_out, usd_spent)` |
-| `pinned_*_model` | Resume against the same model unless `force_model_upgrade=True` |
+store = EncryptedCheckpointStore(inner=postgres_store, cipher_for_tenant=cipher_for_tenant)
 
-> D-DURABLE-1 invariant: checkpoint is always **downstream** of `sanitize_for_prompt`, never upstream.
+def workflow_factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
+    return DurableWorkflow(
+        inner=ClinicalTrialEligibilityDurableWorkflow(config=agent_cfg),
+        checkpoint_store=store,
+        budget_tracker=BudgetTracker(caps=caps_for_tenant(tenant_id)),
+        ...
+    )
+```
+
+**Properties (Tier 2.1d hardened):**
+
+- Reserved tenant_ids (`_default`, `_legacy`) rejected at boot (MED-1)
+- `BudgetCaps()` all-None raises `ValueError` rather than warn (BUG-B2)
+- Asymmetric config (cipher per-tenant + budget single, or vice versa) emits WARNING at boot (BUG-B1)
+- Per-tenant `tenant` label on every metric tag dict (B1)
+- `/health` returns `"per_tenant"` sentinel instead of one arbitrary tenant's fingerprint (MED-3)
+- `UnknownTenantError` quarantines immediately (MED-2 — config error, not data corruption)
 
 ---
 
-# Control Flow
+# Defense in Depth — Crypto + RLS + Integrity
 
-```python
-class DurableWorkflow:
-    async def start(self, request) -> RunOutcome: ...
-    async def resume(self, token, fresh_inputs=None,
-                     force_model_upgrade=False) -> RunOutcome: ...
-    async def cancel(self, token, reason) -> None: ...
-```
-
-**`start(request)`** — uuid4 `run_id` · acquire `RunLock` · write initial checkpoint · run modified review loop with per-cadence checkpoint writes · return `RunOutcome`.
-
-**`resume(token)`:**
-1. Acquire `RunLock`. Concurrent resume raises `RunLocked`.
-2. Load checkpoint. Validate `schema_version` → mismatch raises `SchemaVersionMismatch`.
-3. Validate `status == "paused"`. Other states raise `RunNotResumable` (includes veto state → `RunHaltedByVeto`).
-4. Validate pinned models still resolvable. Retired model raises `ModelRetired` unless `force_model_upgrade=True`.
-5. Call `reconciliation_hook.on_resume(run_id, checkpoint, fresh_inputs)` with timeout. Get back the `*Request` for the next round.
-6. Continue review loop from `checkpoint.round`. Same loop body as `start()`.
-
-**Cadence options:** `per_round` (default) · `per_pause` · `per_call` — trade write amplification vs. lost-work-on-crash.
-
----
-
-# Pluggable Protocols — Three Seams from Day One
-
-POC ships file + in-memory impls of every Protocol. Production swaps without touching `DurableWorkflow`, `ResumeToken`, or any wrapped workflow.
-
-```python
-class CheckpointStore(Protocol):
-    async def write(self, checkpoint: Checkpoint) -> None: ...
-    async def read(self, run_id: str) -> Checkpoint: ...
-    async def list_paused(self, wake_before: datetime) -> list[ResumeToken]: ...
-    async def delete(self, run_id: str) -> None: ...
-
-class RunLock(Protocol):
-    async def acquire(self, run_id: str, ttl_seconds: int) -> LockHandle: ...
-    async def release(self, handle: LockHandle) -> None: ...
-    async def heartbeat(self, handle: LockHandle) -> None: ...
-
-class SchedulerBackend(Protocol):
-    async def schedule_wake(self, token: ResumeToken, wake_at: datetime) -> None: ...
-    async def poll_ready(self, batch_size: int) -> list[ResumeToken]: ...
-```
-
-| Protocol | POC impl | Production swap |
+| Layer | Mechanism | What it defends |
 |---|---|---|
-| `CheckpointStore` | `FileCheckpointStore` (atomic JSON, dir-fsync on POSIX) · `MemoryCheckpointStore` | `PostgresCheckpointStore` · `S3CheckpointStore` · `DynamoCheckpointStore` |
-| `RunLock` | `FileRunLock` (fcntl POSIX / msvcrt Windows) · `MemoryRunLock` | `PostgresAdvisoryLock` · `RedisRunLock` (Redlock) · `DynamoConditionalLock` |
-| `SchedulerBackend` | `PollingScheduler` | `CeleryBeat` · `Temporal` · `AWS EventBridge` · `pg-boss` |
-
-> Parametrized contract tests run against **both** Memory + File impls — forces the abstraction to hold; tests pass against Memory = abstraction is real, not file-shaped.
+| Application | `tenant_id` charset regex + reserved-namespace reject | Operator typos · charset injection at env-parse time |
+| Library boundary | `Checkpoint.__post_init__` charset · `_validate_request_shape` post-hook | Forged tenant_id at API · reconciliation hook output |
+| Cipher | Per-tenant DEK via `cipher_for_tenant(cp.tenant_id)` | Cross-tenant payload decryption — one tenant's key compromise leaks one tenant |
+| Database | RLS WITH CHECK + FORCE ROW LEVEL SECURITY | Cross-tenant writes — daemon role bypassed RLS without FORCE |
+| Integrity | `integrity_tag` AEAD over every field including `tenant_id` | Insider tampering with `tenant_id` / `rounds_history` / `workflow_version_hash` |
+| Scheduler | `UnknownTenantError` immediate-quarantine | Config errors mis-tagged as data corruption + retry-storm logs |
+| Budget | `BudgetCaps` resolver per-tenant | Noisy tenant exhausting shared pool |
+| Observability | `tenant` label on every metric | Single-tenant pathologies hidden behind N-tenant averages |
 
 ---
 
-# Reconciliation Hook — The Drift Seam
+# Tier Map — What Shipped When
 
-A run paused 14 days ago resumes against a world that has moved. Lab values updated, IRB approved a protocol amendment, patient withdrew consent. **Only the caller knows.** The hook is the single seam where caller-owned freshness logic plugs in.
+| Tier | Scope | Status |
+|---|---|---|
+| **1.1** Observability — metrics + traces + structured logs (D-OTEL-1..4) | ✅ |
+| **1.2** Kubernetes deployment target (D-K8S-1..9) | ✅ |
+| **1.3** KMS-backed Cipher implementations (D-CIPHER-GCP + D-CIPHER-AWS-1..10) | ✅ |
+| **1.4** Schema migration tool | ✅ |
+| **1.5** Backup + restore + PITR | ✅ |
+| **1.6** Workflow-version pinning | ✅ |
+| **1.7** PII redaction in observability path | ✅ |
+| **1.8** KMS-key-destroyed recovery | ✅ |
+| **1.9** Full-Checkpoint AEAD (`integrity_tag`) | ✅ |
+| **2.1a** Schema preparation — `tenant_id` + RLS + sibling wiring (D-TENANT-0..10) | ✅ |
+| **2.1b** Library breaking — `Checkpoint.tenant_id` required | ✅ |
+| **2.1c-1** Per-tenant cipher resolver (D-TENANT-7) | ✅ |
+| **2.1c-2** Per-tenant `BudgetCaps` (D-TENANT-8) | ✅ |
+| **2.1c-sibling-1/2** Resolver wiring across 3 daemons + factory signature bump | ✅ |
+| **2.1d** 4-axis exhaustive audit + 16 fold-ins (FORCE RLS, reserved-tenant reject, immediate quarantine, tenant label, asymmetric warn, helper hoist, AST harden, /health sentinel, env-tunable pool, smoke script, runbooks) | ✅ |
+| **2.2** Library API stability (D-API-1..3) | ✅ |
+| **2.3** Hard budget caps (D-BUDGET-1..5) | ✅ |
+| **2.4** Quarantine / dead-letter (D-QUAR-1..7) | ✅ |
+| **2.5** Cost / capacity model (D-COST-1..9) | ✅ |
+| **3.4** Tenant-shard scheduling (>100k paused-run scale) | ❌ Backlog |
+| **3.5** Tenant-aware backup/restore automation | ❌ Backlog (manual §8a until then) |
 
-```python
-class ReconciliationHook(Protocol):
-    async def on_resume(self, run_id, checkpoint, fresh_inputs) -> Any:
-        """Return the *Request the next round will execute against.
-        Invariants:
-         1. Type matches wrapped workflow's *Request — TypeError at boundary
-         2. Idempotent — scheduler may retry; non-idempotent hooks corrupt state
-         3. Read-only against agent state (ledger, wiki, checkpoint)
-         4. Completes in < Config.reconciliation_timeout_seconds (default 30s)
-        """
-```
+---
 
-**Four reference impls shipped:**
+# Audit Posture — Compounded Across Cycles
 
-| Hook | Use case |
-|---|---|
-| `NoOpReconciliationHook` | Regulatory-clock pause — inputs immutable; deserialize and return |
-| `MergeFreshInputsHook` | Rolling clinical data — caller fetches new labs, passes `fresh_inputs` |
-| `RehydrateFromCallbackHook` | Approver SLA — hook hits approval DB, builds fresh request from current row |
-| `AppendFreshContextHook` | Audit-preserving append — prior context kept; fresh data appended to a designated text field |
+| Cycle | Date | Surface | Findings | Closure |
+|---|---|---|---|---|
+| 1 | 2026-05-16 | Durable POC | 4H + 6M + 5L | Same-day |
+| 2-7 | 2026-05-17/18 | Postgres + KMS + OTel + K8s + Backup | All open | Closed before tier flip |
+| 2.1a-audit | 2026-05-18 | Multi-tenant schema prep | 4 findings | Closed via FORCE RLS + onboarding banner |
+| 2.1b-audit | 2026-05-18 | Library breaking change | 3 LOW | Closed pre-commit |
+| 2.1c-1/2 audits | 2026-05-18 | Per-tenant cipher + BudgetCaps | 6 fold-ins | Closed pre-commit |
+| 2.1c-sibling-1/2 | 2026-05-18 | Sibling cipher + budget wiring | 4 fold-ins | Closed pre-commit |
+| **2.1d 4-axis** | **2026-05-18 LATE NIGHT** | **Code + security + perf + ops parallel review** | **5 BLOCKER + 8 MEDIUM + 4 SCALE** | **All BLOCKER + MEDIUM closed in 6 commits** |
 
-> **Trust boundary (D-DURABLE-2):** hook output is treated as caller input — same trust as original `Request` construction. Library extends the surface across time but does not widen it.
+> CRITICAL/HIGH posture across 36 workflows + durable subpackage + 5 production siblings: **0 / 0 / 0 / 0** after each cycle.
+
+---
+
+# Test Strategy
+
+**Layer 1 — Protocol contract.** Parametrized fixture runs same suite against `FileCheckpointStore` AND `MemoryCheckpointStore`. Same for `RunLock`.
+
+**Layer 2 — Library unit.** Covers every entry point, every failure mode, every cadence, every per-tenant code path.
+
+**Layer 3 — Sibling integration.** Real Postgres + Fernet/GCP-KMS/AWS-KMS. 68 needs_postgres tests gated for live-DB CI.
+
+**Layer 4 — CI gates that aren't pytest.** `check_set_local_pattern.py` enforces `SET LOCAL app.tenant_id` inside transactions. `test_force_rls_present.py` parses schema.sql + migration set for FORCE RLS coverage. `test_daemon_construct_smoke.py` parses each daemon via AST for `SchedulerDaemon` kwarg coverage.
+
+**Layer 5 — Operator smoke.** `scripts/verify_multi_tenant.py` — 3 invariants against live config: RLS cross-tenant rejection · `UnknownTenantError` fail-closed · per-tenant `BudgetExceeded` isolated.
+
+**Coverage:** 100% on `core/durable/*.py`. Mypy strict. Ruff clean. **768 library + 185 sibling tests** (953 total).
 
 ---
 
 # Healthcare Integration — `ClinicalTrialEligibilityWorkflow`
 
-3 named pause gates wrapping the existing veto + bias-gate workflow:
+3 named pause gates × per-sponsor tenant_id:
 
 ```python
 class ClinicalTrialEligibilityDurableWorkflow(ClinicalTrialEligibilityWorkflow):
-    async def run_round(self, request, ctx: PauseContext | None = None, ...):
-        # Gate 1 — rolling_data: labs pending in protocol_summary OR biomarker_status
+    async def run_round(self, request, ctx: PauseContext, ...):
         if "labs pending" in (request.protocol_summary + request.biomarker_status).lower():
-            await ctx.pause(reason="rolling_data",
-                            context={"awaiting": "complete labs"},
-                            wake_at=None)  # explicit resume on fresh data
-
+            await ctx.pause(reason="rolling_data", context={"awaiting": "complete labs"})
         result = await super().run_round(request, ...)
-
-        # Gate 2 — approver_sla: bias flags require IRB / sponsor sign-off
         if any("BIAS FLAGS" in c for c in result.critiques):
-            await ctx.pause(reason="approver_sla",
-                            context={"escalation": "IRB coordinator"},
-                            wake_at=datetime.utcnow() + timedelta(days=7))
-
-        # Gate 3 — regulatory_clock: FDA 21 CFR 312 7-day expedited reporting
+            await ctx.pause(reason="approver_sla", wake_at=now + 7d)
         if result.metadata.get("expedited_ae_signal"):
-            await ctx.pause(reason="regulatory_clock",
-                            context={"clock": "FDA 21 CFR 312", "window_days": 7},
-                            wake_at=datetime.utcnow() + timedelta(days=7))
-
+            await ctx.pause(reason="regulatory_clock", wake_at=now + 7d)
         return result
 ```
 
-**Inherits unchanged:** triple-flag pattern · reviewer veto · bias-gate · `metadata['first_draft']` on veto (L-IND-2) · score threshold 8.0 (D-HEALTH-2) · regulatory citation language (D-HEALTH-4) · PHI = caller responsibility (D-HEALTH-3).
+**Inherits unchanged:** triple-flag pattern · reviewer veto · bias-gate · `metadata['first_draft']` on veto (L-IND-2) · score threshold 8.0 · regulatory citation language · PHI = caller responsibility.
+
+**Tenant-aware in production:** sponsor A's payloads sealed under sponsor A's KMS key · sponsor A's budget caps applied independent of B · sponsor A's `/metrics` separable in Grafana. Rotating sponsor A's key does not coordinate with B.
 
 ---
 
@@ -234,157 +232,80 @@ class ClinicalTrialEligibilityDurableWorkflow(ClinicalTrialEligibilityWorkflow):
 
 | # | Failure | Detection | Recovery |
 |---|---|---|---|
-| 1 | Checkpoint write fails mid-round | `OSError` from `atomic_write_text` | Caller retries — idempotent on `run_id` |
-| 2 | Checkpoint corrupt at resume | `JSONDecodeError` | `CheckpointCorrupt(run_id, path)` — never silent restart |
-| 3 | Schema version mismatch | Version compare at load | `SchemaVersionMismatch(found, expected)` — caller migrates |
-| 4 | Pinned model retired | API model-not-found | `ModelRetired` unless `force_model_upgrade=True`; swap logged into `rounds_history` |
-| 5 | Budget exceeded mid-call | `BudgetTracker.check()` | Persist `budget_exceeded`, raise wrapped in `RunOutcome`; caller raises cap + resumes |
-| 6 | Reconciliation hook raises / times out | `try` + `asyncio.wait_for` | Checkpoint stays `paused`; `RunOutcome(failed)`; caller fixes hook + retries |
-| 7 | Agent API timeout / network | `Config.request_timeout_seconds` | Checkpoint at last-completed round; retry picks up at `checkpoint.round` |
-| 8 | Concurrent resume of same run_id | `RunLock` atomic-rename | `RunLocked(run_id, locked_by, locked_at)`; stale locks reclaimed via TTL |
-| 9 | Resume of vetoed run | Status check | `RunHaltedByVeto(RunNotResumable)` — never re-enter a halt state |
+| 1 | Checkpoint write fails | OSError / IntegrityError | Idempotent retry on `run_id` |
+| 2 | Checkpoint corrupt / seal mismatch | JSONDecodeError / `IntegrityViolation` | Never silent restart |
+| 3 | Schema version mismatch | Load-time compare | `SchemaVersionMismatch` |
+| 4 | Pinned model retired | Model-not-found | `ModelRetired` unless `force_model_upgrade=True` |
+| 5 | Budget exceeded mid-call | `BudgetTracker.check()` | Persist `budget_exceeded`; caller raises cap |
+| 6 | Reconciliation hook raises / times out | `asyncio.wait_for` | Checkpoint stays `paused`; `RunOutcome(failed)` |
+| 7 | Concurrent resume | `RunLock` atomic-rename | `RunLocked` · stale via TTL |
+| 8 | Resume of vetoed run | Status check | `RunHaltedByVeto` |
+| 9 | **Unknown tenant_id on resume** | Resolver `KeyError` | **`UnknownTenantError` → immediate quarantine (Tier 2.1d MED-2)** |
+| 10 | **Per-tenant cipher key compromise** | Operator-detected | **Per-tenant rotation (compliance §5.5a) — other tenants unaffected** |
+| 11 | **RLS bypass attempt** | FORCE RLS enabled | INSERT/UPDATE/DELETE raise; `verify_multi_tenant.py` pre-onboarding smoke |
+| 12 | **Integrity tag mismatch** | `_verify_integrity_payload` | `IntegrityViolation` — daemon does not continue with tampered row |
 
-**Explicit non-handling:** distributed multi-process scheduler (POC scope) · partial-round atomicity inside a single agent call (matches `AdversarialWorkflow` posture) · replay determinism (forward-only) · cost across runs (per-run only).
-
----
-
-# Encryption — Opt-In Decorator (D-DURABLE-4)
-
-Library ships **zero cipher**. Production callers compose:
-
-```python
-store = EncryptedCheckpointStore(
-    inner=FileCheckpointStore(base_dir),
-    cipher=MyFernetCipher(key=os.environ["KMS_KEY"]),
-)
-durable = DurableWorkflow(inner=trial_workflow, checkpoint_store=store, ...)
-```
-
-```python
-class Cipher(Protocol):
-    def encrypt(self, plaintext: bytes) -> bytes: ...
-    def decrypt(self, ciphertext: bytes) -> bytes: ...
-```
-
-**Properties:**
-- `ENC:v1:` sentinel prefix → encrypted payloads distinguishable from legacy plaintext at read time
-- Legacy plaintext read emits a warning (one-time migration path; never silent)
-- Library has no `cryptography` / `Fernet` dependency — composition keeps the dependency surface clean
-- Production wraps Fernet · AWS KMS · GCP KMS · Vault Transit — caller's choice, caller's key rotation
-
-**Healthcare deploys MUST wrap.** PHI in `last_request_json` at rest violates HIPAA without encryption + key management. Surfaced in `SECURITY_MODEL.md`.
+**Explicit non-handling:** distributed scheduler (Tier 3.4) · partial-round atomicity · replay determinism · cost across runs.
 
 ---
 
-# Security Audit — Cycle 7 Findings + Closure
-
-Focused durable-surface sweep (2026-05-16) found 4 HIGH + 6 MEDIUM + 5 LOW. **All 15 closed same-day.**
-
-| Code | Severity | Finding | Closure |
-|---|---|---|---|
-| H-DUR-1 | HIGH | `_PauseSignal` swallows convergence/veto gates after mid-round pause | `_mid_round_pause` marker in `pause_context` blocks veto re-check on resume |
-| H-DUR-2 | HIGH | Reconciliation hook output bypasses `_MAX_FIELD_CHARS` + sanitization | `_validate_request_shape()` post-hook: type + 1500-char cap + control-char regex |
-| H-DUR-3 | HIGH | `FileCheckpointStore` accepts any `base_dir`; no workspace confinement | `workspace_dir` parameter + warning when `base_dir` escapes workspace |
-| H-DUR-4 | HIGH | `Checkpoint.last_request_json` stores raw request at rest | `EncryptedCheckpointStore` decorator + `Cipher` Protocol (D-DURABLE-4) |
-| M-DUR-1 | MED | `BudgetTracker.record` TOCTOU race | `asyncio.Lock` around `record()` + `_record_count` integrity helper |
-| M-DUR-2 | MED | `FileRunLock` stale-eviction race | Holder's TTL persisted to file content; reclaim via mtime + persisted TTL |
-| M-DUR-3 | MED | `ttl_seconds=0` / negative / huge accepted | `_MIN_TTL=1`, `_MAX_TTL=86400` enforced at acquire |
-| M-DUR-4 | MED | `_serialize_request` `default=str` lossy + injection-prone | Strict serializer; `TypeError` on non-JSON-native types |
-| M-DUR-5 | MED | Checkpoint field types unvalidated; model swap re-check missing | `__post_init__` type validation + `_KNOWN_MODELS` allowlist post-swap recheck |
-| M-DUR-6 | MED | `MemoryCheckpointStore.list_paused` Protocol-fidelity gap | Deep-copy via JSON round-trip; matches File semantics |
-| L-DUR-1..5 | LOW | Run_id Unicode · token field shape · directory fsync · scheduler per-token isolation · double-billing on budget-exceeded resume | Strict ASCII regex · `deserialize_token` shape validation · POSIX dir-fsync · `SchedulerDaemon` quarantine after `max_retries=3` · budget reconcile on resume |
-
-> 7 audit cycles · 0 / 0 / 0 / 0 posture across all 36 workflows + durable subpackage.
-
----
-
-# Test Strategy
-
-**Layer 1 — Protocol contract (~15 tests, `tests/unit/durable/test_*.py`)**
-
-Parametrized fixture runs same suite against `FileCheckpointStore` AND `MemoryCheckpointStore`. Same for `RunLock`. Forces abstraction to hold.
-
-**Layer 2 — `DurableWorkflow` unit (~18 tests, `tests/unit/durable/test_workflow.py`)**
-
-`FakeExecutor` / `FakeReviewer` + `MemoryCheckpointStore`. Covers every entry point, every failure mode, every cadence.
-
-**Layer 3 — Integration (~7 tests, `tests/integration/test_durable_clinical_trial.py`)**
-
-Real `ClinicalTrialEligibilityWorkflow` wrapped; fakes for executor/reviewer; file-backed store under `tmp_path`. Verifies:
-
-- All 3 pause gates fire correctly
-- L-IND-2 holds under durability (`metadata['first_draft']` on veto)
-- Bias-flag history preserved across rounds + pauses
-- PHI not written to checkpoint in raw form
-- Full lifecycle: start → pause → resume → pause → resume → complete
-
-**Coverage:** 100% on `core/durable/*.py`. Mypy strict. Ruff clean. **657 total tests** across research + parole + retail + pc + industrial + healthcare + durable + shared.
-
----
-
-# Status
+# Status — Components
 
 | Component | Status |
 |---|---|
-| `core/durable/` subpackage (workflow + checkpoint + token + budget + lock + scheduler + hooks + encryption) | ✅ |
-| 3 Protocols (`CheckpointStore`, `RunLock`, `SchedulerBackend`) + Memory + File impls | ✅ |
+| `core/durable/` subpackage | ✅ |
+| 4 Protocols + Memory + File POC impls | ✅ |
 | 4 reference reconciliation hooks | ✅ |
-| `EncryptedCheckpointStore` decorator + `Cipher` Protocol | ✅ |
-| `ClinicalTrialEligibilityDurableWorkflow` with 3 named pause gates | ✅ |
-| `examples/healthcare/clinical_trial_durable.py` lifecycle demo | ✅ |
-| ~50 durable tests (protocol + unit + integration) | ✅ all passing |
-| **657 total tests** | ✅ |
-| ruff + mypy strict clean | ✅ |
-| D-DURABLE-1..4 decision rows in `decisions.md` | ✅ |
-| Design doc + 14-task implementation plan | ✅ |
-| Security audit (cycle 7) — 4H + 6M + 5L all closed same-day | ✅ |
-
-| Integration | Status |
-|---|---|
-| `PostgresCheckpointStore` / `PostgresAdvisoryLock` | ❌ Phase 2 |
-| `RedisRunLock` / Redlock multi-node | ❌ |
-| Production scheduler (Celery / Temporal / EventBridge / pg-boss) | ❌ |
-| Schema migration tooling | ❌ — `schema_version` reserved, first bump triggers build |
-| `MetricsBackend` Protocol (OTel / Prometheus / Datadog) | ❌ — named seam |
-| At-rest encryption integration with KMS / Vault | ❌ — caller composes Cipher |
-| PyPI publish | ❌ Pending credentials |
-
----
-
-# What's NOT in This POC
-
-*Section 7 of design doc — explicit non-goals, every one documented in SECURITY_MODEL.md Known Gaps*
-
-- **Distributed scheduler (multi-process / multi-node)** — single-process POC validates the abstraction; distributed is an impl swap once `RunLock = PostgresAdvisoryLock`
-- **Postgres / Redis / S3 store impls** — Protocol contract test suite is the spec they must satisfy
-- **Schema migration tooling** — `schema_version` field reserved; tool is a separate ship triggered by the first incompatible bump
-- **`MetricsBackend`** — structured log lines cover POC observability; OTel / Prometheus / Datadog is a named future seam
-- **Cross-region replication** — `CheckpointStore` impl's concern; library is indifferent
-- **Replay determinism** — agent calls are non-deterministic by design; resume is forward-only. Explicit posture, not a gap.
-- **Partial-round atomicity inside a single agent call** — mid-stream executor failure loses that draft; matches existing `AdversarialWorkflow` posture
-- **Cost-tracking across runs** — `BudgetTracker` per-run only; org-wide caps belong in caller's billing layer
-- **Live API integration tests** — existing repo convention; no live model calls in CI
-- **Built-in cipher** — library ships zero cipher (D-DURABLE-4); production callers wrap Fernet / KMS / Vault
-
-> **Teaching posture is intentional.** The POC is a reference implementation of agent-native durable execution. Production deployment requires Postgres-backed storage + advisory locks + caller-owned encryption + a scheduler that survives process restarts.
+| `EncryptedCheckpointStore` + `cipher_for_tenant` + `UnknownTenantError` | ✅ |
+| `BudgetTracker` + `BudgetCaps` + per-tenant resolver | ✅ |
+| `workflow_version_hash` + `integrity_tag` AEAD | ✅ |
+| `tenant_id` first-class + RLS + FORCE RLS + tenant metric label | ✅ |
+| `ClinicalTrialEligibilityDurableWorkflow` + 3 pause gates | ✅ |
+| **`durable_postgres/`** — compose + RLS + scheduler + quarantine | ✅ |
+| **`durable_postgres_k8s/`** — kustomize + RBAC + network policies | ✅ |
+| **`durable_postgres_otel/`** — 8 alerts (4 fleet + 4 tenant) | ✅ |
+| **`cipher_gcp_kms/`** — envelope encryption + DEK cache | ✅ |
+| **`cipher_aws_kms/`** — IMDSv2 + IRSA refusal | ✅ |
+| **`scripts/verify_multi_tenant.py`** — operator smoke gate | ✅ |
+| `examples/production/_shared/tenant_env.py` — M-PC-1 hoist | ✅ |
+| 768 library + 185 sibling tests · ruff + mypy strict clean | ✅ |
+| D-DURABLE-1..4 + D-TENANT-* full chain in `decisions.md` | ✅ |
+| Runbooks + executive brief | ✅ |
+| 7 durable audits + Tier 2.1d 4-axis audit · all 0/0/0/0 | ✅ |
+| PyPI publish | ❌ Pending |
+| Tier 3.4 tenant-shard scheduling · Tier 3.5 backup automation | ❌ Backlog |
 
 ---
 
-# Architecture Properties
+# What's NOT in Scope
 
-*Same infrastructure, new capability — composition over inheritance pays off again*
+- **Distributed scheduler >100k paused-run scale** — Tier 3.4 backlog; swap behind same Protocol.
+- **Tenant-aware backup automation** — Tier 3.5; manual §8a procedure documented.
+- **Replay determinism** — agent calls non-deterministic; forward-only resume is posture.
+- **Cross-region replication** — `CheckpointStore` impl's concern.
+- **Partial-round atomicity inside a single agent call** — matches existing `AdversarialWorkflow` posture.
+- **Cost-tracking across runs** — `BudgetTracker` per-run + per-tenant; org-wide caps belong in caller's billing.
+- **Live API integration tests in CI** — `smoke_test.py` exercises live manually.
+- **Built-in cipher** — library ships zero cipher and zero `cryptography` / `boto3` / `google-cloud-kms` dep.
+- **Multi-tenant via per-process-per-tenant daemon** — rejected; resolver pattern is the explicit posture.
 
-**`DurableWorkflow` is a wrapper, not a fork.** Every healthcare / retail / PC / industrial workflow runs unchanged inside it. No existing workflow source file was modified to enable durability.
+> Production deployment requires Postgres + advisory locks + caller-owned encryption + a scheduler that survives process restarts + operator-action checklist (runbook §5.6) before onboarding tenant #2.
 
-**Protocols force the abstraction at compile time.** Type-checking `mypy --strict` requires File and Memory impls to satisfy the same Protocol — contract tests verify behavioral equivalence at runtime.
+---
 
-**The library never owns caller secrets, caller storage, or caller scheduling.** `EncryptedCheckpointStore` takes a caller-supplied `Cipher`. `PostgresCheckpointStore` would take a caller-supplied connection pool. `SchedulerDaemon` takes a caller-supplied `workflow_factory` so it doesn't import every domain.
+# Architecture Properties — Reinforced
 
-**Sanitization happens upstream of persistence (D-DURABLE-1).** `*Request.to_prompt_text()` applies `sanitize_for_prompt` + `_MAX_FIELD_CHARS=1500` cap; `last_request_json` in the checkpoint is downstream. A pause + resume cycle cannot reintroduce raw caller input.
+**Composition over inheritance.** Domain workflows do not know they are durable or multi-tenant.
 
-**Trust boundary is named, not silent (D-DURABLE-2).** Hook output is caller-trusted; the documentation says so; `_validate_request_shape()` enforces it at the boundary.
+**Resolver over context.** Per-tenant cipher and per-tenant budget derive from `cp.tenant_id` / `token.tenant_id` — the row's own field — not from out-of-band ContextVar / thread-local / async-local. The async-race surface closed by 2.1b ContextVar removal stays closed.
 
-**Carried-over invariants verified under durability:** L-IND-2 first-draft-on-veto · M-PC-1 line-anchored veto parser · H-IND-1 hyphen-aware sibling-stop · L-PC-3 1500-char cap · L-PC-5 truncate-flag-display · D-HEALTH-2 score 8.0 · D-HEALTH-3 PHI caller responsibility · D-HEALTH-4 regulatory citation language.
+**Sanitization upstream of persistence, then again at the resume trust boundary.** `to_prompt_text()` upstream cap + `_validate_request_shape` on reconciliation hook output.
+
+**Defense in depth, declared explicitly.** RLS + FORCE RLS · per-tenant DEK · `integrity_tag` AEAD · charset + reserved-namespace reject · immediate-quarantine on `UnknownTenantError`. Each layer has a Tier 2.1d audit finding closed against it.
+
+**Convention-level error compounding caught and fixed.** Three sibling daemons holding verbatim `_parse_json_map` copies hit the M-PC-1 / H-IND-1 shape. Tier 2.1d C3a hoisted to `_shared/tenant_env.py` before a 4th sibling.
+
+**Carried-over invariants verified under durability + multi-tenancy:** L-IND-2 first-draft-on-veto · M-PC-1 line-anchored veto parser · H-IND-1 hyphen-aware sibling-stop · L-PC-3 1500-char cap · L-PC-5 truncate-flag-display · D-HEALTH-2 score 8.0 · D-HEALTH-3 PHI caller responsibility · D-HEALTH-4 regulatory citation language.
 
 ---
 
@@ -392,17 +313,14 @@ Real `ClinicalTrialEligibilityWorkflow` wrapped; fakes for executor/reviewer; fi
 
 | # | Action | Owner |
 |---|---|---|
-| 1 | `PostgresCheckpointStore` + `PostgresAdvisoryLock` impls — production storage path | Engineering |
-| 2 | `RedisRunLock` (Redlock) for multi-region deployments | Engineering |
-| 3 | Schema migration tooling — triggered on first incompatible `schema_version` bump | Engineering |
-| 4 | `MetricsBackend` Protocol (OTel / Prometheus / Datadog) | Engineering |
-| 5 | Production scheduler integration (Celery / Temporal / EventBridge / pg-boss) | Engineering |
-| 6 | Reference `KmsCipher` / `VaultTransitCipher` examples (separate package; library stays cipher-free) | Engineering + Security |
-| 7 | Phase-2 healthcare workflow promotions wrapped via `DurableWorkflow` — `PHIBreachScopeWorkflow` (60-day HIPAA clock is a natural fit) | Engineering + Compliance |
-| 8 | Apply durable wrapper to industrial Phase-2 `PartsDemandForecastWorkflow` — rolling demand-signal pause | Engineering |
-| 9 | Cross-domain pattern: financial appeal workflows · legal discovery workflows · HR investigation workflows | Engineering |
-| 10 | PyPI publish (pending credentials) | Engineering |
-| 11 | 90-day shadow pilot — durable + healthcare combo against real IRB workflow | Clinical Informatics + IRB |
+| 1 | **Tier 3.4** — tenant-shard scheduling for >100k paused-run scale | Engineering |
+| 2 | **Tier 3.5** — `backup_tenant.py` + `restore_tenant.py` automating §8a | Engineering |
+| 3 | Phase-2 healthcare promotions wrapped durable + multi-tenant (`PHIBreachScopeWorkflow` 60-day HIPAA clock) | Engineering + Compliance |
+| 4 | Phase-2 industrial — `PartsDemandForecastWorkflow` rolling-demand pause × multi-tenant | Engineering |
+| 5 | Cross-domain patterns: financial appeals · legal discovery · HR investigation | Engineering |
+| 6 | PyPI publish (pending credentials) | Engineering |
+| 7 | 90-day shadow pilot — durable + healthcare + multi-tenant against IRB workflow × multiple sponsors | Clinical Informatics + IRB |
+| 8 | Tier 2.1d LOW-1 — helper boilerplate hoist around resolver construction in caller daemons | Engineering |
 
 ---
 
@@ -410,13 +328,15 @@ Real `ClinicalTrialEligibilityWorkflow` wrapped; fakes for executor/reviewer; fi
 
 # Who It Is For
 
-*Engineering teams · Operations teams · Researchers*
+*Engineering · Operations · Researchers · Compliance*
 
-**Engineering teams** building agent workflows that pause for human approvers, regulatory clocks, or rolling data. The composition pattern means an existing `AdversarialWorkflow` becomes durable by being passed to a `DurableWorkflow` constructor — no rewrite, no inheritance hierarchy, no framework lock-in. Three Protocols (`CheckpointStore`, `RunLock`, `SchedulerBackend`) ship with file-backed POC impls and contract-test specs so production storage swaps are a known shape, not a discovery.
+**Engineering teams** building agent workflows that pause for human approvers / regulatory clocks / rolling data and serve multiple tenants from one daemon. `DurableWorkflow(inner=...)` + `start(request, tenant_id="X")` — no rewrite, no inheritance, no framework lock-in.
 
-**Operations teams** running adversarial multi-agent loops in production where decisions stretch days-to-weeks. The named pause gates (`rolling_data`, `approver_sla`, `regulatory_clock`) plus structured per-terminal-state log lines plus `BudgetTracker` snapshots provide the observability surface SRE / DevOps needs without coupling to a particular metrics backend. Encryption is opt-in via decorator — callers wrap their own KMS / Vault / Fernet.
+**Operations teams** running adversarial multi-agent loops in production. Named pause gates · per-tenant Prometheus alerts · per-tenant Grafana breakdowns · `verify_multi_tenant.py` pre-onboarding smoke · per-tenant key rotation without coordinating fleet downtime · structured per-terminal-state logs through `redacted_log_record`.
 
-**Researchers** studying long-horizon agent loops where context drift, model retirement, and reconciliation against external state matter. The `ReconciliationHook` Protocol is the named seam for studying how callers handle "the world moved during the pause" — a question generic durable-execution frameworks treat as out of scope. The Memory + File parametrized contract tests + the cycle-7 audit closure pattern are reproducible artifacts of how to validate a durable abstraction without paying for Postgres at design time.
+**Researchers** studying long-horizon agent loops where context drift, model retirement, and reconciliation against external state matter. `ReconciliationHook` + 4 reference impls + contract tests + audit-closure pattern + workflow-version pinning are reproducible artifacts of how to validate the abstraction.
+
+**Compliance teams** mapping to 21 CFR Part 11 / HITRUST KSP.02.05 / HIPAA breach notification / GDPR Article 15+17. `integrity_tag` covers `tenant_id` · per-tenant compromise procedure (§5.5a) scopes to one tenant · per-tenant export (§8a) supports access + erasure with crypto-shred. Audit trail compounds across 8 cycles + Tier 2.1d 4-axis.
 
 ---
 
@@ -426,17 +346,18 @@ Real `ClinicalTrialEligibilityWorkflow` wrapped; fakes for executor/reviewer; fi
 
 &nbsp;
 
-*POC shipped:* `core/durable/` subpackage · 3 Protocols · 4 reconciliation hooks · `EncryptedCheckpointStore`
-*ClinicalTrialEligibilityDurableWorkflow · 3 named pause gates · ~50 new tests · 657 total*
+*POC + 5 production siblings shipped:* `core/durable/` · 4 Protocols · 4 reconciliation hooks · `EncryptedCheckpointStore` · `BudgetCaps` · `cipher_for_tenant` + `caps_for_tenant` resolvers · `durable_postgres` · `durable_postgres_k8s` · `durable_postgres_otel` · `cipher_gcp_kms` · `cipher_aws_kms`
 
 &nbsp;
 
-*D-DURABLE-1..4 locked. Cycle 7 audit: 4H + 6M + 5L all closed same-day. 0/0/0/0 posture across 36 workflows + durable subpackage.*
+*D-DURABLE-1..4 + D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2 + D-TENANT-2.1c-sibling-1/2 + D-TENANT-2.1d locked.*
+*7 durable-subpackage audit cycles + Tier 2.1d 4-axis audit: 0/0/0/0 across 36 workflows + durable + 5 siblings.*
+*768 library + 185 sibling tests · mypy strict · ruff clean*
 
 &nbsp;
 
-*Composition over inheritance · Pluggable storage/locks/scheduler · Sanitization upstream of persistence · Trust boundary named, not silent*
-*Teaching / research — not for production deployment without Postgres + KMS + production scheduler*
+*Composition over inheritance · Resolver over context · Sanitization upstream of persistence · Trust boundary named, not silent · Defense in depth declared explicitly · Convention-level error compounding caught and fixed*
+*Teaching / research-grade — production deployment requires Postgres + KMS + scheduler + runbook §5.6 operator-action checklist*
 
 &nbsp;
 
@@ -444,4 +365,4 @@ Real `ClinicalTrialEligibilityWorkflow` wrapped; fakes for executor/reviewer; fi
 
 *Yang, R., Li, Y., & Li, S. (2026). ARIS: Autonomous Research via Adversarial Multi-Agent Collaboration. arXiv:2605.03042. Shanghai Jiao Tong University · Shanghai Innovation Institute.*
 
-*Design doc: `docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md` · Plan: `docs/superpowers/plans/2026-05-16-durable-agent-poc.md` · Audit: `docs/security-audits/2026-05-16-durable-poc-sweep.md`.*
+*Design docs: `docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md` · `2026-05-18-tier-2-1-multi-tenant-design.md` · Runbooks: `docs/runbooks/` · Executive brief: `docs/slides/durable-executive-brief.md` · Audits: `docs/security-audits/`.*
