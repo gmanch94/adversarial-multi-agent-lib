@@ -115,6 +115,16 @@ CREATE INDEX IF NOT EXISTS idx_quarantine_tenant_active
 ALTER TABLE checkpoints ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quarantine  ENABLE ROW LEVEL SECURITY;
 
+-- D-TENANT-FORCE-RLS (Tier 2.1d audit HIGH-1): FORCE RLS so the table owner
+-- is also subject to WITH CHECK. Without FORCE, the role that owns the
+-- table (typically the role running this schema.sql) bypasses every RLS
+-- policy — cross-tenant writes succeed silently. PRECONDITION: deploy with
+-- a non-owner daemon role. If daemon = owner, FORCE is decorative but no
+-- worse than non-FORCE. Fresh deploys get this baked in; existing 2.1a/b/c
+-- deploys apply via migration script 0007_force_tenant_rls.sql.
+ALTER TABLE checkpoints FORCE ROW LEVEL SECURITY;
+ALTER TABLE quarantine  FORCE ROW LEVEL SECURITY;
+
 CREATE POLICY tenant_select_all_checkpoints ON checkpoints
     FOR SELECT TO PUBLIC USING (true);
 CREATE POLICY tenant_insert_scoped_checkpoints ON checkpoints
