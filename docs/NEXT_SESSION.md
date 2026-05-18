@@ -1,8 +1,51 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-17 EVE (8-hour autonomous session — three Tier-1 lanes shipped)
+Last updated: 2026-05-18 (Tier 1.1 SHIPPED — 3-slice OTel arc closed)
 
 **Standing autonomy (2026-05-17):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
+
+## 2026-05-18 — Tier 1.1 SHIPPED (3-slice OTel arc)
+
+Tier 1.1 (OpenTelemetry deployment) closed via a 3-slice arc. Closes the 2026-05-17 EVE PARTIAL marker. **Library test count: 710 (unchanged across all 3 slices). OTel sibling tests: 8 → 10 (+2 PHI grep gate).**
+
+### Slice A — library extension (commit `52388a4`)
+- `MetricsBackend.span(name, tags)` async ctx mgr + `_NoopSpan` zero-overhead default
+- 4 wire points: per-round loop in `start()` + `resume()`, lock-acquire histogram + failed counter, lock-pool saturation gauge, cipher decrypt-failure counter (allowlisted tags)
+- `RecordingMetricsBackend` test helper + cardinality fixture test (D-OTEL-4 enforcement)
+- 698 → 710 tests. Library stays OTel-dep-free.
+
+### Slice B — sibling shell + cycle-11a audit (commits `4f97968`..`9b8a669`)
+- New sibling `examples/production/durable_postgres_otel/`: `OtelMetricsBackend`, `PIIRedactionSpanProcessor`, docker-compose stack (otel-collector + jaeger + prometheus + grafana), daemon wrapper
+- Hardening parity with durable_postgres: cap_drop ALL + no-new-privileges + ulimits.core 0
+- 8 unit tests + 1 smoke test (in-memory OTel exporters; no live network)
+- Cycle-11a (inline): 0 CRIT / 0 HIGH / 3 MED (placeholder digests, grafana default admin, plaintext OTLP — all operator-owned) / 2 LOW
+- Report: `docs/security-audits/2026-05-18-otel-slice-b-sweep.md`
+
+### Slice C — operational dressing + closing audit (this session)
+- Grafana dashboard JSON (8 panels covering all 8 wired metrics) + provisioning yaml (dashboards + Prometheus datasource)
+- Prometheus alert rules (`alerts.yml`) — 4 alerts: `DurableHighRoundLatency`, `DurableCipherDecryptFailureSpike` (critical), `DurablePauseResumeImbalance`, `DurableLockPoolNearSaturation`
+- Collector tuning: memory_limiter raised to 512/128 MiB, resource processor tagging exported signals with `deployment.environment` (DEPLOYMENT_ENV)
+- New runbook `docs/runbooks/otel-operations.md`: 5-row provisioning checklist + per-alert triage trees + container digest update procedure (closes M-OTEL-SB-1 documentation gap)
+- `docs/runbooks/durable-operations.md` §9 flipped REFERENCE-IMPL-PENDING → OPERATIONAL
+- `docs/decisions.md`: D-OTEL-1..5 rows appended
+- `docs/SECURITY_MODEL.md`: §4a observability section (trust boundary, PII posture, residual risks, operator-owned controls)
+- `examples/production/durable_postgres_otel/tests/test_phi_grep_gate.py`: 2 tests; synthetic PHI-leaking workflow runs through redactor; greps exported span JSON for 6 forbidden markers (Fernet token prefix, postgres DSN, password= KV, 3 synthetic PHI patterns); asserts zero hits
+- Cycle-11b (inline; subagent dispatcher unavailable in session — deviation logged in report): 0 CRIT / 0 HIGH / 0 MED / 1 LOW (L-OTEL-SC-1: Grafana label-bound assertion, backlogged to Tier 1.5). Cumulative OTel surface (A+B+C): 0 CRIT / 0 HIGH / 3 MED carried (all operator-owned) / 3 LOW. Report: `docs/security-audits/2026-05-18-otel-slice-c-sweep.md`.
+
+### Posture at close
+- Library `pyproject.toml` UNCHANGED across all 3 slices ✓
+- `python -m pytest -q`: 710 passed ✓
+- `python -m ruff check .`: all checks passed ✓
+- `python -m mypy src`: success, 80 source files ✓
+- `python scripts/check_no_secrets.py`: OK ✓
+
+### Next-recommended lanes
+- **Tier 1.2 — k8s manifests** (k8s-OTel pattern proven by Slice B/C compose stack; lift-and-shift to Deployments/Services + AlertManager Operator)
+- **Tier 1.4 — Schema migration tooling** (`Checkpoint.schema_version` bump path)
+- **Tier 1.9 — Full-Checkpoint AEAD** (A10-H2 follow-up: `workflow_version_hash` + `rounds_history` outside current AEAD scope)
+- **Tier 1.5 — Backup/restore for Prometheus + Grafana state** (gap documented in `otel-operations.md` §5)
 
 ---
 
