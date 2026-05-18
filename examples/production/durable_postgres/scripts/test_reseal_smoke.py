@@ -44,6 +44,7 @@ class FakeCipher:
 def _make_cp(run_id: str = "run-smoke-001", wvh: str = "0123456789abcdef") -> Checkpoint:
     return Checkpoint(
         run_id=run_id,
+        tenant_id="_default",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=2,

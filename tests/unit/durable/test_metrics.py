@@ -154,7 +154,7 @@ async def test_start_emits_workflow_start_counter(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     start_events = [c for c in rb.calls if c[1] == "durable.workflow.start"]
     assert len(start_events) == 1
     assert start_events[0][3] == {"workflow": "_ConvergingWorkflow"}
@@ -182,7 +182,7 @@ async def test_lock_acquire_failure_emits_counter(cfg):
         run_lock=_BrokenLock(),
         metrics=rb,
     )
-    outcome = await dw.start(request={})
+    outcome = await dw.start(request={}, tenant_id="t-test")
     assert outcome.status == "failed"
     fail_events = [c for c in rb.calls if c[1] == "durable.lock.acquire_failed"]
     assert len(fail_events) == 1
@@ -199,7 +199,7 @@ async def test_pause_emits_pause_counter_with_reason_tag(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     pause_events = [c for c in rb.calls if c[1] == "durable.workflow.pause"]
     assert len(pause_events) == 1
     assert pause_events[0][3]["workflow"] == "_PausingWorkflow"
@@ -247,7 +247,7 @@ async def test_round_latency_histogram_emitted_on_success(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     hist = [c for c in rb.calls if c[1] == "durable.round.latency_seconds"]
     assert len(hist) >= 1
     # Non-negative latency; tagged by workflow class
@@ -266,7 +266,7 @@ async def test_round_latency_not_emitted_on_pause(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     hist = [c for c in rb.calls if c[1] == "durable.round.latency_seconds"]
     assert hist == [], f"expected no histogram on pause path, got {hist}"
 
@@ -281,7 +281,7 @@ async def test_lock_acquire_latency_histogram_emitted_on_success(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     hist = [c for c in rb.calls if c[1] == "durable.lock.acquire_latency_seconds"]
     assert len(hist) == 1
     assert hist[0][2] >= 0.0
@@ -310,7 +310,7 @@ async def test_lock_acquire_latency_not_emitted_on_failure(cfg):
         run_lock=_BrokenLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     hist = [c for c in rb.calls if c[1] == "durable.lock.acquire_latency_seconds"]
     assert hist == []
 
@@ -329,7 +329,7 @@ async def test_budget_gauges_emitted_per_round(cfg):
         budget_tracker=budget,
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     names = {c[1] for c in rb.calls if c[0] == "gauge"}
     assert "durable.budget.tokens_in" in names
     assert "durable.budget.tokens_out" in names
@@ -346,6 +346,6 @@ async def test_budget_gauges_not_emitted_without_budget_tracker(cfg):
         run_lock=MemoryRunLock(),
         metrics=rb,  # no budget_tracker
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     names = {c[1] for c in rb.calls if c[0] == "gauge"}
     assert not any(n.startswith("durable.budget.") for n in names)

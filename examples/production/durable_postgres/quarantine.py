@@ -85,14 +85,15 @@ class QuarantineSync:
     async def _snapshot_and_insert(self) -> None:
         """Diff in-memory quarantine set against `_seen`, INSERT new rows.
 
-        D-TENANT-4 (Tier 2.1a): each insert is scoped to the run's tenant via
-        SET LOCAL inside a per-row transaction. tenant_id is read from the
-        daemon's `_tenants_for_runs` cache (populated at run start or by the
-        `list_paused_with_tenants` round-trip).
+        D-TENANT-4 (Tier 2.1b): each insert is scoped to the run's tenant via
+        SET LOCAL inside a per-row transaction. tenant_id is looked up
+        per-run via direct SELECT on `checkpoints` (the canonical source).
+        Quarantines are typically rare (bounded by max_retries × poll_rate)
+        so the per-new-quarantine round-trip is acceptable.
 
-        Run_ids without a known tenant_id in the cache are logged + skipped —
-        better to leak quarantine visibility for one poll cycle than to
-        guess the tenant and violate RLS WITH CHECK.
+        Run_ids without a checkpoint row (deleted between quarantine + sync)
+        are logged + skipped — RLS WITH CHECK would reject without tenant
+        anyway, and the run cannot be operator-recovered.
         """
         current = set(getattr(self._daemon, "_quarantine", set()))
         new = current - self._seen
@@ -100,21 +101,23 @@ class QuarantineSync:
             self._seen = current  # prune entries removed by requeue
             return
         failures: dict[str, int] = getattr(self._daemon, "_failures", {})
-        tenants: dict[str, str] = getattr(self._daemon, "_tenants_for_runs", {})
         inserted: set[str] = set()
         async with self._pool.acquire() as conn:
             for run_id in new:
-                tenant_id = tenants.get(run_id)
-                if tenant_id is None:
-                    # D-TENANT-4: no tenant context means RLS WITH CHECK
-                    # would reject. Log + skip — but do NOT add to _seen so
-                    # the next poll retries after the cache repopulates.
+                # D-TENANT-1 (Tier 2.1b): lookup tenant_id from canonical column.
+                # SELECT is RLS-unscoped so no SET LOCAL needed here.
+                tenant_row = await conn.fetchrow(
+                    "SELECT tenant_id FROM checkpoints WHERE run_id = $1",
+                    run_id,
+                )
+                if tenant_row is None:
                     logger.warning(
-                        "quarantine sync: run_id=%s has no tenant_id in cache; "
-                        "skipping insert until daemon cache is repopulated",
+                        "quarantine sync: run_id=%s has no checkpoint row; "
+                        "skipping insert (run may have been deleted)",
                         run_id,
                     )
                     continue
+                tenant_id: str = tenant_row["tenant_id"]
                 fc = failures.get(run_id, 0)
                 # Cap at the CHECK constraint upper bound to avoid INSERT failure
                 # on a runaway counter (defense in depth).
@@ -132,8 +135,8 @@ class QuarantineSync:
                     )
                 inserted.add(run_id)
         # D-TENANT-4 retry-correctness: only INSERTed run_ids advance the cache.
-        # Skipped (no-tenant) run_ids stay outside _seen so next poll retries.
-        # Removed (requeued) run_ids drop out via (self._seen | inserted) - (self._seen - current).
+        # Skipped (no-checkpoint) run_ids stay outside _seen so next poll retries.
+        # Removed (requeued) run_ids drop out via (self._seen | inserted) & current.
         self._seen = (self._seen | inserted) & current
 
     async def _process_requeues(self) -> None:

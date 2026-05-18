@@ -71,6 +71,7 @@ pytestmark = [pytest.mark.asyncio, needs_postgres]
 def _cp(run_id: str = "kms-smk-001", status: str = "paused") -> Checkpoint:
     return Checkpoint(
         run_id=run_id,
+        tenant_id="_default",
         schema_version=1,
         status=status,
         round=1,

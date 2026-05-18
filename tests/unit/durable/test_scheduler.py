@@ -24,6 +24,7 @@ from .fakes import ToyPausingWorkflow, make_test_config
 def make_paused_checkpoint(run_id: str, wake_at: datetime) -> Checkpoint:
     return Checkpoint(
         run_id=run_id,
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

@@ -36,6 +36,7 @@ class XORCipher:
 def make_checkpoint(last_request_json: str = '{"member_id": "PAT-001", "phi": "sensitive"}') -> Checkpoint:
     return Checkpoint(
         run_id="run-h4-001",
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

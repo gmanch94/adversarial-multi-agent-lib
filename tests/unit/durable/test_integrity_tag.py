@@ -50,6 +50,7 @@ class BrokenCipher:
 def make_checkpoint(run_id: str = "run-int-001", **overrides: Any) -> Checkpoint:
     kwargs: dict[str, Any] = dict(
         run_id=run_id,
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

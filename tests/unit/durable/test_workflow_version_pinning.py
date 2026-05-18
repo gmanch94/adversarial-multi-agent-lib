@@ -149,7 +149,7 @@ def test_hash_caches_within_instance(cfg):
 async def test_start_persists_hash_in_checkpoint(cfg):
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=_WorkflowWithProtocolA(config=cfg), config=cfg, checkpoint_store=store)
-    outcome = await dw.start(request={})
+    outcome = await dw.start(request={}, tenant_id="t-test")
     cp = await store.read(outcome.token.run_id)
     expected = _expected_hash(_WorkflowWithProtocolA, b"prompt-A")
     assert cp.workflow_version_hash == expected
@@ -159,7 +159,7 @@ async def test_start_persists_hash_in_checkpoint(cfg):
 async def test_start_persists_hash_in_token(cfg):
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=_WorkflowWithProtocolA(config=cfg), config=cfg, checkpoint_store=store)
-    outcome = await dw.start(request={})
+    outcome = await dw.start(request={}, tenant_id="t-test")
     assert outcome.token.workflow_version_hash is not None
     assert len(outcome.token.workflow_version_hash) == 16
 
@@ -175,6 +175,7 @@ def _make_paused_checkpoint(run_id: str, workflow_version_hash: str | None) -> C
     now = "2026-05-17T00:00:00+00:00"
     return Checkpoint(
         run_id=run_id,
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,
@@ -423,6 +424,7 @@ def test_checkpoint_json_round_trip_with_hash():
     now = "2026-05-17T00:00:00+00:00"
     cp = Checkpoint(
         run_id="run-cp-rt-01",
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=0,
@@ -504,6 +506,7 @@ def test_checkpoint_json_round_trip_without_hash():
     now = "2026-05-17T00:00:00+00:00"
     pre16_json = json.dumps({
         "run_id": "run-cp-pre16-01",
+        "tenant_id": "_default",  # D-TENANT-1 (Tier 2.1b): required field added 2026-05-18
         "schema_version": CURRENT_SCHEMA_VERSION,
         "status": "paused",
         "round": 0,

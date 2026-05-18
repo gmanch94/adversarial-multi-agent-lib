@@ -55,7 +55,7 @@ async def test_emitted_metric_tag_keys_match_fixture() -> None:
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    outcome = await dw.start(request={})
+    outcome = await dw.start(request={}, tenant_id="t-test")
     assert outcome.status == "paused"
     await dw.resume(outcome.token)
 

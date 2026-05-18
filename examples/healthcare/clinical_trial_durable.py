@@ -66,7 +66,7 @@ async def main() -> None:
     )
 
     print("=== Round 1: start (expect pause on rolling_data  labs pending) ===")
-    outcome = await dw.start(_build_request("labs pending  CBC + CMP not yet drawn."))
+    outcome = await dw.start(_build_request("labs pending  CBC + CMP not yet drawn."), tenant_id="_default")
     print(f"status={outcome.status}, pause_reason={outcome.pause_reason}")
     print(f"run_id={outcome.token.run_id}, wake_at={outcome.token.wake_at}")
     if outcome.status != "paused":

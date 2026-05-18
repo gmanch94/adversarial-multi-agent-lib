@@ -47,9 +47,11 @@ _TARGET_FILES = [
 ]
 
 # Methods on PostgresCheckpointStore that are SELECT-only (no SET LOCAL needed).
-# Cross-check against store.py D-TENANT-3 comment.
+# Cross-check against store.py D-TENANT-3 comment. Tier 2.1b: read_with_tenant
+# + list_paused_with_tenants removed — cp.tenant_id and token.tenant_id are
+# fields now, no extension methods needed.
 _SELECT_ONLY_METHODS = {
-    "read", "read_with_tenant", "list_paused", "list_paused_with_tenants",
+    "read", "list_paused",
 }
 
 # DML keywords that REQUIRE a preceding set_config inside the same txn block.

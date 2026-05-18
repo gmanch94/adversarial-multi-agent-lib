@@ -57,7 +57,7 @@ async def test_span_per_round_in_start_path(cfg) -> None:
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     round_spans = [s for s in rb.spans if s[0] == "durable.round"]
     assert len(round_spans) == 1
     name, keys, entered, exited, _exc = round_spans[0]
@@ -75,7 +75,7 @@ async def test_span_records_pause_reason_attribute(cfg) -> None:
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     # Span entered + exited even on pause path
     round_spans = [s for s in rb.spans if s[0] == "durable.round"]
     assert len(round_spans) == 1
@@ -92,7 +92,7 @@ async def test_lock_acquire_metrics_on_resume_success(cfg) -> None:
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    outcome = await dw.start(request={})
+    outcome = await dw.start(request={}, tenant_id="t-test")
     assert outcome.status == "paused"
     rb.histograms.clear()
     rb.counters.clear()
@@ -117,7 +117,7 @@ async def test_lock_acquire_metrics_on_resume_failure(cfg) -> None:
         run_lock=MemoryRunLock(),
         metrics=RecordingMetricsBackend(),
     )
-    outcome = await dw_ok.start(request={})
+    outcome = await dw_ok.start(request={}, tenant_id="t-test")
     assert outcome.status == "paused"
 
     class _BrokenLock:
@@ -154,7 +154,7 @@ async def test_checkpoint_schema_version_gauge_emitted(cfg) -> None:
         run_lock=MemoryRunLock(),
         metrics=rb,
     )
-    await dw.start(request={})
+    await dw.start(request={}, tenant_id="t-test")
     sv = [g for g in rb.gauges if g[0] == "durable.checkpoint.schema_version"]
     assert len(sv) >= 1
     assert sv[0][2] == frozenset({"workflow"})

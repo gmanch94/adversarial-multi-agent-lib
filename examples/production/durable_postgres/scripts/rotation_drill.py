@@ -85,6 +85,7 @@ def _make_cp(run_id: str) -> Checkpoint:
     now = _now_iso()
     return Checkpoint(
         run_id=run_id,
+        tenant_id="_default",
         schema_version=1,
         status="paused",
         round=1,

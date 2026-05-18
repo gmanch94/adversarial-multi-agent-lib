@@ -17,6 +17,7 @@ from adv_multi_agent.core.durable.token import (
 def make_token(**overrides) -> ResumeToken:
     defaults = dict(
         run_id="abc123def456",
+        tenant_id="t-test",
         workflow_class="adv_multi_agent.healthcare.workflows.x.XWorkflow",
         pinned_executor_model="claude-opus-4-7",
         pinned_reviewer_model="gpt-4o",

@@ -14,6 +14,9 @@ from .token import CURRENT_SCHEMA_VERSION, ResumeToken
 # L-DUR-1: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
 _RUN_ID_RE = _re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 _HASH_RE = _re.compile(r"^[0-9a-f]{16}$")
+# D-TENANT-1 / D-TENANT-6 (Tier 2.1b): tenant_id charset mirrors the SQL CHECK
+# constraint. Allows leading `_` for reserved `_default` / `_legacy` tenants.
+_TENANT_ID_RE = _re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
 
 _STATUS_VALUES = {
     "running", "paused", "completed", "vetoed", "budget_exceeded", "failed"
@@ -36,6 +39,7 @@ class SchemaVersionMismatch(ValueError):
 @dataclass
 class Checkpoint:
     run_id: str
+    tenant_id: str                        # D-TENANT-1: required; '_default' for single-tenant deployments
     schema_version: int
     status: str                           # one of _STATUS_VALUES
     round: int                            # 0-indexed; which review round
@@ -61,6 +65,11 @@ class Checkpoint:
         if not isinstance(self.run_id, str) or not self.run_id:
             raise ValueError(
                 f"run_id must be non-empty str, got {type(self.run_id).__name__}"
+            )
+        # D-TENANT-1 / D-TENANT-6 (Tier 2.1b): tenant_id required, charset-validated.
+        if not isinstance(self.tenant_id, str) or not _TENANT_ID_RE.fullmatch(self.tenant_id):
+            raise ValueError(
+                f"tenant_id must match {_TENANT_ID_RE.pattern}, got {self.tenant_id!r}"
             )
         if not isinstance(self.round, int) or isinstance(self.round, bool) or self.round < 0:
             raise ValueError(f"round must be non-negative int, got {self.round!r}")
@@ -92,6 +101,7 @@ class Checkpoint:
     def to_token(self) -> ResumeToken:
         return ResumeToken(
             run_id=self.run_id,
+            tenant_id=self.tenant_id,
             workflow_class="",  # filled by DurableWorkflow caller before returning
             pinned_executor_model=self.pinned_executor_model,
             pinned_reviewer_model=self.pinned_reviewer_model,
@@ -126,6 +136,10 @@ def _checkpoint_from_json(s: str) -> Checkpoint:
     extra = data.keys() - known
     if extra:
         raise CheckpointCorrupt(f"unknown extra field(s): {sorted(extra)}")
+    # D-TENANT-1 (Tier 2.1b): tenant_id required on every Checkpoint. Pre-2.1b
+    # JSON files (FileCheckpointStore legacy) have no tenant_id key — surface
+    # the missing-required-field error explicitly so the operator runs the
+    # backfill rather than silently constructing a half-initialized Checkpoint.
     return Checkpoint(**{k: data[k] for k in data.keys() & known})
 
 

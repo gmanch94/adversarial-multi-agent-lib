@@ -41,6 +41,7 @@ def _cp(
     now = datetime.now(timezone.utc).isoformat()
     return Checkpoint(
         run_id=run_id,
+        tenant_id="_default",
         schema_version=1,
         status="paused",
         round=1,

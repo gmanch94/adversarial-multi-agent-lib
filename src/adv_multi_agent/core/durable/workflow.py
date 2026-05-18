@@ -272,9 +272,16 @@ class DurableWorkflow:
         self._workflow_version_hash_cache = digest
         return digest
 
-    def _new_token(self, run_id: str, wake_at: str | None = None) -> ResumeToken:
+    def _new_token(
+        self,
+        run_id: str,
+        wake_at: str | None = None,
+        *,
+        tenant_id: str = "_default",
+    ) -> ResumeToken:
         return ResumeToken(
             run_id=run_id,
+            tenant_id=tenant_id,
             workflow_class=self._workflow_class_path(),
             pinned_executor_model=self._config.executor_model,
             pinned_reviewer_model=self._reviewer_model_name(),
@@ -284,9 +291,15 @@ class DurableWorkflow:
             workflow_version_hash=self._compute_workflow_version_hash(),
         )
 
-    async def start(self, request: Any) -> RunOutcome:
+    async def start(self, request: Any, *, tenant_id: str) -> RunOutcome:
+        """Start a new durable run.
+
+        D-TENANT-5 (Tier 2.1b): `tenant_id` is REQUIRED keyword-only — no default.
+        Single-tenant deployments pass `tenant_id="_default"`. The library's
+        Checkpoint.tenant_id field carries this through every store interaction.
+        """
         run_id = uuid.uuid4().hex[:16]
-        token = self._new_token(run_id)
+        token = self._new_token(run_id, tenant_id=tenant_id)
         wf_class = type(self._inner).__name__
         self._metrics.counter(
             "durable.workflow.start", tags={"workflow": wf_class}
@@ -311,6 +324,7 @@ class DurableWorkflow:
         try:
             cp = Checkpoint(
                 run_id=run_id,
+                tenant_id=tenant_id,
                 schema_version=CURRENT_SCHEMA_VERSION,
                 status="running",
                 round=0,

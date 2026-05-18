@@ -14,6 +14,8 @@ from typing import Any
 # L-DUR-2: strict ASCII charset for run_id (str.isalnum accepts Unicode digits)
 _RUN_ID_RE_TOKEN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$")
 _HASH_RE = re.compile(r"^[0-9a-f]{16}$")
+# D-TENANT-1 (Tier 2.1b): tenant_id charset mirrors Checkpoint._TENANT_ID_RE.
+_TENANT_ID_RE_TOKEN = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
 
 CURRENT_SCHEMA_VERSION = 1
 """Bumped on any incompatible change to ResumeToken or Checkpoint shape."""
@@ -29,6 +31,7 @@ class ResumeToken:
     created_at: str                # ISO-8601 UTC
     wake_at: str | None            # ISO-8601 UTC; None = explicit-resume only
     workflow_version_hash: str | None = None  # 16-char lowercase hex; None = pre-1.6
+    tenant_id: str = "_default"    # D-TENANT-1 (Tier 2.1b): mirrors Checkpoint.tenant_id; defaults to `_default` for backward-compat with pre-2.1b tokens
 
 
 def serialize_token(token: ResumeToken) -> str:
@@ -49,7 +52,10 @@ def deserialize_token(s: str) -> ResumeToken:
         raise ValueError(f"token must be a JSON object, got {type(data).__name__}")
 
     known = {f.name for f in fields(ResumeToken)}
-    optional = {"wake_at", "workflow_version_hash"}
+    # D-TENANT-1 (Tier 2.1b): tenant_id is optional in deserialize for backward
+    # compat with pre-2.1b tokens (legacy operator-stored JSON). Missing key
+    # → defaults to '_default' via dataclass default.
+    optional = {"wake_at", "workflow_version_hash", "tenant_id"}
     missing = known - optional - data.keys()
     if missing:
         raise ValueError(f"missing required field(s): {sorted(missing)}")
@@ -95,9 +101,18 @@ def deserialize_token(s: str) -> ResumeToken:
             raise ValueError(
                 f"token workflow_version_hash {wvh!r} must be 16 lowercase hex chars"
             )
+    # D-TENANT-1 (Tier 2.1b): validate tenant_id charset if present.
+    tid = data.get("tenant_id")
+    if tid is not None:
+        if not isinstance(tid, str) or not _TENANT_ID_RE_TOKEN.fullmatch(tid):
+            raise ValueError(
+                f"token tenant_id {tid!r} must match "
+                f"^[a-zA-Z0-9_][a-zA-Z0-9_-]{{0,63}}$"
+            )
 
-    # Supply defaults for optional fields absent from pre-1.6 JSON
+    # Supply defaults for optional fields absent from pre-1.6 / pre-2.1b JSON
     kwargs: dict[str, Any] = {k: data[k] for k in data.keys() & known}
     kwargs.setdefault("wake_at", None)
     kwargs.setdefault("workflow_version_hash", None)
+    kwargs.setdefault("tenant_id", "_default")
     return ResumeToken(**kwargs)

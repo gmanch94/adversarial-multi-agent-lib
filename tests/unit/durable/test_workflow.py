@@ -24,7 +24,7 @@ async def test_start_converges_returns_completed_outcome(tmp_path: Path) -> None
         checkpoint_store=store,
         run_lock=lock,
     )
-    outcome = await dw.start(ToyRequest(payload="hello"))
+    outcome = await dw.start(ToyRequest(payload="hello"), tenant_id="t-test")
     assert outcome.status == "completed"
     assert outcome.result is not None
     assert outcome.result.output == "OK: hello"
@@ -49,7 +49,7 @@ async def test_start_persists_initial_checkpoint_with_status_running(tmp_path: P
         await real_write(cp)
 
     store.write = spy  # type: ignore[method-assign]
-    await dw.start(ToyRequest(payload="hi"))
+    await dw.start(ToyRequest(payload="hi"), tenant_id="t-test")
     assert writes[0] == "running"
     assert writes[-1] == "completed"
 
@@ -63,7 +63,7 @@ async def test_start_returned_token_has_workflow_class_set(tmp_path: Path) -> No
         config=config,
         checkpoint_store=MemoryCheckpointStore(),
     )
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     assert outcome.token.workflow_class.endswith("ToyConvergentWorkflow")
 
 
@@ -80,7 +80,7 @@ async def test_start_pauses_returns_pause_token(tmp_path: Path) -> None:
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    outcome = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     assert outcome.status == "paused"
     assert outcome.pause_reason == "toy_pause"
     cp = await store.read(outcome.token.run_id)
@@ -105,7 +105,7 @@ async def test_start_per_round_writes_checkpoint_each_round(tmp_path: Path) -> N
         writes.append((cp.status, cp.round))
         await real_write(cp)
     store.write = spy  # type: ignore[method-assign]
-    await dw.start(ToyPausingRequest(payload="p", pause_on_round=None))
+    await dw.start(ToyPausingRequest(payload="p", pause_on_round=None), tenant_id="t-test")
     assert writes[0] == ("running", 0)
     assert writes[-1][0] == "completed"
 
@@ -124,7 +124,7 @@ async def test_resume_continues_from_checkpoint(tmp_path: Path) -> None:
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     assert paused.status == "paused"
     resumed = await dw.resume(
         paused.token,
@@ -157,7 +157,7 @@ async def test_resume_rejects_non_paused_status(tmp_path: Path) -> None:
     inner = ToyConvergentWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     with pytest.raises(RunNotResumable, match="completed"):
         await dw.resume(outcome.token)
 
@@ -168,7 +168,7 @@ async def test_resume_pinned_model_retired_without_override_raises(tmp_path: Pat
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     cp = await store.read(paused.token.run_id)
     cp.pinned_executor_model = "claude-opus-3-9-retired"
     await store.write(cp)
@@ -182,7 +182,7 @@ async def test_resume_force_model_upgrade_swaps_and_logs(tmp_path: Path) -> None
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     cp = await store.read(paused.token.run_id)
     cp.pinned_executor_model = "claude-opus-3-9-retired"
     await store.write(cp)
@@ -211,7 +211,7 @@ async def test_cancel_marks_failed_idempotent(tmp_path: Path) -> None:
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     await dw.cancel(paused.token, reason="user_aborted")
     cp = await store.read(paused.token.run_id)
     assert cp.status == "failed"
@@ -227,7 +227,7 @@ async def test_concurrent_resume_second_caller_raises_run_locked(tmp_path: Path)
     store = MemoryCheckpointStore()
     lock = MemoryRunLock()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store, run_lock=lock)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     # Manually hold the lock for the same run_id
     await lock.acquire(paused.token.run_id, ttl_seconds=60)
     with pytest.raises(RunLocked):
@@ -240,7 +240,7 @@ async def test_budget_exceeded_persists_checkpoint_and_reports(tmp_path: Path) -
     inner = BudgetExceededInner(config=config, fail_on_round=1)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     assert outcome.status == "budget_exceeded"
     cp = await store.read(outcome.token.run_id)
     assert cp.status == "budget_exceeded"
@@ -256,7 +256,7 @@ async def test_resume_validates_hook_returns_oversized_field_raises(tmp_path: Pa
         inner=inner, config=config, checkpoint_store=store,
         expected_request_type=ToyPausingRequest,
     )
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     oversized = ToyPausingRequest(payload="x" * 5000, pause_on_round=None)
     with pytest.raises(ValueError, match="length"):
         await dw.resume(
@@ -276,7 +276,7 @@ async def test_resume_validates_hook_returns_control_chars_raises(tmp_path: Path
         inner=inner, config=config, checkpoint_store=store,
         expected_request_type=ToyPausingRequest,
     )
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     bad = ToyPausingRequest(payload="hello\x01\x02world", pause_on_round=None)
     with pytest.raises(ValueError, match="control char"):
         await dw.resume(
@@ -306,7 +306,7 @@ async def test_resume_validates_hook_returns_wrong_type_raises(tmp_path: Path) -
         inner=inner, config=config, checkpoint_store=store,
         expected_request_type=ToyPausingRequest,
     )
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     with pytest.raises(TypeError, match="ToyPausingRequest"):
         await dw.resume(
             paused.token,
@@ -322,7 +322,7 @@ async def test_resume_without_expected_type_skips_type_check(tmp_path: Path) -> 
     store = MemoryCheckpointStore()
     # No expected_request_type -- should not raise on type mismatch
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     outcome = await dw.resume(
         paused.token,
         fresh_inputs=ToyPausingRequest(payload="p", pause_on_round=None),
@@ -374,7 +374,7 @@ async def test_resume_refuses_pending_veto(tmp_path: Path) -> None:
     inner = VetoEmittingPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=None))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=None), tenant_id="t-test")
     cp = await store.read(paused.token.run_id)
     assert cp.status == "paused"
     assert any(e.get("veto_pending") for e in cp.rounds_history)
@@ -390,7 +390,7 @@ async def test_pause_context_marks_mid_round_when_no_entry(tmp_path: Path) -> No
     inner = ToyPausingWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1))
+    paused = await dw.start(ToyPausingRequest(payload="p", pause_on_round=1), tenant_id="t-test")
     cp = await store.read(paused.token.run_id)
     # Round 1 pause: no entry was appended (ToyPausingWorkflow pauses before returning)
     assert cp.pause_context.get("_mid_round_pause") is True
@@ -408,7 +408,7 @@ async def test_acknowledge_budget_exceeded_flips_status_and_records_audit(
     inner = BudgetExceededInner(config=config, fail_on_round=1)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     assert outcome.status == "budget_exceeded"
 
     before = await store.read(outcome.token.run_id)
@@ -432,7 +432,7 @@ async def test_acknowledge_budget_exceeded_raises_on_wrong_status(tmp_path: Path
     inner = ToyConvergentWorkflow(config=config)
     store = MemoryCheckpointStore()
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     # outcome.status == "completed"
     with pytest.raises(RuntimeError, match="expected status='budget_exceeded'"):
         await dw.acknowledge_budget_exceeded(outcome.token)
@@ -459,7 +459,7 @@ async def test_acknowledge_then_resume_works_through_encrypted_store(
     inner_store = MemoryCheckpointStore()
     store = EncryptedCheckpointStore(inner=inner_store, cipher=_FakeCipher())
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
-    outcome = await dw.start(ToyRequest(payload="x"))
+    outcome = await dw.start(ToyRequest(payload="x"), tenant_id="t-test")
     assert outcome.status == "budget_exceeded"
 
     # If acknowledge raw-edited status, the next read would raise

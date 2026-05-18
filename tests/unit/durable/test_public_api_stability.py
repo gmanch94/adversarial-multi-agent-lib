@@ -125,7 +125,9 @@ def test_chain_migrations_signature() -> None:
 # 3. Dataclass field pins --------------------------------------------------
 
 GOLDEN_CHECKPOINT_FIELDS: tuple[str, ...] = (
-    "run_id", "schema_version", "status", "round", "rounds_history",
+    # D-TENANT-1 (Tier 2.1b, 2026-05-18): tenant_id required field added at
+    # position 2. Breaking change — major bump (pre-1.0 minor per semver-policy.md).
+    "run_id", "tenant_id", "schema_version", "status", "round", "rounds_history",
     "last_request_json", "pause_reason", "pause_context", "budget_used",
     "pinned_executor_model", "pinned_reviewer_model",
     "created_at", "updated_at",
@@ -133,9 +135,12 @@ GOLDEN_CHECKPOINT_FIELDS: tuple[str, ...] = (
 )
 
 GOLDEN_RESUME_TOKEN_FIELDS: tuple[str, ...] = (
+    # D-TENANT-1 (Tier 2.1b, 2026-05-18): tenant_id optional with default
+    # `_default` for backward-compat with legacy serialized tokens.
     "run_id", "workflow_class",
     "pinned_executor_model", "pinned_reviewer_model",
     "schema_version", "created_at", "wake_at", "workflow_version_hash",
+    "tenant_id",
 )
 
 

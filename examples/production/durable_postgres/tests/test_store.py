@@ -24,6 +24,7 @@ def _make_checkpoint(run_id: str = "test-run-001", status: str = "paused") -> Ch
     # via the store's default_workflow_class or write_with_class extension.
     return Checkpoint(
         run_id=run_id,
+        tenant_id="_default",
         schema_version=1,
         status=status,
         round=1,

@@ -114,6 +114,7 @@ async def test_scheduler_quarantines_repeated_failures(tmp_path: Path) -> None:
     now = datetime.now(timezone.utc)
     cp = Checkpoint(
         run_id="poisontok",
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

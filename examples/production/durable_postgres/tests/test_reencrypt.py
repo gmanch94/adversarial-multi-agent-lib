@@ -35,6 +35,7 @@ async def test_reencrypt_completes_rotation(pg_pool, fresh_checkpoints_table):
     for i in range(3):
         cp = Checkpoint(
             run_id=f"rot-{i:03d}",
+            tenant_id="_default",
             schema_version=1,
             status="paused",
             round=1,
@@ -86,6 +87,7 @@ async def test_reencrypt_is_idempotent(pg_pool, fresh_checkpoints_table):
     )
     cp = Checkpoint(
         run_id="idem-001",
+        tenant_id="_default",
         schema_version=1,
         status="paused",
         round=1,

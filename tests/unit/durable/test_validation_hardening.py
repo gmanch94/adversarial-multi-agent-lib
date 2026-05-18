@@ -68,7 +68,8 @@ def test_serialize_request_rejects_non_json_dict() -> None:
 def test_checkpoint_rejects_invalid_round_type() -> None:
     with pytest.raises(ValueError, match="round must be non-negative int"):
         Checkpoint(
-            run_id="r1", schema_version=CURRENT_SCHEMA_VERSION,
+            run_id="r1",
+            tenant_id="t-test", schema_version=CURRENT_SCHEMA_VERSION,
             status="paused", round=-1, rounds_history=[],
             last_request_json="{}", pause_reason=None, pause_context={},
             budget_used={}, pinned_executor_model="x", pinned_reviewer_model="y",
@@ -80,7 +81,8 @@ def test_checkpoint_rejects_invalid_round_type() -> None:
 def test_checkpoint_rejects_empty_pinned_executor() -> None:
     with pytest.raises(ValueError, match="pinned_executor_model"):
         Checkpoint(
-            run_id="r1", schema_version=CURRENT_SCHEMA_VERSION,
+            run_id="r1",
+            tenant_id="t-test", schema_version=CURRENT_SCHEMA_VERSION,
             status="paused", round=0, rounds_history=[],
             last_request_json="{}", pause_reason=None, pause_context={},
             budget_used={}, pinned_executor_model="", pinned_reviewer_model="y",
@@ -95,6 +97,7 @@ async def test_memory_store_list_paused_filters_wake_at(tmp_path: Path) -> None:
     store = MemoryCheckpointStore()
     now = datetime.now(timezone.utc)
     base: dict[str, Any] = dict(
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused", round=1, rounds_history=[],
         last_request_json="{}", pause_reason=None, pause_context={},

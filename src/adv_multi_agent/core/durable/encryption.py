@@ -60,6 +60,7 @@ def _replace_integrity_tag(cp: Checkpoint, new_tag: str | None) -> Checkpoint:
     """Return a NEW Checkpoint with integrity_tag swapped, all other fields preserved."""
     return Checkpoint(
         run_id=cp.run_id,
+        tenant_id=cp.tenant_id,
         schema_version=cp.schema_version,
         status=cp.status,
         round=cp.round,
@@ -181,6 +182,7 @@ class EncryptedCheckpointStore:
         ciphertext = self._cipher.encrypt(cp.last_request_json)
         return Checkpoint(
             run_id=cp.run_id,
+            tenant_id=cp.tenant_id,
             schema_version=cp.schema_version,
             status=cp.status,
             round=cp.round,
@@ -228,6 +230,7 @@ class EncryptedCheckpointStore:
             raise
         return Checkpoint(
             run_id=cp.run_id,
+            tenant_id=cp.tenant_id,
             schema_version=cp.schema_version,
             status=cp.status,
             round=cp.round,

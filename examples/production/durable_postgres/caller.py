@@ -111,7 +111,7 @@ async def main() -> None:
         )
 
         print("Starting run (request mentions 'labs pending' → expect pause at gate 1)")
-        outcome = await durable.start(_SYNTHETIC_REQUEST)
+        outcome = await durable.start(_SYNTHETIC_REQUEST, tenant_id="_default")
         print(f"Outcome: status={outcome.status} pause_reason={outcome.pause_reason}")
         print(f"Token: {outcome.token}")
         print()

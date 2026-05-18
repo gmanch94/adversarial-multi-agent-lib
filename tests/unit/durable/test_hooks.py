@@ -30,6 +30,7 @@ def _request_from_json(s: str) -> ToyRequest:
 def make_checkpoint(last_request_json: str) -> Checkpoint:
     return Checkpoint(
         run_id="run-1",
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

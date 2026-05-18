@@ -24,6 +24,7 @@ def make_checkpoint(
 ) -> Checkpoint:
     return Checkpoint(
         run_id=run_id,
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status=status,
         round=1,

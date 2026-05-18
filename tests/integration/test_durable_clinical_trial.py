@@ -71,7 +71,7 @@ async def test_pause_on_labs_pending_then_resume_converges(tmp_path: Path) -> No
 
     paused = await dw.start(
         make_request(biomarker_status="labs pending — CBC + CMP not yet drawn")
-    )
+    , tenant_id="t-test")
     assert paused.status == "paused"
     assert paused.pause_reason == "rolling_data"
 
@@ -103,7 +103,7 @@ async def test_phi_not_written_to_checkpoint_in_raw_form(tmp_path: Path) -> None
         checkpoint_store=FileCheckpointStore(base_dir=tmp_path / "ckpt", workspace_dir=tmp_path),
     )
     bad_input = make_request(patient_profile="62yo NSCLC\x01\x02\x03patient")
-    await dw.start(bad_input)
+    await dw.start(bad_input, tenant_id="t-test")
     assert len(executor.prompts) >= 1
     prompt_text = executor.prompts[0]
     assert "\x01" not in prompt_text
@@ -127,7 +127,7 @@ async def test_full_lifecycle_start_pause_resume_complete(tmp_path: Path) -> Non
     store = FileCheckpointStore(base_dir=tmp_path / "ckpt", workspace_dir=tmp_path)
     dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
 
-    paused = await dw.start(make_request(biomarker_status="labs pending"))
+    paused = await dw.start(make_request(biomarker_status="labs pending"), tenant_id="t-test")
     cp_paused = await store.read(paused.token.run_id)
     assert cp_paused.status == "paused"
 

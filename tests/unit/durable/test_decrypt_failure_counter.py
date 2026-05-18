@@ -35,6 +35,7 @@ class _BrokenCipher:
 def _mk_checkpoint(payload: str = '{"x": 1}') -> Checkpoint:
     return Checkpoint(
         run_id="run-decrypt-fail",
+        tenant_id="t-test",
         schema_version=CURRENT_SCHEMA_VERSION,
         status="paused",
         round=1,

@@ -82,7 +82,8 @@ def test_composes_with_library_encrypted_store(key_a: bytes) -> None:
     store = EncryptedCheckpointStore(inner=inner, cipher=cipher)
 
     cp = Checkpoint(
-        run_id="rt-001", schema_version=1, status="paused", round=1,
+        run_id="rt-001",
+        tenant_id="_default", schema_version=1, status="paused", round=1,
         rounds_history=[], last_request_json='{"trial_id": "PHI_HERE"}',
         pause_reason=None, pause_context={},
         budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},

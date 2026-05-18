@@ -1,8 +1,8 @@
-"""Multi-tenant isolation tests (Tier 2.1a / D-TENANT-1..10).
+"""Multi-tenant isolation tests (Tier 2.1b / D-TENANT-1..10).
 
 Two test bands:
-  - Mocked: charset validation, ContextVar plumbing, fallback semantics,
-    operator script tenant-flag enforcement. Run on every CI (~ms).
+  - Mocked: charset validation, _validate_tenant_id, Checkpoint.tenant_id
+    validation, operator script tenant-flag enforcement. Run on every CI (~ms).
   - needs_postgres: RLS policy enforcement, SET LOCAL connection-recycling
     regression (advisor BLOCKING #1, 2026-05-18). Only run when POSTGRES_DSN
     is set; CI matrix gates these with the same `needs_postgres` mark as
@@ -16,6 +16,10 @@ What the Postgres tests prove:
      used `SET LOCAL` inside a transaction. This is the specific bug class
      the advisor flagged — `SET` without LOCAL would leak; the test catches it.
   4. RLS UPDATE policy rejects mid-flight tenant_id migration.
+
+Tier 2.1b removed: ContextVar plumbing, `_resolve_tenant_id` fallback chain,
+`MissingTenantContext`, `tenant_context`/`reset_tenant_context`. After 2.1b
+`Checkpoint.tenant_id` is canonical; tests of those vestigial channels deleted.
 """
 from __future__ import annotations
 
@@ -23,13 +27,9 @@ import pytest
 
 from adv_multi_agent.core.durable.checkpoint import Checkpoint
 from examples.production.durable_postgres.store import (
-    MissingTenantContext,
     RESERVED_DEFAULT_TENANT,
-    _CURRENT_TENANT,
-    _resolve_tenant_id,
     _TENANT_ID_RE,
-    reset_tenant_context,
-    tenant_context,
+    _validate_tenant_id,
 )
 
 from .conftest import needs_postgres
@@ -52,83 +52,49 @@ def test_tenant_id_charset_rejects_invalid():
         assert not _TENANT_ID_RE.fullmatch(invalid), f"should reject {invalid!r}"
 
 
-# ----------------------------------------------------------------------
-# D-TENANT-5: _resolve_tenant_id two-channel resolution
-# ----------------------------------------------------------------------
-
-def test_resolve_explicit_kwarg_wins():
-    token = tenant_context("tenant-a")
-    try:
-        # Even with ContextVar set, explicit kwarg takes precedence.
-        assert _resolve_tenant_id("tenant-b") == "tenant-b"
-    finally:
-        reset_tenant_context(token)
+def test_validate_tenant_id_passes_valid():
+    assert _validate_tenant_id("tenant-a") == "tenant-a"
+    assert _validate_tenant_id(RESERVED_DEFAULT_TENANT) == RESERVED_DEFAULT_TENANT
 
 
-def test_resolve_falls_back_to_contextvar():
-    token = tenant_context("tenant-c")
-    try:
-        assert _resolve_tenant_id(None) == "tenant-c"
-    finally:
-        reset_tenant_context(token)
+def test_validate_tenant_id_raises_on_invalid():
+    with pytest.raises(ValueError, match="invalid tenant_id"):
+        _validate_tenant_id("has space")
+    with pytest.raises(ValueError, match="invalid tenant_id"):
+        _validate_tenant_id("tenant;DROP")
 
 
-def test_resolve_falls_back_to_default_with_warning(recwarn, monkeypatch):
-    """D-TENANT-2: no kwarg + no ContextVar → _default + DeprecationWarning."""
-    monkeypatch.delenv("DURABLE_REQUIRE_EXPLICIT_TENANT", raising=False)
-    # Make sure ContextVar is unset
-    token = _CURRENT_TENANT.set(None)
-    try:
-        result = _resolve_tenant_id(None)
-        assert result == RESERVED_DEFAULT_TENANT
-        # DeprecationWarning emitted
-        assert any(
-            issubclass(w.category, DeprecationWarning) and "_default" in str(w.message)
-            for w in recwarn
+def test_checkpoint_rejects_invalid_tenant_id():
+    """D-TENANT-1: Checkpoint.__post_init__ raises on bad tenant_id."""
+    with pytest.raises(ValueError, match="tenant_id must match"):
+        Checkpoint(
+            run_id="run-1",
+            tenant_id="has space",  # invalid charset
+            schema_version=1, status="paused", round=0,
+            rounds_history=[], last_request_json="{}",
+            pause_reason=None, pause_context={},
+            budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
+            pinned_executor_model="claude-opus-4-7",
+            pinned_reviewer_model="gpt-4o",
+            created_at="2026-05-18T00:00:00+00:00",
+            updated_at="2026-05-18T00:00:00+00:00",
         )
-    finally:
-        _CURRENT_TENANT.reset(token)
 
 
-def test_resolve_fails_closed_when_env_var_set(monkeypatch):
-    """D-TENANT-2: DURABLE_REQUIRE_EXPLICIT_TENANT=1 → MissingTenantContext."""
-    monkeypatch.setenv("DURABLE_REQUIRE_EXPLICIT_TENANT", "1")
-    token = _CURRENT_TENANT.set(None)
-    try:
-        with pytest.raises(MissingTenantContext):
-            _resolve_tenant_id(None)
-    finally:
-        _CURRENT_TENANT.reset(token)
-
-
-def test_resolve_rejects_invalid_kwarg():
-    with pytest.raises(ValueError, match="invalid tenant_id"):
-        _resolve_tenant_id("has space")
-
-
-def test_tenant_context_rejects_invalid():
-    with pytest.raises(ValueError, match="invalid tenant_id"):
-        tenant_context("has;DROP")
-
-
-@pytest.mark.asyncio
-async def test_tenant_context_per_task_isolation():
-    """ContextVar is per-asyncio-task; tasks don't see each other's tenant."""
-    import asyncio
-
-    results: dict[str, str] = {}
-
-    async def inner(tenant_id: str) -> None:
-        token = tenant_context(tenant_id)
-        try:
-            # Yield to give the other task a chance to set its own ContextVar.
-            await asyncio.sleep(0.001)
-            results[tenant_id] = _resolve_tenant_id(None)
-        finally:
-            reset_tenant_context(token)
-
-    await asyncio.gather(inner("tenant-a"), inner("tenant-b"))
-    assert results == {"tenant-a": "tenant-a", "tenant-b": "tenant-b"}
+def test_checkpoint_requires_tenant_id():
+    """D-TENANT-1: Checkpoint without tenant_id raises TypeError."""
+    with pytest.raises(TypeError, match="tenant_id"):
+        Checkpoint(  # type: ignore[call-arg]
+            run_id="run-1",
+            schema_version=1, status="paused", round=0,
+            rounds_history=[], last_request_json="{}",
+            pause_reason=None, pause_context={},
+            budget_used={"tokens_in": 0, "tokens_out": 0, "usd_spent": 0.0},
+            pinned_executor_model="claude-opus-4-7",
+            pinned_reviewer_model="gpt-4o",
+            created_at="2026-05-18T00:00:00+00:00",
+            updated_at="2026-05-18T00:00:00+00:00",
+        )
 
 
 # ----------------------------------------------------------------------
@@ -171,10 +137,11 @@ def test_requeue_rejects_missing_tenant_flag():
 # D-TENANT-3: Postgres RLS enforcement (live DB required)
 # ----------------------------------------------------------------------
 
-def _make_checkpoint(run_id: str) -> Checkpoint:
+def _make_checkpoint(run_id: str, tenant_id: str = "_default") -> Checkpoint:
     """Minimal valid Checkpoint for store.write tests."""
     return Checkpoint(
         run_id=run_id,
+        tenant_id=tenant_id,
         schema_version=1,
         status="paused",
         round=0,
@@ -196,10 +163,10 @@ async def test_rls_insert_requires_matching_guc(pg_pool, fresh_checkpoints_table
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
     store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("rls-a")
+    cp = _make_checkpoint("rls-a", tenant_id="tenant-a")
 
     # Explicit tenant=A; INSERT should succeed.
-    await store.write(cp, tenant_id="tenant-a")
+    await store.write(cp)
 
     # Now try to INSERT with tenant=B kwarg but row tenant=A — RLS WITH CHECK
     # rejects because the GUC will be set to B but the row's tenant_id will
@@ -228,10 +195,10 @@ async def test_rls_select_is_unscoped(pg_pool, fresh_checkpoints_table):
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
     store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp_a = _make_checkpoint("select-a")
-    cp_b = _make_checkpoint("select-b")
-    await store.write(cp_a, tenant_id="tenant-a")
-    await store.write(cp_b, tenant_id="tenant-b")
+    cp_a = _make_checkpoint("select-a", tenant_id="tenant-a")
+    cp_b = _make_checkpoint("select-b", tenant_id="tenant-b")
+    await store.write(cp_a)
+    await store.write(cp_b)
 
     # No GUC set on this connection — SELECT should still return both rows.
     async with pg_pool.acquire() as conn:
@@ -258,8 +225,8 @@ async def test_pool_connection_recycling_does_not_leak_guc(
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
     store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("recycle-1")
-    await store.write(cp, tenant_id="tenant-a")
+    cp = _make_checkpoint("recycle-1", tenant_id="tenant-a")
+    await store.write(cp)
 
     # Re-acquire (likely same physical connection from the pool). Outside any
     # transaction, the GUC must NOT carry tenant-a's value.
@@ -282,8 +249,8 @@ async def test_rls_update_rejects_tenant_migration(
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
     store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("migrate-a")
-    await store.write(cp, tenant_id="tenant-a")
+    cp = _make_checkpoint("migrate-a", tenant_id="tenant-a")
+    await store.write(cp)
 
     # Try raw UPDATE: GUC=A, but UPDATE sets tenant_id=B. WITH CHECK fails.
     import asyncpg
@@ -324,21 +291,25 @@ async def test_rls_quarantine_insert_rejects_cross_tenant(
 
 async def test_quarantine_sync_seen_retry_correctness_after_skip():
     """Audit 2026-05-18 Q7 follow-up: when _snapshot_and_insert skips a run
-    due to missing tenant_id, it MUST NOT add that run to _seen — otherwise
-    the next poll would also skip + the run never gets persisted."""
+    due to missing checkpoint row, it MUST NOT add that run to _seen —
+    otherwise the next poll would also skip + the run never gets persisted.
+
+    Tier 2.1b: tenant_id is looked up via SELECT, not from cache. First poll
+    simulates the checkpoint-not-yet-present state; second poll has the row."""
     from examples.production.durable_postgres.quarantine import QuarantineSync
     from .test_quarantine import _FakeDaemon, _FakePool
 
-    # First poll: no tenant for r1.
-    daemon = _FakeDaemon(quarantine={"r1"}, tenants_for_runs={})
+    # First poll: SELECT returns None (no checkpoint row yet).
+    daemon = _FakeDaemon(quarantine={"r1"})
     pool = _FakePool()
+    pool.conn.fetch_rows = []  # SELECT tenant_id returns None
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
     await sync._snapshot_and_insert()
     assert "r1" not in sync._seen, "skipped run must not enter _seen"
     assert all("INSERT" not in q for q, _ in pool.conn.executed)
 
-    # Second poll: cache populated; r1 must now INSERT (proves retry works).
-    daemon._tenants_for_runs = {"r1": "_default"}
+    # Second poll: SELECT returns a row; r1 must now INSERT (proves retry works).
+    pool.conn.fetch_rows = [{"tenant_id": "_default"}]
     pool.conn.executed.clear()
     await sync._snapshot_and_insert()
     insert_queries = [q for q, _ in pool.conn.executed if "INSERT INTO quarantine" in q]
@@ -347,30 +318,25 @@ async def test_quarantine_sync_seen_retry_correctness_after_skip():
 
 
 @needs_postgres
-async def test_store_write_with_default_tenant_emits_warning(
-    pg_pool, fresh_checkpoints_table, recwarn, monkeypatch,
+async def test_store_write_with_default_tenant_lands_under_default(
+    pg_pool, fresh_checkpoints_table,
 ):
-    """D-TENANT-2: writes without tenant context land under _default + warn."""
+    """D-TENANT-2 (Tier 2.1b): single-tenant deployment passes
+    `tenant_id="_default"` on the Checkpoint; row lands under that tenant.
+
+    The 2.1a DeprecationWarning fallback path is removed in 2.1b — callers
+    MUST construct Checkpoint with an explicit tenant_id. `_default` is the
+    reserved name for single-tenant operators.
+    """
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
-    monkeypatch.delenv("DURABLE_REQUIRE_EXPLICIT_TENANT", raising=False)
     store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("default-tenant")
-
-    # No tenant_id kwarg, no ContextVar set.
+    cp = _make_checkpoint("default-tenant", tenant_id=RESERVED_DEFAULT_TENANT)
     await store.write(cp)
 
-    # Row landed under _default tenant.
     async with pg_pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT tenant_id FROM checkpoints WHERE run_id = 'default-tenant'"
         )
     assert row is not None
     assert row["tenant_id"] == RESERVED_DEFAULT_TENANT
-
-    # DeprecationWarning emitted.
-    assert any(
-        issubclass(w.category, DeprecationWarning)
-        and "_default" in str(w.message)
-        for w in recwarn
-    )
