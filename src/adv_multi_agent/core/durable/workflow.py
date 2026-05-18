@@ -794,6 +794,49 @@ class DurableWorkflow:
         finally:
             await self._lock.release(handle)
 
+    async def acknowledge_budget_exceeded(self, token: ResumeToken) -> None:
+        """Tier 2.3 (D-BUDGET-1): operator-action to recover a run in
+        ``status="budget_exceeded"``.
+
+        Flips status ``budget_exceeded`` -> ``paused`` so a subsequent
+        ``resume(token)`` is accepted. The library does the flip + reseal in
+        a single ``store.write()`` so the integrity_tag is recomputed against
+        the new canonical bytes — raw operator edits would leave the row
+        un-readable with ``IntegrityViolation``.
+
+        Caller contract:
+        - Construct the new ``DurableWorkflow`` with a BudgetTracker whose
+          caps are above the row's accumulated ``budget_used`` BEFORE calling
+          this method. If the new caps are not raised, the next ``record()``
+          will trip ``BudgetExceeded`` again on the first round and the
+          checkpoint flips back to ``budget_exceeded``.
+        - Inspect ``rounds_history`` first to rule out a runaway loop
+          (per docs/runbooks/durable-operations.md §5.5).
+
+        Audit event ``budget_cap_acknowledged`` is appended to
+        ``rounds_history`` with the ``budget_used`` snapshot at acknowledge
+        time so a post-hoc audit can reconstruct the operator decision.
+
+        Raises ``RuntimeError`` if the row is not currently in
+        ``budget_exceeded`` status — idempotency is not promised; the caller
+        should check status before calling.
+        """
+        cp = await self._store.read(token.run_id)
+        if cp.status != "budget_exceeded":
+            raise RuntimeError(
+                f"acknowledge_budget_exceeded: expected status='budget_exceeded' "
+                f"for run_id={token.run_id!r}, got status={cp.status!r}"
+            )
+        cp.status = "paused"
+        ack_ts = _now_iso()
+        cp.rounds_history.append({
+            "event": "budget_cap_acknowledged",
+            "at": ack_ts,
+            "budget_used_at_ack": dict(cp.budget_used),
+        })
+        cp.updated_at = ack_ts
+        await self._store.write(cp)
+
     async def cancel(self, token: ResumeToken, reason: str) -> None:
         """Mark the run as failed with the given reason. Idempotent: calling
         on an already-terminal checkpoint is a no-op."""

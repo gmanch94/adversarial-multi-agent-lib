@@ -394,3 +394,77 @@ async def test_pause_context_marks_mid_round_when_no_entry(tmp_path: Path) -> No
     cp = await store.read(paused.token.run_id)
     # Round 1 pause: no entry was appended (ToyPausingWorkflow pauses before returning)
     assert cp.pause_context.get("_mid_round_pause") is True
+
+
+# Tier 2.3 — D-BUDGET-1: acknowledge_budget_exceeded -----------------------
+
+@pytest.mark.asyncio
+async def test_acknowledge_budget_exceeded_flips_status_and_records_audit(
+    tmp_path: Path,
+) -> None:
+    """Operator flips budget_exceeded -> paused; rounds_history gains an
+    audit row with the budget_used snapshot at acknowledge time."""
+    config = make_test_config(tmp_path)
+    inner = BudgetExceededInner(config=config, fail_on_round=1)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyRequest(payload="x"))
+    assert outcome.status == "budget_exceeded"
+
+    before = await store.read(outcome.token.run_id)
+    budget_before = dict(before.budget_used)
+
+    await dw.acknowledge_budget_exceeded(outcome.token)
+
+    after = await store.read(outcome.token.run_id)
+    assert after.status == "paused"
+    ack_events = [e for e in after.rounds_history if e.get("event") == "budget_cap_acknowledged"]
+    assert len(ack_events) == 1
+    assert ack_events[0]["budget_used_at_ack"] == budget_before
+    assert "at" in ack_events[0]
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_budget_exceeded_raises_on_wrong_status(tmp_path: Path) -> None:
+    """Method is not idempotent — calling on a non-budget_exceeded row
+    raises so the operator notices they're not in the recovery flow."""
+    config = make_test_config(tmp_path)
+    inner = ToyConvergentWorkflow(config=config)
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyRequest(payload="x"))
+    # outcome.status == "completed"
+    with pytest.raises(RuntimeError, match="expected status='budget_exceeded'"):
+        await dw.acknowledge_budget_exceeded(outcome.token)
+
+
+@pytest.mark.asyncio
+async def test_acknowledge_then_resume_works_through_encrypted_store(
+    tmp_path: Path,
+) -> None:
+    """End-to-end: budget_exceeded -> acknowledge -> resume succeeds even
+    when the store is wrapped by EncryptedCheckpointStore (integrity_tag
+    is recomputed on the flip; no IntegrityViolation)."""
+    import base64
+    from adv_multi_agent.core.durable.encryption import EncryptedCheckpointStore
+
+    class _FakeCipher:
+        def encrypt(self, p: str) -> str:
+            return base64.b64encode(p.encode()).decode()
+        def decrypt(self, c: str) -> str:
+            return base64.b64decode(c).decode()
+
+    config = make_test_config(tmp_path)
+    inner = BudgetExceededInner(config=config, fail_on_round=1)
+    inner_store = MemoryCheckpointStore()
+    store = EncryptedCheckpointStore(inner=inner_store, cipher=_FakeCipher())
+    dw = DurableWorkflow(inner=inner, config=config, checkpoint_store=store)
+    outcome = await dw.start(ToyRequest(payload="x"))
+    assert outcome.status == "budget_exceeded"
+
+    # If acknowledge raw-edited status, the next read would raise
+    # IntegrityViolation. Going through the library proves the integrity_tag
+    # is recomputed.
+    await dw.acknowledge_budget_exceeded(outcome.token)
+    cp = await store.read(outcome.token.run_id)  # must not raise
+    assert cp.status == "paused"
