@@ -1,6 +1,33 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 (Tier 1.1 SHIPPED — 3-slice OTel arc closed)
+Last updated: 2026-05-18 PM (Tier 1.9 SHIPPED — A10-H2 closed via 2-slice AEAD arc)
+
+## 2026-05-18 PM — Tier 1.9 SHIPPED (A10-H2 closed)
+
+**2-slice arc closes the last cycle-10 HIGH.**
+
+- **Slice A (library)** — commit `ccefcc7` — `Checkpoint.integrity_tag: str | None`, `IntegrityViolation` exception, `LegacyPartialAEADWarning`, `_canonical_checkpoint_bytes` / `_compute_integrity_payload` / `_verify_integrity_payload` helpers, `EncryptedCheckpointStore.write/read` reseal+verify with fail-closed semantics. 12 tamper tests in `tests/unit/durable/test_integrity_tag.py`. Library: 710 → 722 tests.
+- **Slice B (operational)** — commit chain this session — `examples/production/durable_postgres/scripts/0002_add_integrity_tag.sql` (idempotent ALTER TABLE + partial index), `schema.sql` fresh-init update with migration-sequence comment block, `reseal_all_checkpoints.py` CLI (--dry-run default, --apply explicit, CAS via `write_if_unchanged`, hash-round-trip assertion exits code 2), `_reseal_helpers.py` (importable `reseal_one` + `ResealOutcome`), `test_reseal_smoke.py` (3 tests: legacy-row-adds-tag, idempotent-on-already-sealed, hash-round-trip-preserved). Library tests unchanged at 722.
+
+**Cycle-12 audit** — `docs/security-audits/2026-05-18-tier-1-9-cycle-12-sweep.md`. 0 CRIT / 0 HIGH / 0 MEDIUM / 0 LOW. **Deviation logged:** subagent dispatch tool unavailable → did rigorous inline audit per plan fallback. Re-run with independent reviewer when tool restored.
+
+**A10-H2 status:** was HIGH backlog → **CLOSED**. Reflected in `docs/SECURITY_MODEL.md` §3 (Checkpoint write/read full-field integrity row) and §4 (known-gaps row flipped to CLOSED). `docs/runbooks/durable-compliance.md` §12 callout REMOVED (no more "limitation"); replaced with closure language + migration runbook pointing operators at `reseal_all_checkpoints.py --dry-run` then `--apply`.
+
+**Decision rows:** D-AEAD-1..6 appended to `docs/decisions.md` (50 → 56 rows). Covers integrity-tag design, canonical-JSON choice, no-PHI-in-exceptions, legacy-row policy, hash-round-trip invariant, CAS dry-run default.
+
+**Operator migration** (existing Postgres deployments):
+1. Apply `examples/production/durable_postgres/scripts/0002_add_integrity_tag.sql` to add column + partial index.
+2. Run `python reseal_all_checkpoints.py --dsn <DSN> --dry-run` to inventory legacy rows.
+3. Run `python reseal_all_checkpoints.py --dsn <DSN> --apply` to seal them.
+
+**Next recommended lanes (Tier 1 backlog):**
+- Tier 1.2 — alerts surface drain (cycle-10 MEDIUM).
+- Tier 1.4 — Postgres scheduler hot-path tests against live DB (compose).
+- Tier 1.5 — runbook for cipher-key rotation (operator drill).
+
+**Standing autonomy (2026-05-17):** active. Pick secure → durable → scalable when user unavailable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
 
 **Standing autonomy (2026-05-17):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
 
