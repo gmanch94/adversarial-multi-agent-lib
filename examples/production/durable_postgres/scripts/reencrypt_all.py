@@ -51,27 +51,16 @@ async def reencrypt_all(
         CompareAndSwapFailed,
     )
 
-    # A8-H-06: assert private API symbols exist before use so a library refactor
-    # fails loud at the start of rotation rather than silently mid-sweep.
-    if not hasattr(store, "_inner"):
-        raise RuntimeError(
-            "reencrypt_all requires EncryptedCheckpointStore with _inner attribute. "
-            "Library private API changed — update this script to match encryption.py."
-        )
-    if not hasattr(store, "_encrypt_request_json"):
-        raise RuntimeError(
-            "reencrypt_all requires EncryptedCheckpointStore._encrypt_request_json. "
-            "Library private API changed — update this script to match encryption.py."
-        )
-
-    # Reach through the encryption decorator to the inner Postgres store.
-    # The library's EncryptedCheckpointStore exposes `_inner` (see encryption.py).
-    inner: PostgresCheckpointStore = store._inner  # type: ignore[attr-defined]
-    if not isinstance(inner, PostgresCheckpointStore):
+    # Tier 2.2 (D-API-1/D-API-2): use the public `inner` accessor and
+    # `seal()` transform. Previously reached through `_inner` and
+    # `_encrypt_request_json` with hasattr guards — replaced by public API.
+    inner_obj = store.inner
+    if not isinstance(inner_obj, PostgresCheckpointStore):
         raise RuntimeError(
             "reencrypt_all requires a PostgresCheckpointStore inside the encryption decorator; "
-            f"got {type(inner).__name__}"
+            f"got {type(inner_obj).__name__}"
         )
+    inner: PostgresCheckpointStore = inner_obj
 
     async with pool.acquire() as conn:
         # v4: read workflow_class so we preserve it on the CAS write
@@ -89,8 +78,11 @@ async def reencrypt_all(
         # Read full checkpoint through encryption layer -> plaintext last_request_json
         cp = await store.read(run_id)
 
-        # Re-encrypt the request_json via the encryption decorator's _encrypt method
-        re_encrypted = store._encrypt_request_json(cp)  # type: ignore[attr-defined]
+        # Tier 2.2 (D-API-1): seal() is the public transform — encrypts with
+        # the store's CURRENT cipher (new key during rotation) and recomputes
+        # the integrity_tag. Replaces previous reach-through to
+        # _encrypt_request_json.
+        re_encrypted = await store.seal(cp)
 
         try:
             # CAS: write only if updated_at hasn't moved since we read it.

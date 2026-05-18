@@ -245,49 +245,59 @@ class EncryptedCheckpointStore:
             integrity_tag=cp.integrity_tag,
         )
 
-    async def write(self, checkpoint: Checkpoint) -> None:
-        # Encrypt field-level first, then seal the post-encryption form so the
-        # integrity tag binds to bytes actually persisted (A10-H2 closure).
+    async def seal(self, checkpoint: Checkpoint) -> Checkpoint:
+        """Tier 2.2 (D-API-1): public transform returning the post-encrypt +
+        post-integrity-tag form of ``checkpoint`` WITHOUT writing.
+
+        Operator tooling that needs optimistic-concurrency CAS
+        (e.g. ``write_if_unchanged`` on the Postgres sibling) should:
+
+            sealed = await store.seal(cp)
+            await inner.write_if_unchanged(sealed, expected_updated_at=...)
+
+        Idempotent on already-sealed checkpoints: re-running seal() recomputes
+        the tag against current canonical bytes (same result for unchanged
+        input).
+        """
         encrypted = await asyncio.to_thread(self._encrypt_request_json, checkpoint)
         # Clear any inherited integrity_tag before computing the new one so the
         # canonical bytes don't include a stale tag value.
         unsealed = _replace_integrity_tag(encrypted, None)
         payload = _compute_integrity_payload(unsealed)
         tag = await asyncio.to_thread(self._cipher.encrypt, payload)
-        sealed = _replace_integrity_tag(unsealed, tag)
-        await self._inner.write(sealed)
+        return _replace_integrity_tag(unsealed, tag)
 
-    async def read(self, run_id: str) -> Checkpoint:
-        cp = await self._inner.read(run_id)
-        # Verify integrity_tag BEFORE field-level decrypt so tampered ciphertext
-        # is detected by the integrity check, not by Cipher.decrypt's own AEAD
-        # failure (clearer error attribution).
-        if not cp.integrity_tag:
+    async def unseal(self, checkpoint: Checkpoint) -> Checkpoint:
+        """Tier 2.2 (D-API-1): public transform returning the plaintext form
+        of ``checkpoint``. Verifies integrity_tag first (same fail-closed
+        semantics as ``read()``), then decrypts field-level.
+
+        Most callers should use ``read(run_id)`` which performs the same
+        transform after fetching from the inner store. ``unseal`` is exposed
+        for tooling that walks the inner store directly.
+        """
+        if not checkpoint.integrity_tag:
             if self._refuse_legacy_aead:
-                # A16-H-01: post-reseal hardening. Empty integrity_tag is
-                # treated as insider-strip attack — fail-closed.
                 raise IntegrityViolation(
-                    run_id=cp.run_id,
+                    run_id=checkpoint.run_id,
                     expected_hash="<no-tag-but-refuse-legacy-enabled>",
                     observed_hash="<empty>",
                 )
             warnings.warn(
-                f"EncryptedCheckpointStore.read: run {cp.run_id!r} has no "
-                f"integrity_tag (pre-1.9 row, A10-H2). Run "
-                f"reseal_all_checkpoints.py to upgrade. Next write() on this "
-                f"run will reseal.",
+                f"EncryptedCheckpointStore.unseal: run {checkpoint.run_id!r} "
+                f"has no integrity_tag (pre-1.9 row, A10-H2). Run "
+                f"reseal_all_checkpoints.py to upgrade.",
                 LegacyPartialAEADWarning,
                 stacklevel=3,
             )
         else:
             try:
                 payload = await asyncio.to_thread(
-                    self._cipher.decrypt, cp.integrity_tag
+                    self._cipher.decrypt, checkpoint.integrity_tag
                 )
             except IntegrityViolation:
                 raise
             except Exception as exc:
-                # Same metrics path as field-level decrypt failure.
                 self._metrics.counter(
                     "durable.cipher.decrypt_failed",
                     tags={
@@ -297,8 +307,18 @@ class EncryptedCheckpointStore:
                     },
                 )
                 raise
-            _verify_integrity_payload(payload, cp)
-        return await asyncio.to_thread(self._decrypt_request_json, cp)
+            _verify_integrity_payload(payload, checkpoint)
+        return await asyncio.to_thread(self._decrypt_request_json, checkpoint)
+
+    async def write(self, checkpoint: Checkpoint) -> None:
+        # Encrypt field-level first, then seal the post-encryption form so the
+        # integrity tag binds to bytes actually persisted (A10-H2 closure).
+        sealed = await self.seal(checkpoint)
+        await self._inner.write(sealed)
+
+    async def read(self, run_id: str) -> Checkpoint:
+        cp = await self._inner.read(run_id)
+        return await self.unseal(cp)
 
     async def list_paused(self, wake_before: datetime) -> list[ResumeToken]:
         # list_paused returns ResumeToken (not Checkpoint), and ResumeToken

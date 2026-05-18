@@ -59,14 +59,9 @@ async def _reseal_all(
         PostgresCheckpointStore,
     )
 
-    # Library-private symbols this script reaches through — fail loud at the
-    # start of the sweep, not silently mid-loop.
-    if not hasattr(store, "inner"):
-        raise RuntimeError(
-            "reseal_all_checkpoints requires EncryptedCheckpointStore with "
-            "`inner` property. Library public API changed — update this script."
-        )
-    inner: PostgresCheckpointStore = store.inner  # A16-L-04: public accessor
+    # Tier 2.2 (D-API-3): `store.inner` and `store.seal()` are now public API
+    # pinned by test_public_api_stability.py — no hasattr guards needed.
+    inner: PostgresCheckpointStore = store.inner
     if not isinstance(inner, PostgresCheckpointStore):
         raise RuntimeError(
             f"reseal_all_checkpoints requires PostgresCheckpointStore inside the "
@@ -117,23 +112,14 @@ async def _reseal_all(
                 LOG.info("reseal[dry-run]: %s would be sealed", run_id)
             continue
 
-        # Apply path. Encrypt + recompute tag via library's write path.
-        encrypted_with_tag = before  # store.write does the work; reuse Checkpoint shape
-        # We bypass library write() and use write_if_unchanged on the inner store
-        # so we get optimistic concurrency. To do that, we replicate write()'s
-        # transform here using the same library helpers.
-        from adv_multi_agent.core.durable.encryption import (
-            _compute_integrity_payload,
-            _replace_integrity_tag,
-        )
-
-        encrypted = await asyncio.to_thread(
-            store._encrypt_request_json, encrypted_with_tag  # type: ignore[attr-defined]
-        )
-        unsealed = _replace_integrity_tag(encrypted, None)
-        payload = _compute_integrity_payload(unsealed)
-        tag = await asyncio.to_thread(store._cipher.encrypt, payload)  # type: ignore[attr-defined]
-        sealed = _replace_integrity_tag(unsealed, tag)
+        # Apply path. Tier 2.2 (D-API-1/D-API-2): seal() is the public
+        # transform — encrypts last_request_json + computes integrity_tag.
+        # Previously replicated write()'s internals via module-level
+        # _compute_integrity_payload + _replace_integrity_tag imports plus
+        # the private _encrypt_request_json. Single public call replaces all.
+        # We still bypass library write() so we can use write_if_unchanged on
+        # the inner store for optimistic concurrency.
+        sealed = await store.seal(before)
 
         try:
             await inner.write_if_unchanged(

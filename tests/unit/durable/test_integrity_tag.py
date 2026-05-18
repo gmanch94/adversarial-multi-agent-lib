@@ -327,3 +327,93 @@ async def test_decrypt_failure_counter_fires_on_tag_decrypt_failure() -> None:
     assert counter_call[1]["workflow"] == "ToyWf"
     assert counter_call[1]["cipher_backend"] == "BrokenCipher"
     assert counter_call[1]["error_class"] == "ValueError"
+
+
+# ---------------------------------------------------------------------------
+# Tier 2.2 — D-API-1: seal() / unseal() public transforms
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_seal_unseal_round_trip_returns_original_plaintext() -> None:
+    """seal() then unseal() returns a Checkpoint with the same plaintext
+    last_request_json and same scalar fields (modulo integrity_tag which is
+    populated by seal)."""
+    store = EncryptedCheckpointStore(inner=MemoryCheckpointStore(), cipher=FakeCipher())
+    cp = make_checkpoint()
+    sealed = await store.seal(cp)
+    assert sealed.last_request_json.startswith("ENC:v1:")
+    assert sealed.integrity_tag is not None
+    assert sealed.integrity_tag != ""
+    out = await store.unseal(sealed)
+    assert out.last_request_json == cp.last_request_json
+    assert out.workflow_version_hash == cp.workflow_version_hash
+    assert out.rounds_history == cp.rounds_history
+    assert out.status == cp.status
+
+
+@pytest.mark.asyncio
+async def test_seal_is_idempotent_on_already_sealed_checkpoint() -> None:
+    """Re-running seal() on an already-sealed Checkpoint recomputes the tag
+    against current canonical bytes; result is byte-identical for unchanged
+    input (modulo non-determinism in the cipher — FakeCipher is deterministic
+    so we can compare directly)."""
+    store = EncryptedCheckpointStore(inner=MemoryCheckpointStore(), cipher=FakeCipher())
+    cp = make_checkpoint()
+    sealed_once = await store.seal(cp)
+    sealed_twice = await store.seal(sealed_once)
+    # FakeCipher is deterministic + the ENC:v1: prefix detection short-circuits
+    # the re-encrypt path. Tag is recomputed but against same canonical bytes.
+    assert sealed_twice.last_request_json == sealed_once.last_request_json
+    assert sealed_twice.integrity_tag == sealed_once.integrity_tag
+
+
+@pytest.mark.asyncio
+async def test_seal_matches_write_then_inner_read_exactly() -> None:
+    """seal() must produce the same on-the-wire form as write() — proves
+    operator tooling that uses seal() + inner.write_if_unchanged sees the
+    same bytes the library's own write path produces."""
+    inner_a = MemoryCheckpointStore()
+    inner_b = MemoryCheckpointStore()
+    cipher = FakeCipher()
+    store_a = EncryptedCheckpointStore(inner=inner_a, cipher=cipher)
+    store_b = EncryptedCheckpointStore(inner=inner_b, cipher=cipher)
+    cp = make_checkpoint()
+
+    # Path 1: library write()
+    await store_a.write(cp)
+    via_write = await inner_a.read(cp.run_id)
+
+    # Path 2: operator-tooling pattern — seal() + raw inner write
+    sealed = await store_b.seal(cp)
+    await inner_b.write(sealed)
+    via_seal = await inner_b.read(cp.run_id)
+
+    assert via_write.last_request_json == via_seal.last_request_json
+    assert via_write.integrity_tag == via_seal.integrity_tag
+
+
+@pytest.mark.asyncio
+async def test_unseal_on_legacy_row_emits_warning() -> None:
+    """Direct unseal() of a legacy (integrity_tag=None) row emits
+    LegacyPartialAEADWarning, same as read()."""
+    cipher = FakeCipher()
+    ct = cipher.encrypt('{"member_id": "PAT-001"}')
+    legacy = make_checkpoint(last_request_json=f"ENC:v1:{ct}", integrity_tag=None)
+    store = EncryptedCheckpointStore(inner=MemoryCheckpointStore(), cipher=cipher)
+    with pytest.warns(LegacyPartialAEADWarning):
+        out = await store.unseal(legacy)
+    assert out.last_request_json == '{"member_id": "PAT-001"}'
+
+
+@pytest.mark.asyncio
+async def test_unseal_on_legacy_row_raises_when_refuse_legacy_aead_set() -> None:
+    """Direct unseal() honors refuse_legacy_aead, same fail-closed behavior
+    as read()."""
+    cipher = FakeCipher()
+    ct = cipher.encrypt('{"member_id": "PAT-001"}')
+    legacy = make_checkpoint(last_request_json=f"ENC:v1:{ct}", integrity_tag=None)
+    hardened = EncryptedCheckpointStore(
+        inner=MemoryCheckpointStore(), cipher=cipher, refuse_legacy_aead=True
+    )
+    with pytest.raises(IntegrityViolation):
+        await hardened.unseal(legacy)
