@@ -1,0 +1,15 @@
+# age recipients file — PUBLIC keys only. Used by backup.sh + the WAL
+# archive_command to encrypt backup blobs before upload.
+#
+# Generate a key pair (operator-side):
+#   age-keygen -o ~/.config/age/durable-restore.key
+# The PRIVATE key (file contents starting AGE-SECRET-KEY-...) MUST live in
+# operator custody (Vault / HSM / offline media) and never enter this repo.
+# The public-key line (starts with "# public key: age1...") is what goes
+# below, one per line, with no leading "# public key:" prefix.
+#
+# Operator MUST replace this placeholder before any backup is taken.
+# backup.sh refuses to run if this file contains any AGE-SECRET-KEY-* string.
+#
+# Example (DO NOT USE — replace with your own):
+# age1exampleyzryt6sxypnq2nuncqgwm3a3uy8pmlkhq2lh3l6grqugfsk5spcq
