@@ -62,7 +62,7 @@ async def test_span_per_round_in_start_path(cfg) -> None:
     assert len(round_spans) == 1
     name, keys, entered, exited, _exc = round_spans[0]
     assert entered is True and exited is True
-    assert keys == frozenset({"workflow"})
+    assert keys == frozenset({"workflow", "tenant"})
 
 
 @pytest.mark.asyncio
@@ -101,7 +101,7 @@ async def test_lock_acquire_metrics_on_resume_success(cfg) -> None:
     resume_lat = [h for h in rb.histograms
                   if h[0] == "durable.lock.acquire_latency_seconds"]
     assert len(resume_lat) >= 1
-    assert resume_lat[0][2] == frozenset({"workflow", "phase"})
+    assert resume_lat[0][2] == frozenset({"workflow", "tenant", "phase"})
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_lock_acquire_metrics_on_resume_failure(cfg) -> None:
         await dw_broken.resume(outcome.token)
     failed = [c for c in rb.counters if c[0] == "durable.lock.acquire_failed"]
     assert len(failed) == 1
-    assert failed[0][2] == frozenset({"workflow", "phase"})
+    assert failed[0][2] == frozenset({"workflow", "tenant", "phase"})
 
 
 @pytest.mark.asyncio
@@ -157,5 +157,5 @@ async def test_checkpoint_schema_version_gauge_emitted(cfg) -> None:
     await dw.start(request={}, tenant_id="t-test")
     sv = [g for g in rb.gauges if g[0] == "durable.checkpoint.schema_version"]
     assert len(sv) >= 1
-    assert sv[0][2] == frozenset({"workflow"})
+    assert sv[0][2] == frozenset({"workflow", "tenant"})
     assert sv[0][1] >= 1.0  # CURRENT_SCHEMA_VERSION is an int >= 1

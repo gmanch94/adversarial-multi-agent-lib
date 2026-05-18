@@ -157,7 +157,8 @@ async def test_start_emits_workflow_start_counter(cfg):
     await dw.start(request={}, tenant_id="t-test")
     start_events = [c for c in rb.calls if c[1] == "durable.workflow.start"]
     assert len(start_events) == 1
-    assert start_events[0][3] == {"workflow": "_ConvergingWorkflow"}
+    # Tier 2.1d / B1 audit fold-in: `tenant` tag added on every metric.
+    assert start_events[0][3] == {"workflow": "_ConvergingWorkflow", "tenant": "t-test"}
 
 
 @pytest.mark.asyncio

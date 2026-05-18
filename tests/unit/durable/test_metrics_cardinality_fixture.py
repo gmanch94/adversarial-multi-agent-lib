@@ -17,13 +17,16 @@ from adv_multi_agent.core.workflow import BaseWorkflow, WorkflowResult
 from ._recording_metrics import RecordingMetricsBackend
 
 
+# Tier 2.1d / B1 audit fold-in: `tenant` label added to every metric.
+# Cardinality concern (CLAUDE.md): bound ~100 distinct tenant values.
+# Siblings enforce this via env-map size at boot; library trusts callers.
 _EXPECTED_TAG_KEYS: dict[str, set[frozenset[str]]] = {
-    "durable.workflow.start": {frozenset({"workflow"})},
-    "durable.workflow.pause": {frozenset({"workflow", "pause_reason"})},
-    "durable.lock.acquire_latency_seconds": {frozenset({"workflow", "phase"})},
-    "durable.round.latency_seconds": {frozenset({"workflow"})},
-    "durable.checkpoint.schema_version": {frozenset({"workflow"})},
-    "durable.round": {frozenset({"workflow"})},  # span
+    "durable.workflow.start": {frozenset({"workflow", "tenant"})},
+    "durable.workflow.pause": {frozenset({"workflow", "tenant", "pause_reason"})},
+    "durable.lock.acquire_latency_seconds": {frozenset({"workflow", "tenant", "phase"})},
+    "durable.round.latency_seconds": {frozenset({"workflow", "tenant"})},
+    "durable.checkpoint.schema_version": {frozenset({"workflow", "tenant"})},
+    "durable.round": {frozenset({"workflow", "tenant"})},  # span
 }
 
 

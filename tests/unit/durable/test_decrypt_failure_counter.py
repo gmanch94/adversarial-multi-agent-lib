@@ -71,7 +71,7 @@ async def test_invalid_token_increments_counter() -> None:
     fails = [c for c in rb.counters if c[0] == "durable.cipher.decrypt_failed"]
     assert len(fails) == 1
     name, _val, keys = fails[0]
-    assert keys == frozenset({"workflow", "cipher_backend", "error_class"})
+    assert keys == frozenset({"workflow", "tenant", "cipher_backend", "error_class"})
 
 
 @pytest.mark.asyncio

@@ -301,8 +301,13 @@ class DurableWorkflow:
         run_id = uuid.uuid4().hex[:16]
         token = self._new_token(run_id, tenant_id=tenant_id)
         wf_class = type(self._inner).__name__
+        # Tier 2.1d / B1 audit fold-in: every metric tag dict carries
+        # `tenant` so dashboards can break down per tenant. Per CLAUDE.md
+        # cardinality note: bound ~100 distinct tenant values; siblings
+        # enforce this via env-map size at boot.
+        _base_tags = {"workflow": wf_class, "tenant": tenant_id}
         self._metrics.counter(
-            "durable.workflow.start", tags={"workflow": wf_class}
+            "durable.workflow.start", tags=dict(_base_tags)
         )
         handle: LockHandle | None = None
         import time as _time_lock
@@ -312,13 +317,13 @@ class DurableWorkflow:
         except Exception as exc:
             self._metrics.counter(
                 "durable.lock.acquire_failed",
-                tags={"workflow": wf_class, "phase": "start"},
+                tags={**_base_tags, "phase": "start"},
             )
             return RunOutcome(status="failed", token=token, error=f"lock acquire failed: {exc}")
         self._metrics.histogram(
             "durable.lock.acquire_latency_seconds",
             _time_lock.perf_counter() - _lock_t0,
-            tags={"workflow": wf_class, "phase": "start"},
+            tags={**_base_tags, "phase": "start"},
         )
 
         try:
@@ -364,7 +369,7 @@ class DurableWorkflow:
                     for round_num in range(1, self._config.max_review_rounds + 1):
                         _round_t0 = _time_mod.perf_counter()
                         _span_cm = self._metrics.span(
-                            "durable.round", tags={"workflow": wf_class}
+                            "durable.round", tags=dict(_base_tags)
                         )
                         _span = await _span_cm.__aenter__()
                         _span_closed = False
@@ -392,7 +397,7 @@ class DurableWorkflow:
                             self._metrics.counter(
                                 "durable.workflow.pause",
                                 tags={
-                                    "workflow": wf_class,
+                                    **_base_tags,
                                     "pause_reason": str(ps.reason),
                                 },
                             )
@@ -429,7 +434,7 @@ class DurableWorkflow:
                         self._metrics.histogram(
                             "durable.round.latency_seconds",
                             _time_mod.perf_counter() - _round_t0,
-                            tags={"workflow": wf_class},
+                            tags=dict(_base_tags),
                         )
                         _span.set_attribute("round.converged", bool(r.get("converged")))
                         if not _span_closed:
@@ -449,7 +454,7 @@ class DurableWorkflow:
                                 _bs = self._budget.snapshot()
                                 cp.budget_used = _bs.to_dict()
                                 # Tier 1.1: budget gauges (one snapshot reused).
-                                _btags = {"workflow": wf_class}
+                                _btags = dict(_base_tags)
                                 self._metrics.gauge(
                                     "durable.budget.tokens_in",
                                     float(_bs.tokens_in),
@@ -469,7 +474,7 @@ class DurableWorkflow:
                             self._metrics.gauge(
                                 "durable.checkpoint.schema_version",
                                 float(cp.schema_version),
-                                tags={"workflow": wf_class},
+                                tags=dict(_base_tags),
                             )
 
                         if r.get("converged"):
@@ -536,6 +541,10 @@ class DurableWorkflow:
         force_workflow_upgrade: bool = False,
     ) -> RunOutcome:
         wf_class = type(self._inner).__name__
+        # Tier 2.1d / B1 audit fold-in: thread tenant_id from ResumeToken
+        # into every metric tag dict so dashboards can break down per tenant.
+        tenant_id = getattr(token, "tenant_id", "_default")
+        _base_tags = {"workflow": wf_class, "tenant": tenant_id}
         import time as _time_lock
         _lock_t0 = _time_lock.perf_counter()
         try:
@@ -543,13 +552,13 @@ class DurableWorkflow:
         except Exception:
             self._metrics.counter(
                 "durable.lock.acquire_failed",
-                tags={"workflow": wf_class, "phase": "resume"},
+                tags={**_base_tags, "phase": "resume"},
             )
             raise
         self._metrics.histogram(
             "durable.lock.acquire_latency_seconds",
             _time_lock.perf_counter() - _lock_t0,
-            tags={"workflow": wf_class, "phase": "resume"},
+            tags={**_base_tags, "phase": "resume"},
         )
         try:
             cp = await self._store.read(token.run_id)  # raises RunNotFound
@@ -710,7 +719,7 @@ class DurableWorkflow:
             try:
                 for round_num in range(cp.round + 1, self._config.max_review_rounds + 1):
                     _r_span_cm = self._metrics.span(
-                        "durable.round", tags={"workflow": wf_class}
+                        "durable.round", tags=dict(_base_tags)
                     )
                     _r_span = await _r_span_cm.__aenter__()
                     _r_span_closed = False
@@ -748,7 +757,7 @@ class DurableWorkflow:
                         self._metrics.gauge(
                             "durable.checkpoint.schema_version",
                             float(cp.schema_version),
-                            tags={"workflow": wf_class},
+                            tags=dict(_base_tags),
                         )
                         paused_token = ResumeToken(
                             run_id=token.run_id,

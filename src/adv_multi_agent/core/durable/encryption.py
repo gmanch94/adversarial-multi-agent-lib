@@ -270,6 +270,7 @@ class EncryptedCheckpointStore:
                 "durable.cipher.decrypt_failed",
                 tags={
                     "workflow": self._workflow_class,
+                    "tenant": cp.tenant_id,
                     "cipher_backend": type(cipher).__name__,
                     "error_class": type(exc).__name__,
                 },
@@ -359,6 +360,7 @@ class EncryptedCheckpointStore:
                     "durable.cipher.decrypt_failed",
                     tags={
                         "workflow": self._workflow_class,
+                        "tenant": checkpoint.tenant_id,
                         "cipher_backend": type(cipher).__name__,
                         "error_class": type(exc).__name__,
                     },

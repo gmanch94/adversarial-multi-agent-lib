@@ -71,3 +71,40 @@ groups:
         annotations:
           summary: Quarantine grew by >5 net rows in 10m (poison-input storm)
           runbook: docs/runbooks/otel-operations.md#durablequarantinespike
+      # Tier 2.1d / B2 audit fold-in: tenant-aware alerts. The fleet-wide
+      # rules above (DurableHighRoundLatency / DurableCipherDecryptFailureSpike
+      # / DurablePauseResumeImbalance) hide single-tenant pathologies behind
+      # an N-tenant average. Per-tenant variants below trigger when ONE
+      # tenant misbehaves. Cardinality bound by daemon resolver size (~100).
+      - alert: DurableTenantHighRoundLatency
+        expr: histogram_quantile(0.95, sum by (le, tenant) (rate(durable_round_latency_seconds_bucket[5m]))) > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tenant {{ $labels.tenant }} p95 round latency above 60s for 15m
+          runbook: docs/runbooks/otel-operations.md#durabletenanthighroundlatency
+      - alert: DurableTenantCipherDecryptFailureSpike
+        expr: sum by (tenant) (rate(durable_cipher_decrypt_failed_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Tenant {{ $labels.tenant }} cipher decrypt failure rate above 0.1/s
+          runbook: docs/runbooks/otel-operations.md#durabletenantciperdecryptfailurespike
+      - alert: DurableTenantBudgetUsageHigh
+        expr: max by (tenant) (durable_budget_usd_spent / on (tenant) group_left durable_budget_usd_cap) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tenant {{ $labels.tenant }} above 90 percent of usd cap
+          runbook: docs/runbooks/otel-operations.md#durabletenantbudgetusagehigh
+      - alert: DurableTenantPauseResumeImbalance
+        expr: sum by (tenant) (rate(durable_workflow_pause_total[1h])) - sum by (tenant) (rate(durable_workflow_start_total[1h])) > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Tenant {{ $labels.tenant }} pauses outpacing starts for 30m
+          runbook: docs/runbooks/otel-operations.md#durabletenantpauseresumeimbalance
