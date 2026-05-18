@@ -33,7 +33,17 @@ Closes gaps doc §1.3 AWS slice. AWS sibling joins GCP + Fernet as the third ref
 - Fail-closed on KMS unavailability — chose security (defeats SOC2 audit answer to fall back) over resilience.
 - IMDSv1 refuse-start at daemon startup — chose security (Capital One 2019 breach class) over operational convenience.
 
-**Next:** Tier 2.4 quarantine (per "Parallel design only, sequential ship" order). Spec: `docs/superpowers/specs/2026-05-18-quarantine-design.md`. 2-slice arc ~1.4d (library + scripts). Then Tier 2.5 cost model (lean cut, ~1d, pure docs + script).
+**Next session resumes with: Ship Tier 2.4 quarantine.**
+
+- Spec on disk: `docs/superpowers/specs/2026-05-18-quarantine-design.md` (D-QUARANTINE-1..9).
+- 2-slice arc ~1.4d (library S1 + operator-scripts S2). Ship S1 first, soak, then S2.
+- Probe confirmed quarantine is in-memory-only on `PollingDaemon` (`scheduler.py:57-101`) — lost on restart. Library adds `"quarantined"` to `_STATUS_VALUES`; new methods `quarantine`, `requeue`, `list_quarantined`; `QuarantineSummary` export; operator scripts `list_quarantined.py` / `requeue_run.py` / `quarantine_delete.py`.
+- Tier 2.4 adds 3 methods + 1 dataclass + 1 status value to public surface — **minor bump per `docs/semver-policy.md`**; needs golden update in `tests/unit/durable/test_public_api_stability.py` (`GOLDEN_ALL` frozenset).
+- After Tier 2.4: ship Tier 2.5 cost model (spec `2026-05-18-cost-capacity-model-design.md`, ~1d lean cut, pure docs + `scripts/load_test.py`).
+
+Per "Parallel design only, sequential ship" — do NOT spawn implementation subagents; ship directly using the spec on disk.
+
+**Tree state at handoff: clean at commit `dd1024e`. 185 durable lib tests + 49 AWS sibling tests green. Ruff clean. Mypy parity.**
 
 ---
 
