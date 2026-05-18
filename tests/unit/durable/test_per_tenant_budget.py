@@ -71,13 +71,27 @@ async def test_caps_kwarg_enforces_max_usd() -> None:
         await tracker.record("claude-opus-4-7", tokens_in=200_000, tokens_out=0)
 
 
-def test_empty_caps_warns_no_caps() -> None:
-    """Audit Q7 fold-in: BudgetTracker(caps=BudgetCaps()) — all-None fields
-    must trigger the no-caps UserWarning (same as legacy no-kwarg path)."""
+def test_empty_caps_raises_value_error() -> None:
+    """Tier 2.1d / BUG-B2 audit fold-in: BudgetTracker(caps=BudgetCaps())
+    with all-None fields fail-loud (was warn-only in 2.1c-2). Per-tenant
+    resolver returning empty caps is a config bug; silently allowing
+    unbounded spend is the LOW-1 security finding.
+
+    Legacy `BudgetTracker()` (no kwargs) still warns — backward-compat
+    for direct callers explicitly opting out.
+    """
+    with pytest.raises(ValueError, match="all caps None"):
+        BudgetTracker(caps=BudgetCaps())
+
+
+def test_legacy_no_kwargs_still_warns() -> None:
+    """Backward-compat: BudgetTracker() with no kwargs still warns rather
+    than raises. Direct in-process callers may opt-out of caps explicitly.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         with pytest.raises(UserWarning, match="no caps"):
-            BudgetTracker(caps=BudgetCaps())
+            BudgetTracker()
 
 
 @pytest.mark.asyncio

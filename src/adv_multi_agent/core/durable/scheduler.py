@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .checkpoint import CheckpointCorrupt, RunNotFound, SchemaVersionMismatch
+from .encryption import UnknownTenantError
 from .token import ResumeToken
 from .workflow import DurableWorkflow
 
@@ -99,6 +100,19 @@ class SchedulerDaemon:
                             resolved.run_id, self._max_retries,
                         )
                         self._quarantine.add(resolved.run_id)
+                except UnknownTenantError:
+                    # Tier 2.1d / MED-2 audit fold-in: distinguish operator
+                    # config error from data corruption. Quarantine
+                    # immediately (do NOT retry — the resolver is static for
+                    # the daemon's lifetime; retrying N times only spams
+                    # logs). Operator triage: check DURABLE_TENANT_*_JSON
+                    # env coverage for resolved.tenant_id.
+                    logger.error(
+                        "scheduler resume unknown_tenant_config run=%s tenant=%s; "
+                        "quarantining immediately (config issue, not data corruption)",
+                        resolved.run_id, resolved.tenant_id,
+                    )
+                    self._quarantine.add(resolved.run_id)
                 except Exception:
                     logger.exception("scheduler resume crashed for %s", resolved.run_id)
                     self._failures[resolved.run_id] = (

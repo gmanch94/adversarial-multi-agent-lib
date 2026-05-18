@@ -111,6 +111,23 @@ class BudgetTracker:
             eff_out = max_tokens_out
             eff_usd = max_usd
         if eff_in is None and eff_out is None and eff_usd is None:
+            # Tier 2.1d / BUG-B2 audit fold-in: when `caps=` was supplied
+            # explicitly (the per-tenant resolver path), all-None is a
+            # config bug — silently unbounded spend is the failure mode
+            # the audit flagged as LOW-1 security. Fail-loud.
+            #
+            # Legacy positional-only path (caps is None, all max_X None)
+            # keeps the warning — backward-compat for direct in-process
+            # callers that explicitly opt out of caps. Audit M2 fold-in
+            # left this posture intentional.
+            if caps is not None:
+                raise ValueError(
+                    "BudgetTracker(caps=BudgetCaps()) has all caps None; "
+                    "per-tenant resolver must set at least one of "
+                    "max_tokens_in / max_tokens_out / max_usd. "
+                    "Pass BudgetTracker() (no args) for an explicitly "
+                    "uncapped tracker."
+                )
             warnings.warn(
                 "BudgetTracker constructed with no caps; long-running spend is unbounded. "
                 "Set max_tokens_in / max_tokens_out / max_usd OR caps=BudgetCaps(...) "

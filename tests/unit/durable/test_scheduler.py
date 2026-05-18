@@ -11,6 +11,7 @@ from adv_multi_agent.core.durable.checkpoint import (
     Checkpoint,
     MemoryCheckpointStore,
 )
+from adv_multi_agent.core.durable.encryption import UnknownTenantError
 from adv_multi_agent.core.durable.scheduler import (
     PollingScheduler,
     SchedulerDaemon,
@@ -101,3 +102,57 @@ async def test_daemon_invokes_factory_per_paused_run(tmp_path: Path) -> None:
     daemon.stop()
     await task
     assert "tests.unit.durable.fakes.ToyPausingWorkflow" in invoked
+
+
+@pytest.mark.asyncio
+async def test_unknown_tenant_quarantines_immediately(tmp_path: Path) -> None:
+    """Tier 2.1d / MED-2 audit fold-in: UnknownTenantError is a static
+    operator config error, not data corruption. Quarantine immediately
+    (no retry counter), tagged distinct from "corrupt checkpoint" failures.
+    Without this branch, UnknownTenantError(KeyError) fell to bare Exception
+    and got mislabelled as data corruption after max_retries.
+    """
+    store = MemoryCheckpointStore()
+    now = datetime.now(timezone.utc)
+    cp = make_paused_checkpoint("unknown-tenant-run", now - timedelta(seconds=1))
+    await store.write(cp)
+
+    invoked: list[str] = []
+
+    def factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
+        invoked.append(tenant_id)
+        raise UnknownTenantError(
+            f"no cipher configured for tenant_id={tenant_id!r}"
+        )
+
+    token = ResumeToken(
+        run_id="unknown-tenant-run",
+        workflow_class="tests.unit.durable.fakes.ToyPausingWorkflow",
+        tenant_id="t-unknown",
+        pinned_executor_model="claude-opus-4-7",
+        pinned_reviewer_model="gpt-4o",
+        schema_version=CURRENT_SCHEMA_VERSION,
+        created_at=cp.created_at,
+        wake_at=cp.wake_at,
+    )
+
+    daemon = SchedulerDaemon(
+        scheduler=PollingScheduler(checkpoint_store=store),
+        workflow_factory=factory,
+        token_resolver=lambda t: token,
+        poll_interval_seconds=0.05,
+        max_retries=5,  # high — would normally take 5 failures to quarantine
+    )
+
+    task = asyncio.create_task(daemon.run_forever())
+    await asyncio.sleep(0.3)
+    daemon.stop()
+    await task
+
+    # Factory called only once (immediate quarantine on first failure),
+    # not max_retries times. Run is in quarantine.
+    assert invoked == ["t-unknown"], (
+        f"expected single factory invocation (immediate quarantine on "
+        f"UnknownTenantError), got {len(invoked)} invocations"
+    )
+    assert "unknown-tenant-run" in daemon._quarantine
