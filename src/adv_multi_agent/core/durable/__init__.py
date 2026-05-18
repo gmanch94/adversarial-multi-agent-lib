@@ -49,7 +49,11 @@ from .checkpoint import (
     RunNotFound,
     SchemaVersionMismatch,
 )
-from .encryption import EncryptedCheckpointStore, LegacyPartialAEADWarning
+from .encryption import (
+    EncryptedCheckpointStore,
+    LegacyPartialAEADWarning,
+    UnknownTenantError,
+)
 from .hooks import ReconciliationHook
 from .lock import FileRunLock, LockHandle, MemoryRunLock, RunLocked
 from .protocols import (
@@ -95,6 +99,7 @@ __all__ = [
     "Cipher",
     "IntegrityViolation",
     "LegacyPartialAEADWarning",
+    "UnknownTenantError",
     # Locks + scheduling
     "RunLock",
     "LockHandle",

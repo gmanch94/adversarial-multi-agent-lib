@@ -24,6 +24,7 @@ import json
 import os
 import re
 import warnings
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,16 @@ from typing import Any
 from .checkpoint import Checkpoint
 from .protocols import Cipher, IntegrityViolation
 from .token import ResumeToken
+
+
+class UnknownTenantError(KeyError):
+    """D-TENANT-7 (Tier 2.1c): raised when a `cipher_for_tenant` resolver
+    cannot map a tenant_id to a Cipher.
+
+    EncryptedCheckpointStore.seal/unseal/write/read fail closed when this
+    is raised — no fallback decrypt path. Operator runbooks instruct: if
+    this fires unexpectedly, the resolver / KMS / keyring is misconfigured.
+    """
 
 
 class LegacyPartialAEADWarning(UserWarning):
@@ -135,14 +146,43 @@ class EncryptedCheckpointStore:
     def __init__(
         self,
         inner: Any,
-        cipher: Cipher,
+        cipher: Cipher | None = None,
         *,
+        cipher_for_tenant: Callable[[str], Cipher] | None = None,
         metrics: Any | None = None,
         workflow_class: str = "unknown",
         refuse_legacy_aead: bool = False,
     ) -> None:
+        """D-TENANT-7 (Tier 2.1c): exactly one of `cipher` or `cipher_for_tenant`
+        must be provided.
+
+        - `cipher`: single Cipher instance for ALL tenants (single-tenant
+          deployments OR a deliberate shared-keyring multi-tenant setup
+          accepting the cross-tenant payload-decrypt risk).
+        - `cipher_for_tenant`: resolver callable mapping tenant_id → Cipher.
+          Invoked per-checkpoint at seal/unseal time. Resolver raises
+          `UnknownTenantError` on unknown tenant (fails closed; no fallback).
+          Use `functools.lru_cache` on the callable to amortize KMS lookups.
+        """
         self._inner = inner
-        self._cipher = cipher
+        # Mutual-exclusion check: caller MUST provide exactly one.
+        if (cipher is None) == (cipher_for_tenant is None):
+            raise ValueError(
+                "EncryptedCheckpointStore requires exactly one of "
+                "`cipher` or `cipher_for_tenant` (got "
+                f"cipher={cipher is not None}, "
+                f"cipher_for_tenant={cipher_for_tenant is not None})"
+            )
+        # Internal resolver — always returns Cipher; for single-cipher case
+        # wraps the fixed instance in a closure so call sites have one shape.
+        if cipher is not None:
+            _fixed = cipher
+            self._cipher_for: Callable[[str], Cipher] = lambda _tid: _fixed
+            self._has_resolver = False
+        else:
+            assert cipher_for_tenant is not None  # narrowing for mypy
+            self._cipher_for = cipher_for_tenant
+            self._has_resolver = True
         # Tier 1.1 Slice A: optional MetricsBackend for decrypt-failure counter.
         # Default Noop so existing callers keep working unchanged.
         if metrics is None:
@@ -179,7 +219,10 @@ class EncryptedCheckpointStore:
                 return cp
             # else fall through and re-encrypt (treat as plaintext that
             # accidentally starts with the sentinel)
-        ciphertext = self._cipher.encrypt(cp.last_request_json)
+        # D-TENANT-7 (Tier 2.1c): resolve cipher per cp.tenant_id. For
+        # single-cipher deployments the resolver returns the fixed instance.
+        cipher = self._cipher_for(cp.tenant_id)
+        ciphertext = cipher.encrypt(cp.last_request_json)
         return Checkpoint(
             run_id=cp.run_id,
             tenant_id=cp.tenant_id,
@@ -213,8 +256,12 @@ class EncryptedCheckpointStore:
             )
             return cp
         ciphertext = cp.last_request_json[len(self._ENC_PREFIX):]
+        # D-TENANT-7 (Tier 2.1c): resolver picks tenant-scoped Cipher.
+        # UnknownTenantError from the resolver propagates as a decrypt failure
+        # (counter tag uses "UnknownTenantError" so operators can grep alerts).
+        cipher = self._cipher_for(cp.tenant_id)
         try:
-            plaintext = self._cipher.decrypt(ciphertext)
+            plaintext = cipher.decrypt(ciphertext)
         except Exception as exc:
             # Tier 1.1 Slice A: decrypt-failure counter for rotation-in-progress
             # signal. Tag values are allowlisted low-cardinality strings only;
@@ -223,7 +270,7 @@ class EncryptedCheckpointStore:
                 "durable.cipher.decrypt_failed",
                 tags={
                     "workflow": self._workflow_class,
-                    "cipher_backend": type(self._cipher).__name__,
+                    "cipher_backend": type(cipher).__name__,
                     "error_class": type(exc).__name__,
                 },
             )
@@ -267,7 +314,10 @@ class EncryptedCheckpointStore:
         # canonical bytes don't include a stale tag value.
         unsealed = _replace_integrity_tag(encrypted, None)
         payload = _compute_integrity_payload(unsealed)
-        tag = await asyncio.to_thread(self._cipher.encrypt, payload)
+        # D-TENANT-7 (Tier 2.1c): integrity tag is signed by the tenant's
+        # cipher — cross-tenant tag reuse fails AEAD verification.
+        cipher = self._cipher_for(checkpoint.tenant_id)
+        tag = await asyncio.to_thread(cipher.encrypt, payload)
         return _replace_integrity_tag(unsealed, tag)
 
     async def unseal(self, checkpoint: Checkpoint) -> Checkpoint:
@@ -294,9 +344,13 @@ class EncryptedCheckpointStore:
                 stacklevel=3,
             )
         else:
+            # D-TENANT-7 (Tier 2.1c): resolve cipher for the row's tenant.
+            # UnknownTenantError from the resolver propagates BEFORE the try
+            # so it isn't counted as a decrypt-failure (it's a config issue).
+            cipher = self._cipher_for(checkpoint.tenant_id)
             try:
                 payload = await asyncio.to_thread(
-                    self._cipher.decrypt, checkpoint.integrity_tag
+                    cipher.decrypt, checkpoint.integrity_tag
                 )
             except IntegrityViolation:
                 raise
@@ -305,7 +359,7 @@ class EncryptedCheckpointStore:
                     "durable.cipher.decrypt_failed",
                     tags={
                         "workflow": self._workflow_class,
-                        "cipher_backend": type(self._cipher).__name__,
+                        "cipher_backend": type(cipher).__name__,
                         "error_class": type(exc).__name__,
                     },
                 )

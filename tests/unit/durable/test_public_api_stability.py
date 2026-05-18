@@ -39,6 +39,7 @@ GOLDEN_ALL: frozenset[str] = frozenset({
     "RunNotFound", "SchemaVersionMismatch",
     # Cipher + integrity
     "Cipher", "IntegrityViolation", "LegacyPartialAEADWarning",
+    "UnknownTenantError",
     # Locks + scheduling
     "RunLock", "LockHandle", "RunLocked",
     "MemoryRunLock", "FileRunLock", "SchedulerBackend",
@@ -81,11 +82,18 @@ def _sig(callable_obj: object) -> str:
 
 
 def test_encrypted_checkpoint_store_init_signature() -> None:
-    """The Tier-1.1/1.9/A16-H-01 kwargs (metrics, workflow_class,
-    refuse_legacy_aead) are pinned. Adding new keyword-only args with defaults
-    is allowed; adding required args or renaming existing ones is a break."""
+    """The Tier-1.1/1.9/A16-H-01/2.1c kwargs (metrics, workflow_class,
+    refuse_legacy_aead, cipher_for_tenant) are pinned. Adding new keyword-only
+    args with defaults is allowed; adding required args or renaming existing
+    ones is a break.
+
+    D-TENANT-7 (Tier 2.1c, 2026-05-18): `cipher` became optional (default None)
+    + `cipher_for_tenant` added as keyword-only optional. Mutual-exclusion is
+    enforced at runtime in __init__, not via type system. Minor bump.
+    """
     assert _sig(EncryptedCheckpointStore.__init__) == (
-        "(self, inner: 'Any', cipher: 'Cipher', *, "
+        "(self, inner: 'Any', cipher: 'Cipher | None' = None, *, "
+        "cipher_for_tenant: 'Callable[[str], Cipher] | None' = None, "
         "metrics: 'Any | None' = None, "
         "workflow_class: 'str' = 'unknown', "
         "refuse_legacy_aead: 'bool' = False) -> 'None'"
