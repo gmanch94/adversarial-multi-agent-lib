@@ -120,7 +120,7 @@ Recommend: ship A16-H-01 and A16-H-02 fixes as one follow-up commit (`fix(durabl
 
 ## POST-AUDIT CLOSURE — 2026-05-18
 
-All 10 findings drained in single commit `<commit-sha>`. Library tests: 727 → 729 (+2 from A16-H-01).
+All 10 findings drained in single commit `f5a3c9b`. Library tests: 727 → 729 (+2 from A16-H-01).
 
 | ID | Severity | Fix |
 | --- | --- | --- |
