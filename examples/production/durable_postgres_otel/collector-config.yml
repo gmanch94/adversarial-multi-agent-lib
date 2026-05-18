@@ -16,10 +16,19 @@ processors:
     timeout: 5s
     send_batch_size: 512
   # memory_limiter prevents OOM on collector if downstream backs up.
+  # Tuned per Slice C: 512 MiB / 128 MiB headroom for production-scale fan-in
+  # (default 256/64 was conservative POC sizing).
   memory_limiter:
     check_interval: 1s
-    limit_mib: 256
-    spike_limit_mib: 64
+    limit_mib: 512
+    spike_limit_mib: 128
+  # Tags all exported signals with deployment.environment for multi-env Grafana
+  # filtering. DEPLOYMENT_ENV must be set in the daemon .env (dev, staging, prod).
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:DEPLOYMENT_ENV}
+        action: upsert
 
 exporters:
   otlp/jaeger:
@@ -34,11 +43,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlp/jaeger]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [prometheus]
   telemetry:
     logs:

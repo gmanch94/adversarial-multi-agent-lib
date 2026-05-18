@@ -57,6 +57,8 @@ services:
     environment:
       OTEL_SERVICE_NAME: durable-workflow
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      # DEPLOYMENT_ENV is also read by collector's resource processor for
+      # tagging exported signals (dev / staging / prod). Set in .env.
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,6 +83,9 @@ services:
     image: otel/opentelemetry-collector-contrib:0.103.0@sha256:a3b1bd5db3a90e51e1f0d5f7be73f80fed46f29d3c220dc4a3a8e2c4cad3a4c5
     networks: [internal]
     command: ["--config=/etc/otel/collector-config.yml"]
+    environment:
+      # Consumed by collector-config.yml resource processor (D-OTEL Slice C).
+      DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-dev}
     volumes:
       - ./collector-config.yml:/etc/otel/collector-config.yml:ro
     depends_on:
@@ -112,6 +117,7 @@ services:
     networks: [internal]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -136,6 +142,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
       - jaeger
