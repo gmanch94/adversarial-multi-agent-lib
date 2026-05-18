@@ -339,6 +339,37 @@ async def main() -> None:
         max_retries=3,
     )
 
+    # D-TENANT-6 (Tier 2.1a): per-daemon tenant cache. Populated by the
+    # periodic refresh task below + by start_with_tenant() callers.
+    # QuarantineSync reads this dict via getattr to attach tenant_id to
+    # quarantine rows. Library SchedulerDaemon doesn't know about tenancy
+    # in 2.1a — the cache is sibling-side only.
+    daemon._tenants_for_runs = {}  # type: ignore[attr-defined]
+
+    async def _refresh_tenant_cache() -> None:
+        """Periodically rebuild `_tenants_for_runs` from `list_paused_with_tenants`.
+
+        D-TENANT-6: the cache is best-effort; DB column is source of truth.
+        Refresh cadence matches poll_interval so the cache never lags poll
+        by more than one cycle.
+        """
+        from datetime import datetime as _dt, timezone as _tz
+        while True:
+            try:
+                # Look-ahead window: same as scheduler's effective wake_before.
+                # `list_paused_with_tenants` enforces the same RLS-unscoped SELECT
+                # used by `list_paused`; cache reflects exactly what scheduler sees.
+                _, tenant_map = await inner_store.list_paused_with_tenants(
+                    _dt.now(_tz.utc),
+                )
+                daemon._tenants_for_runs.update(tenant_map)  # type: ignore[attr-defined]
+            except Exception:
+                logger = logging.getLogger(__name__)
+                logger.exception("tenant cache refresh failed")
+            await asyncio.sleep(cfg.poll_interval)
+
+    _tenant_cache_task = asyncio.create_task(_refresh_tenant_cache())
+
     def get_health_state() -> dict[str, Any]:
         # A8-L-04: paused_runs surfaced as `None` rather than placeholder -1.
         # An ops dashboard graphing the value as a number would otherwise see
@@ -400,9 +431,11 @@ async def main() -> None:
     finally:
         # A14-M-02: cancel + await _sat_task before pool teardown so in-flight
         # queries don't race against a closing pool. quarantine_sync.stop()
-        # already drains its own task.
+        # already drains its own task. D-TENANT-6: _tenant_cache_task added
+        # to the same cancel-and-await group for the same race-avoidance reason.
         _sat_task.cancel()
-        await asyncio.gather(_sat_task, return_exceptions=True)
+        _tenant_cache_task.cancel()
+        await asyncio.gather(_sat_task, _tenant_cache_task, return_exceptions=True)
         await quarantine_sync.stop()
         # F-H-04 v2: force-close any still-held lock handles BEFORE pool teardown.
         # asyncpg pool.close() does NOT close idle connections that are merely

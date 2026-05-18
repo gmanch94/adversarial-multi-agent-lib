@@ -311,6 +311,103 @@ The inaugural drill captured 95 warnings, all variants of `EncryptedCheckpointSt
 - `integrity_tag` is the AEAD seal binding the payload bytes (A10-H2). Without it, the unseal path skips integrity verification (or hard-fails if `_refuse_legacy_aead=True`).
 - `workflow_version_hash` is the 21 CFR Part 11 attestation chain — proof that the workflow definition the daemon resumed against is the same one that originally paused. Dropping it on every persist left a documented gap in the audit chain (`workflow_version_pinning.py:335` warning).
 
+### 5.6 Multi-tenant migration runbook (Tier 2.1a)
+
+**Driver:** [Tier 2.1 multi-tenant design](../superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md). Two-phase migration with mandatory backfill between phases.
+
+**Pre-flight checks** (run BEFORE phase 1):
+```sql
+-- Count existing rows; informs backfill cardinality.
+SELECT COUNT(*) FROM checkpoints;
+SELECT COUNT(*) FROM quarantine;
+
+-- Confirm no application traffic during migration window.
+-- Suggested: stop daemon process, wait for in-flight workflows to drain
+-- (status = 'running' rows → 0).
+SELECT COUNT(*) FROM checkpoints WHERE status = 'running';
+```
+
+**Phase 1 — Add nullable column + CHECK** (`scripts/0004_add_tenant_id.sql`):
+```bash
+psql "$POSTGRES_DSN" -f scripts/0004_add_tenant_id.sql
+```
+Expected: column added; legacy rows have `tenant_id = NULL`; no application impact (writes still permitted because column is nullable and RLS not yet active).
+
+**Phase 2 — Backfill** (OPERATOR-WRITTEN — schema does NOT pick a default):
+
+For **single-tenant** deployments:
+```sql
+BEGIN;
+UPDATE checkpoints SET tenant_id = '_default' WHERE tenant_id IS NULL;
+UPDATE quarantine  SET tenant_id = '_default' WHERE tenant_id IS NULL;
+-- Verify zero NULL rows:
+SELECT COUNT(*) FROM checkpoints WHERE tenant_id IS NULL;  -- must be 0
+SELECT COUNT(*) FROM quarantine  WHERE tenant_id IS NULL;  -- must be 0
+COMMIT;
+```
+
+For **multi-tenant** deployments (real assignment, NOT `_default`):
+```sql
+BEGIN;
+-- Example mapping by run_id prefix; replace with your tenant-discriminator logic.
+UPDATE checkpoints SET tenant_id = CASE
+    WHEN run_id LIKE 'tenant-a-%' THEN 'tenant-a'
+    WHEN run_id LIKE 'tenant-b-%' THEN 'tenant-b'
+    ELSE '_default'  -- catch-all; flag these to operator for manual review
+END WHERE tenant_id IS NULL;
+-- Operator manually classifies any remaining _default rows BEFORE proceeding.
+SELECT run_id FROM checkpoints WHERE tenant_id = '_default';
+-- After manual review:
+COMMIT;
+```
+
+**Phase 3 — Enable RLS** (`scripts/0005_enable_tenant_rls.sql`):
+```bash
+psql "$POSTGRES_DSN" -f scripts/0005_enable_tenant_rls.sql
+```
+Expected: RLS policies installed; SELECT remains unscoped (scheduler poll works across tenants); INSERT/UPDATE/DELETE require `current_setting('app.tenant_id')` to match the row's tenant_id.
+
+**Phase 4 — Flip NOT NULL** (`scripts/0006_tenant_id_not_null.sql`):
+```bash
+psql "$POSTGRES_DSN" -f scripts/0006_tenant_id_not_null.sql
+```
+**This migration FAILS if backfill missed any row** — that is intentional. Fix: re-run phase 2 backfill, then re-run phase 4.
+
+**Phase 5 — Deploy new sibling code**. Daemon now expects:
+- `tenant_id` kwarg on write paths OR `_CURRENT_TENANT` ContextVar set
+- Operator scripts (`list_quarantined.py`, `requeue.py`) require `--tenant <id>`
+- Single-tenant operators set `DURABLE_REQUIRE_EXPLICIT_TENANT=0` (default) to allow `_default` fallback with deprecation warnings
+- Multi-tenant operators set `DURABLE_REQUIRE_EXPLICIT_TENANT=1` to fail-close on missing tenant context
+
+**Phase 6 — Verify** (smoke checks):
+```sql
+-- All 8 RLS policies installed:
+SELECT tablename, policyname, cmd FROM pg_policies
+WHERE tablename IN ('checkpoints', 'quarantine')
+ORDER BY tablename, cmd;
+
+-- Zero NULL tenant_ids:
+SELECT COUNT(*) FROM checkpoints WHERE tenant_id IS NULL;  -- 0
+SELECT COUNT(*) FROM quarantine  WHERE tenant_id IS NULL;  -- 0
+
+-- _default fallback signal — counts rows still using the escape hatch:
+SELECT COUNT(*) FROM checkpoints WHERE tenant_id = '_default';
+```
+
+**Rollback (if Phase 5 deploy breaks workflows):**
+```bash
+# Phases 1-4 are forward-compatible — old sibling code IGNORES tenant_id column.
+# To roll back the sibling code: deploy prior sibling image; RLS WITH CHECK
+# blocks writes until you also drop the policies:
+psql "$POSTGRES_DSN" -c "ALTER TABLE checkpoints DISABLE ROW LEVEL SECURITY;"
+psql "$POSTGRES_DSN" -c "ALTER TABLE quarantine  DISABLE ROW LEVEL SECURITY;"
+# tenant_id column stays — re-enable RLS once sibling deploy succeeds.
+```
+
+**Transitional state warning (D-TENANT-0):** between Tier 2.1a-merge and Tier 2.1c-merge, the deployment is in "multi-tenant schema preparation" state. Daemon BYPASSRLS for poll AND single keyring decrypts all payloads. Do NOT advertise as multi-tenant isolated until Tier 2.1c (per-tenant cipher) ships.
+
+---
+
 ### 5.5 Key compromise response
 
 1. **Rotate immediately** per §5.2 (Fernet) or `scripts/rotate_kms_key_version.sh` (GcpKms); halt at step 2 (do not deploy yet).

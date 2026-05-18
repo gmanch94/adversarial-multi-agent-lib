@@ -17,10 +17,32 @@ F-H-08 — STORE-BOUNDARY VALIDATION:
   validation MUST fire FIRST so we never encrypt PHI for a request that
   will be rejected at the DB. _RUN_ID_RE is the same regex used by the
   library; importing it keeps the two layers in sync.
+
+D-TENANT-3, D-TENANT-5 (Tier 2.1a) — MULTI-TENANT GUC PATTERN:
+  Every INSERT/UPDATE/DELETE on `checkpoints` and `quarantine` MUST run
+  inside `async with conn.transaction():` with `SET LOCAL app.tenant_id`
+  as the first statement. `SET LOCAL` requires an active transaction —
+  bare `SET` would leak the GUC to the next pool checkout (cross-tenant
+  bug). The CI grep gate `scripts/check_set_local_pattern.py` enforces.
+
+  SELECT queries (read, list_paused) do NOT need SET LOCAL — the RLS
+  policy is unscoped for SELECT (`USING (true)`) to support cross-tenant
+  scheduler polling. Tier 3.4 will scope SELECT when shard scheduling
+  ships.
+
+  Tenant_id resolution: methods take `tenant_id` as required kwarg OR
+  read from `_CURRENT_TENANT` ContextVar (set by daemon before each
+  workflow execution). Missing tenant context raises MissingTenantContext
+  (fails closed).
 """
 from __future__ import annotations
 
+import contextvars
 import json
+import logging
+import os
+import re as _re
+import warnings
 from datetime import datetime
 
 import asyncpg
@@ -33,12 +55,100 @@ from adv_multi_agent.core.durable.checkpoint import (
 )
 from adv_multi_agent.core.durable.token import ResumeToken
 
+logger = logging.getLogger(__name__)
+
+
+# D-TENANT-1: tenant_id charset mirrors the SQL CHECK constraint.
+# Allows leading `_` for reserved `_default` / `_legacy` tenants.
+_TENANT_ID_RE = _re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
+
+# D-TENANT-2: reserved tenant_id values.
+RESERVED_DEFAULT_TENANT = "_default"
+RESERVED_LEGACY_TENANT = "_legacy"
+
+# D-TENANT-5: ContextVar plumbing for daemon-internal call paths that don't
+# have tenant_id from the call signature (e.g. library-internal
+# `DurableWorkflow.resume(token) -> store.write(cp)` chain). Daemon SETs
+# the ContextVar before invoking resume; store reads it inside every txn.
+# `contextvars.ContextVar` is async-safe (per-task copy by asyncio).
+_CURRENT_TENANT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_CURRENT_TENANT", default=None
+)
+
+
+class MissingTenantContext(RuntimeError):
+    """Raised when a write-path method is called without tenant_id kwarg
+    AND `_CURRENT_TENANT` ContextVar is unset. Fails closed."""
+
 
 class CompareAndSwapFailed(RuntimeError):
     """Raised by write_if_unchanged when expected_updated_at doesn't match.
 
     F-H-06: optimistic concurrency for the reencrypt rotation pass.
     """
+
+
+def _resolve_tenant_id(explicit: str | None) -> str:
+    """Pick explicit kwarg first, fall back to ContextVar; then `_default`.
+
+    D-TENANT-5: two-channel resolution. Operator scripts pass tenant_id
+    explicitly; daemon paths set ContextVar before invoking workflow code.
+
+    D-TENANT-2 (Tier 2.1a transitional state): if neither kwarg nor
+    ContextVar is set, fall back to reserved `_default` tenant and emit
+    a deprecation warning. Single-tenant operators get zero-touch upgrade;
+    multi-tenant operators set `DURABLE_REQUIRE_EXPLICIT_TENANT=1` to flip
+    to fail-closed (raises MissingTenantContext instead of falling back).
+    """
+    if explicit is not None:
+        tenant_id = explicit
+    else:
+        cv = _CURRENT_TENANT.get()
+        if cv is not None:
+            tenant_id = cv
+        elif os.environ.get("DURABLE_REQUIRE_EXPLICIT_TENANT") in ("1", "true", "TRUE"):
+            raise MissingTenantContext(
+                "tenant_id must be provided via kwarg or _CURRENT_TENANT ContextVar "
+                "(DURABLE_REQUIRE_EXPLICIT_TENANT=1)"
+            )
+        else:
+            # D-TENANT-2: _default escape hatch + WARN + counter via logger.
+            # OTel counter `durable_default_tenant_writes_total` is incremented
+            # by the metrics emitter that observes this logger (see daemon.py
+            # logging filter); also a CI script (check_default_tenant_usage.py)
+            # flags persistent _default usage post operator's deprecation date.
+            warnings.warn(
+                "tenant_id resolved to reserved `_default` (no kwarg, no ContextVar). "
+                "Set DURABLE_REQUIRE_EXPLICIT_TENANT=1 to fail-close in multi-tenant "
+                "deployments. See docs/runbooks/durable-compliance.md §5.6.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            logger.warning(
+                "tenant_default_fallback emitted; switch to explicit tenant_id"
+            )
+            tenant_id = RESERVED_DEFAULT_TENANT
+    if not _TENANT_ID_RE.fullmatch(tenant_id):
+        raise ValueError(
+            f"invalid tenant_id (must match _TENANT_ID_RE): {tenant_id!r}"
+        )
+    return tenant_id
+
+
+def tenant_context(tenant_id: str) -> contextvars.Token[str | None]:
+    """Set `_CURRENT_TENANT` ContextVar for the current asyncio task.
+
+    Returns the reset token; pair with `_CURRENT_TENANT.reset(token)` in a
+    `finally:` block to restore on exit. Daemon's resume loop does this.
+    """
+    if not _TENANT_ID_RE.fullmatch(tenant_id):
+        raise ValueError(f"invalid tenant_id: {tenant_id!r}")
+    return _CURRENT_TENANT.set(tenant_id)
+
+
+def reset_tenant_context(token: contextvars.Token[str | None]) -> None:
+    """Restore prior `_CURRENT_TENANT` ContextVar value."""
+    _CURRENT_TENANT.reset(token)
 
 
 class PostgresCheckpointStore:
@@ -74,21 +184,39 @@ class PostgresCheckpointStore:
                 f"invalid run_id (must match _RUN_ID_RE): {run_id!r}"
             )
 
-    async def write(self, checkpoint: Checkpoint) -> None:
-        """Protocol-compliant write; uses default_workflow_class for the column."""
-        await self.write_with_class(checkpoint, self._default_workflow_class)
+    async def write(
+        self,
+        checkpoint: Checkpoint,
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        """Protocol-compliant write; uses default_workflow_class for the column.
+
+        D-TENANT-5: tenant_id resolves from kwarg OR `_CURRENT_TENANT` ContextVar
+        (set by daemon before workflow execution). Missing both raises
+        MissingTenantContext.
+        """
+        await self.write_with_class(
+            checkpoint, self._default_workflow_class, tenant_id=tenant_id
+        )
 
     async def write_with_class(
         self,
         checkpoint: Checkpoint,
         workflow_class: str,
+        *,
+        tenant_id: str | None = None,
     ) -> None:
         """Extension method (NOT Protocol): write with explicit workflow_class.
 
         Used by daemon-internal call paths AND by reencrypt_all (which must
         preserve the original workflow_class read from the DB).
+
+        D-TENANT-3, D-TENANT-5: DML wrapped in `conn.transaction()` with
+        `SET LOCAL app.tenant_id` first. SET LOCAL requires active transaction.
         """
         self._validate_run_id(checkpoint.run_id)
+        resolved_tenant = _resolve_tenant_id(tenant_id)
         if len(workflow_class) > 512:
             raise ValueError(
                 f"workflow_class exceeds DB CHECK length cap (512): {len(workflow_class)}"
@@ -100,42 +228,57 @@ class PostgresCheckpointStore:
             wake_at_dt = datetime.fromisoformat(checkpoint.wake_at.replace("Z", "+00:00"))
 
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                """
-                INSERT INTO checkpoints
-                  (run_id, schema_version, status, wake_at, workflow_class,
-                   payload, integrity_tag, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-                ON CONFLICT (run_id) DO UPDATE
-                  SET schema_version = EXCLUDED.schema_version,
-                      status = EXCLUDED.status,
-                      wake_at = EXCLUDED.wake_at,
-                      workflow_class = EXCLUDED.workflow_class,
-                      payload = EXCLUDED.payload,
-                      integrity_tag = EXCLUDED.integrity_tag,
-                      updated_at = NOW()
-                """,
-                checkpoint.run_id,
-                checkpoint.schema_version,
-                checkpoint.status,
-                wake_at_dt,
-                workflow_class,  # v4: from parameter, not from cp
-                payload_bytes,
-                # Tier 1.9 closure: write the denormalized integrity_tag mirror
-                # alongside the payload. Before this fix, the column stayed NULL
-                # forever and the unseal path emitted LegacyPartialAEADWarning
-                # on every read of a sibling-written row. Surfaced by the
-                # rotation drill (Tier 1.5-EVE inaugural run 2026-05-18).
-                checkpoint.integrity_tag,
-            )
+            async with conn.transaction():
+                # D-TENANT-3: SET LOCAL inside txn — required for RLS WITH CHECK
+                # on INSERT/UPDATE. Bare SET would leak to next pool checkout.
+                await conn.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    resolved_tenant,
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO checkpoints
+                      (run_id, tenant_id, schema_version, status, wake_at,
+                       workflow_class, payload, integrity_tag, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                    ON CONFLICT (run_id) DO UPDATE
+                      SET tenant_id = EXCLUDED.tenant_id,
+                          schema_version = EXCLUDED.schema_version,
+                          status = EXCLUDED.status,
+                          wake_at = EXCLUDED.wake_at,
+                          workflow_class = EXCLUDED.workflow_class,
+                          payload = EXCLUDED.payload,
+                          integrity_tag = EXCLUDED.integrity_tag,
+                          updated_at = NOW()
+                    """,
+                    checkpoint.run_id,
+                    resolved_tenant,
+                    checkpoint.schema_version,
+                    checkpoint.status,
+                    wake_at_dt,
+                    workflow_class,  # v4: from parameter, not from cp
+                    payload_bytes,
+                    # Tier 1.9 closure: write the denormalized integrity_tag mirror
+                    # alongside the payload. Before this fix, the column stayed NULL
+                    # forever and the unseal path emitted LegacyPartialAEADWarning
+                    # on every read of a sibling-written row. Surfaced by the
+                    # rotation drill (Tier 1.5-EVE inaugural run 2026-05-18).
+                    checkpoint.integrity_tag,
+                )
 
     async def read(self, run_id: str) -> Checkpoint:
+        """D-TENANT-3: SELECT is RLS-unscoped (USING true); no SET LOCAL needed.
+
+        Returned Checkpoint does NOT carry tenant_id (sibling-only column in
+        2.1a — library Checkpoint promotion is 2.1b). Callers needing
+        tenant_id for subsequent writes use `read_with_tenant()` instead.
+        """
         self._validate_run_id(run_id)
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT run_id, schema_version, status, wake_at, workflow_class,
-                       payload, integrity_tag, created_at, updated_at
+                SELECT run_id, tenant_id, schema_version, status, wake_at,
+                       workflow_class, payload, integrity_tag, created_at, updated_at
                 FROM checkpoints
                 WHERE run_id = $1
                 """,
@@ -145,12 +288,39 @@ class PostgresCheckpointStore:
             raise RunNotFound(run_id)
         return self._deserialize(row)
 
+    async def read_with_tenant(self, run_id: str) -> tuple[Checkpoint, str]:
+        """Sibling-only extension: return (Checkpoint, tenant_id) tuple.
+
+        D-TENANT-6: daemon calls this on first resume to populate
+        `_tenants_for_runs` cache from the schema column source-of-truth.
+        """
+        self._validate_run_id(run_id)
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT run_id, tenant_id, schema_version, status, wake_at,
+                       workflow_class, payload, integrity_tag, created_at, updated_at
+                FROM checkpoints
+                WHERE run_id = $1
+                """,
+                run_id,
+            )
+        if row is None:
+            raise RunNotFound(run_id)
+        return self._deserialize(row), row["tenant_id"]
+
     async def list_paused(self, wake_before: datetime) -> list[ResumeToken]:
+        """D-TENANT-3: SELECT is RLS-unscoped; scheduler poll lists across tenants.
+
+        Use `list_paused_with_tenants()` to recover tenant_id metadata for the
+        daemon's `_tenants_for_runs` cache.
+        """
         limit = self._max_batch
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT run_id, schema_version, workflow_class, wake_at, payload
+                SELECT run_id, tenant_id, schema_version, workflow_class,
+                       wake_at, payload
                 FROM checkpoints
                 WHERE status = 'paused'
                   AND (wake_at IS NULL OR wake_at <= $1)
@@ -162,19 +332,62 @@ class PostgresCheckpointStore:
             )
         return [self._row_to_token(r) for r in rows]
 
-    async def delete(self, run_id: str) -> None:
-        self._validate_run_id(run_id)
+    async def list_paused_with_tenants(
+        self,
+        wake_before: datetime,
+    ) -> tuple[list[ResumeToken], dict[str, str]]:
+        """Sibling-only extension: return (tokens, run_id->tenant_id map).
+
+        D-TENANT-6: daemon uses the returned map to populate `_tenants_for_runs`
+        cache so subsequent resume paths can set ContextVar without an extra
+        round-trip per run.
+        """
+        limit = self._max_batch
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                "DELETE FROM checkpoints WHERE run_id = $1",
-                run_id,
+            rows = await conn.fetch(
+                """
+                SELECT run_id, tenant_id, schema_version, workflow_class,
+                       wake_at, payload
+                FROM checkpoints
+                WHERE status = 'paused'
+                  AND (wake_at IS NULL OR wake_at <= $1)
+                ORDER BY wake_at NULLS FIRST
+                LIMIT $2::int
+                """,
+                wake_before,
+                limit,
             )
+        tokens = [self._row_to_token(r) for r in rows]
+        tenant_map = {r["run_id"]: r["tenant_id"] for r in rows}
+        return tokens, tenant_map
+
+    async def delete(
+        self,
+        run_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> None:
+        """D-TENANT-3: DELETE is RLS-scoped via SET LOCAL; requires tenant context."""
+        self._validate_run_id(run_id)
+        resolved_tenant = _resolve_tenant_id(tenant_id)
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    resolved_tenant,
+                )
+                await conn.execute(
+                    "DELETE FROM checkpoints WHERE run_id = $1",
+                    run_id,
+                )
 
     async def write_if_unchanged(
         self,
         checkpoint: Checkpoint,
         expected_updated_at: datetime,
         workflow_class: str | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> None:
         """F-H-06: Compare-and-swap write for the reencrypt rotation pass.
 
@@ -186,10 +399,16 @@ class PostgresCheckpointStore:
         Reencrypt callers pass the row's existing workflow_class (read at sweep
         start) to preserve it across the re-encrypt write.
 
+        Tier 2.1a (D-TENANT-3, D-TENANT-5): tenant_id resolves from kwarg OR
+        `_CURRENT_TENANT` ContextVar. Reencrypt-sweep caller reads tenant_id
+        from the row (via `read_with_tenant`) and passes it explicitly.
+        UPDATE is RLS-scoped via SET LOCAL inside the transaction.
+
         NOT a Protocol method — this is an example-internal extension. The
         library's CheckpointStore Protocol does not require it.
         """
         self._validate_run_id(checkpoint.run_id)
+        resolved_tenant = _resolve_tenant_id(tenant_id)
         wf_class = workflow_class if workflow_class is not None else self._default_workflow_class
         if len(wf_class) > 512:
             raise ValueError(
@@ -203,31 +422,41 @@ class PostgresCheckpointStore:
             )
 
         async with self._pool.acquire() as conn:
-            result = await conn.execute(
-                """
-                UPDATE checkpoints
-                   SET schema_version = $2,
-                       status = $3,
-                       wake_at = $4,
-                       workflow_class = $5,
-                       payload = $6,
-                       integrity_tag = $7,
-                       updated_at = NOW()
-                 WHERE run_id = $1
-                   AND updated_at = $8
-                """,
-                checkpoint.run_id,
-                checkpoint.schema_version,
-                checkpoint.status,
-                wake_at_dt,
-                wf_class,  # v4: from parameter or default, not from cp
-                payload_bytes,
-                # Tier 1.9 closure: mirror integrity_tag during CAS write
-                # (rotation sweep) so reencrypt_all preserves the post-seal
-                # tag rather than dropping it.
-                checkpoint.integrity_tag,
-                expected_updated_at,
-            )
+            async with conn.transaction():
+                # D-TENANT-3: SET LOCAL inside txn for RLS UPDATE policy.
+                await conn.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    resolved_tenant,
+                )
+                result = await conn.execute(
+                    """
+                    UPDATE checkpoints
+                       SET tenant_id = $9,
+                           schema_version = $2,
+                           status = $3,
+                           wake_at = $4,
+                           workflow_class = $5,
+                           payload = $6,
+                           integrity_tag = $7,
+                           updated_at = NOW()
+                     WHERE run_id = $1
+                       AND updated_at = $8
+                    """,
+                    checkpoint.run_id,
+                    checkpoint.schema_version,
+                    checkpoint.status,
+                    wake_at_dt,
+                    wf_class,  # v4: from parameter or default, not from cp
+                    payload_bytes,
+                    # Tier 1.9 closure: mirror integrity_tag during CAS write
+                    # (rotation sweep) so reencrypt_all preserves the post-seal
+                    # tag rather than dropping it.
+                    checkpoint.integrity_tag,
+                    expected_updated_at,
+                    # D-TENANT-1: tenant_id mirror on UPDATE. RLS WITH CHECK
+                    # validates this matches the GUC set above.
+                    resolved_tenant,
+                )
         # N-M-05: asyncpg execute returns "UPDATE N" string. Parse defensively
         # against future asyncpg format changes; endswith(" 0") would silently
         # break if asyncpg ever returns "UPDATE N M" (psql-style OID-count form).

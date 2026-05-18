@@ -41,6 +41,18 @@ class _FakeConn:
     async def fetchrow(self, query: str, *args):
         return self.fetch_rows[0] if self.fetch_rows else None
 
+    def transaction(self):
+        """D-TENANT-3: mock asyncpg's conn.transaction() async-context-manager.
+
+        Real asyncpg returns a Transaction object that's usable as `async with`.
+        Tests only need the protocol; the inner block executes inside the same
+        _FakeConn, so all execute() calls land in self.executed as before.
+        """
+        @asynccontextmanager
+        async def _ctx():
+            yield self
+        return _ctx()
+
 
 class _FakePool:
     def __init__(self) -> None:
@@ -58,9 +70,14 @@ class _FakePool:
 
 class _FakeDaemon:
     def __init__(self, quarantine: set[str] | None = None,
-                 failures: dict[str, int] | None = None) -> None:
+                 failures: dict[str, int] | None = None,
+                 tenants_for_runs: dict[str, str] | None = None) -> None:
         self._quarantine: set[str] = quarantine or set()
         self._failures: dict[str, int] = failures or {}
+        # D-TENANT-6: tenant cache attached to daemon by sibling main(). Tests
+        # supply it explicitly. Empty default = all inserts skipped with WARN
+        # (the safe path).
+        self._tenants_for_runs: dict[str, str] = tenants_for_runs or {}
 
 
 # ----------------------------------------------------------------------
@@ -68,20 +85,29 @@ class _FakeDaemon:
 # ----------------------------------------------------------------------
 
 async def test_snapshot_inserts_only_new_run_ids():
-    daemon = _FakeDaemon(quarantine={"r1", "r2"}, failures={"r1": 3, "r2": 3})
+    daemon = _FakeDaemon(
+        quarantine={"r1", "r2"},
+        failures={"r1": 3, "r2": 3},
+        tenants_for_runs={"r1": "tenant-a", "r2": "tenant-b"},
+    )
     pool = _FakePool()
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
 
     await sync._snapshot_and_insert()
-    assert len(pool.conn.executed) == 2
-    queries = [q for q, _ in pool.conn.executed]
-    assert all("INSERT INTO quarantine" in q for q in queries)
-    assert "ON CONFLICT (run_id) DO NOTHING" in queries[0]
-    inserted_ids = {args[0] for _, args in pool.conn.executed}
+    # D-TENANT-3: each insert preceded by set_config inside txn → 2 execute calls per row.
+    assert len(pool.conn.executed) == 4
+    insert_queries = [q for q, _ in pool.conn.executed if "INSERT INTO quarantine" in q]
+    set_config_queries = [q for q, _ in pool.conn.executed if "set_config" in q]
+    assert len(insert_queries) == 2
+    assert len(set_config_queries) == 2
+    assert "ON CONFLICT (run_id) DO NOTHING" in insert_queries[0]
+    inserted_ids = {args[0] for q, args in pool.conn.executed if "INSERT INTO quarantine" in q}
     assert inserted_ids == {"r1", "r2"}
-    # Reason is the hard-coded enum value.
-    for _, args in pool.conn.executed:
-        assert args[2] == _LIBRARY_QUARANTINE_REASON
+    # D-TENANT-1: args order on INSERT is (run_id, tenant_id, fc, reason).
+    for q, args in pool.conn.executed:
+        if "INSERT INTO quarantine" in q:
+            assert args[1] in ("tenant-a", "tenant-b")  # tenant_id slot
+            assert args[3] == _LIBRARY_QUARANTINE_REASON  # reason slot now at [3]
 
     # Second call — already seen, no new inserts.
     pool.conn.executed.clear()
@@ -89,27 +115,56 @@ async def test_snapshot_inserts_only_new_run_ids():
     assert pool.conn.executed == []
 
 
-async def test_snapshot_handles_unknown_failure_count():
-    daemon = _FakeDaemon(quarantine={"r1"}, failures={})  # missing failures entry
+async def test_snapshot_skips_run_with_no_tenant_in_cache():
+    """D-TENANT-4: run_id absent from _tenants_for_runs is logged + skipped.
+    Better to leak quarantine visibility for one poll than to violate RLS."""
+    daemon = _FakeDaemon(
+        quarantine={"r1"}, failures={"r1": 3},
+        tenants_for_runs={},  # cache empty
+    )
     pool = _FakePool()
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
 
     await sync._snapshot_and_insert()
-    assert len(pool.conn.executed) == 1
-    assert pool.conn.executed[0][1][1] == 0  # fc defaults to 0
+    # No INSERT issued because tenant_id unknown
+    assert all("INSERT" not in q for q, _ in pool.conn.executed)
+    # _seen NOT updated either (the run will be retried next poll)
+    assert "r1" not in sync._seen
+
+
+async def test_snapshot_handles_unknown_failure_count():
+    daemon = _FakeDaemon(
+        quarantine={"r1"}, failures={},
+        tenants_for_runs={"r1": "_default"},
+    )
+    pool = _FakePool()
+    sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
+
+    await sync._snapshot_and_insert()
+    inserts = [args for q, args in pool.conn.executed if "INSERT INTO quarantine" in q]
+    assert len(inserts) == 1
+    # D-TENANT-1: args = (run_id, tenant_id, fc, reason); fc at index 2.
+    assert inserts[0][2] == 0
 
 
 async def test_snapshot_caps_failure_count_at_constraint_bound():
-    daemon = _FakeDaemon(quarantine={"r1"}, failures={"r1": 99999})
+    daemon = _FakeDaemon(
+        quarantine={"r1"}, failures={"r1": 99999},
+        tenants_for_runs={"r1": "_default"},
+    )
     pool = _FakePool()
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
 
     await sync._snapshot_and_insert()
-    assert pool.conn.executed[0][1][1] == 1000  # capped at CHECK upper bound
+    inserts = [args for q, args in pool.conn.executed if "INSERT INTO quarantine" in q]
+    assert inserts[0][2] == 1000  # capped at CHECK upper bound
 
 
 async def test_snapshot_prunes_seen_when_quarantine_shrinks():
-    daemon = _FakeDaemon(quarantine={"r1", "r2"})
+    daemon = _FakeDaemon(
+        quarantine={"r1", "r2"},
+        tenants_for_runs={"r1": "_default", "r2": "_default"},
+    )
     pool = _FakePool()
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
     await sync._snapshot_and_insert()
@@ -131,7 +186,8 @@ async def test_snapshot_prunes_seen_when_quarantine_shrinks():
 async def test_process_requeues_discards_inmemory_and_updates_db():
     daemon = _FakeDaemon(quarantine={"r1", "r2"}, failures={"r1": 3, "r2": 3})
     pool = _FakePool()
-    pool.conn.fetch_rows = [{"run_id": "r1"}]
+    # D-TENANT-4: requeue SELECT now reads tenant_id; fixture must provide it.
+    pool.conn.fetch_rows = [{"run_id": "r1", "tenant_id": "_default"}]
     sync = QuarantineSync(daemon, pool)  # type: ignore[arg-type]
     sync._seen = {"r1", "r2"}
 
@@ -140,11 +196,15 @@ async def test_process_requeues_discards_inmemory_and_updates_db():
     assert "r2" in daemon._quarantine
     assert "r1" not in daemon._failures
     assert "r1" not in sync._seen
+    # Last execute is the UPDATE; preceding execute is the set_config (txn-wrapped).
     update_query, update_args = pool.conn.executed[-1]
     assert "UPDATE quarantine" in update_query
     assert "requeued_at = NULL" in update_query
     assert "requeue_count = requeue_count + 1" in update_query
     assert update_args[0] == "r1"
+    # D-TENANT-3: set_config call precedes the UPDATE.
+    set_config_queries = [q for q, _ in pool.conn.executed if "set_config" in q]
+    assert len(set_config_queries) == 1
 
 
 async def test_process_requeues_noop_when_nothing_pending():
@@ -230,7 +290,11 @@ async def test_run_forever_swallows_iteration_exceptions():
     await asyncio.sleep(0.15)
     await sync.stop()
     # Iteration body actually fired (otherwise test passes vacuously).
-    assert boom_conn.execute.call_count > 0, "iteration body never executed"
+    # D-TENANT-4: _snapshot_and_insert skips (empty tenant cache → continue path
+    # before any execute()); _process_requeues calls conn.fetch FIRST, which
+    # raises. Combined call_count covers both code paths.
+    total = boom_conn.execute.call_count + boom_conn.fetch.call_count
+    assert total > 0, "iteration body never executed"
 
 
 # ----------------------------------------------------------------------
@@ -247,7 +311,10 @@ async def test_list_quarantined_redacts_columns():
     pool.conn.fetch_rows = [
         {col: f"v_{col}" for col in _REDACTED_COLUMNS}
     ]
-    rows = await list_quarantined(pool, limit=10, offset=0, include_requeued=False)  # type: ignore[arg-type]
+    # D-TENANT-10: tenant_id now required arg.
+    rows = await list_quarantined(
+        pool, tenant_id="_default", limit=10, offset=0, include_requeued=False,
+    )  # type: ignore[arg-type]
     assert rows[0].keys() == set(_REDACTED_COLUMNS) or set(rows[0].keys()) == set(_REDACTED_COLUMNS)
     # No extra column slipped through.
     assert "payload" not in rows[0]
@@ -270,12 +337,20 @@ async def test_list_quarantined_active_only_filters_requeued():
             self.conn = _SpyConn()
 
     pool = _SpyPool()
-    await list_quarantined(pool, limit=10, offset=0, include_requeued=False)  # type: ignore[arg-type]
-    assert "WHERE requeued_at IS NULL" in captured[0]
+    await list_quarantined(
+        pool, tenant_id="_default", limit=10, offset=0, include_requeued=False,
+    )  # type: ignore[arg-type]
+    # D-TENANT-10: queries always carry WHERE tenant_id = $3 + optional
+    # AND requeued_at IS NULL for active-only filter.
+    assert "WHERE tenant_id = $3" in captured[0]
+    assert "AND requeued_at IS NULL" in captured[0]
 
     captured.clear()
-    await list_quarantined(pool, limit=10, offset=0, include_requeued=True)  # type: ignore[arg-type]
-    assert "WHERE" not in captured[0]
+    await list_quarantined(
+        pool, tenant_id="_default", limit=10, offset=0, include_requeued=True,
+    )  # type: ignore[arg-type]
+    assert "WHERE tenant_id = $3" in captured[0]
+    assert "AND requeued_at IS NULL" not in captured[0]
 
 
 # ----------------------------------------------------------------------
@@ -287,11 +362,13 @@ async def test_requeue_marks_active_row_pending():
 
     pool = _FakePool()
     pool.conn.fetch_rows = [{"requeued_at": None}]
-    result = await requeue(pool, "r1")  # type: ignore[arg-type]
+    # D-TENANT-10: tenant_id now required arg.
+    result = await requeue(pool, "r1", "_default")  # type: ignore[arg-type]
     assert result == "requeued"
     update_query, args = pool.conn.executed[-1]
     assert "UPDATE quarantine SET requeued_at = NOW()" in update_query
-    assert args == ("r1",)
+    # D-TENANT-1: UPDATE WHERE clause now binds both run_id and tenant_id.
+    assert args == ("r1", "_default")
 
 
 async def test_requeue_returns_already_pending_when_set():
@@ -299,7 +376,7 @@ async def test_requeue_returns_already_pending_when_set():
 
     pool = _FakePool()
     pool.conn.fetch_rows = [{"requeued_at": "2026-01-01T00:00:00Z"}]
-    result = await requeue(pool, "r1")  # type: ignore[arg-type]
+    result = await requeue(pool, "r1", "_default")  # type: ignore[arg-type]
     assert result == "already_pending"
 
 
@@ -308,7 +385,7 @@ async def test_requeue_returns_not_found_when_row_missing():
 
     pool = _FakePool()
     pool.conn.fetch_rows = []
-    result = await requeue(pool, "r1")  # type: ignore[arg-type]
+    result = await requeue(pool, "r1", "_default")  # type: ignore[arg-type]
     assert result == "not_found"
 
 

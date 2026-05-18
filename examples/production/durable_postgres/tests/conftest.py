@@ -65,11 +65,17 @@ async def pg_pool():
 
 @pytest.fixture
 async def fresh_checkpoints_table(pg_pool):
-    """Drop + recreate checkpoints table from schema.sql for each test."""
+    """Drop + recreate checkpoints AND quarantine tables from schema.sql.
+
+    D-TENANT-1 / Tier 2.1a: schema.sql now creates both tables + RLS policies.
+    Both must be dropped CASCADE to clear stale rows + policies between tests.
+    """
     async with pg_pool.acquire() as conn:
         await conn.execute("DROP TABLE IF EXISTS checkpoints CASCADE;")
+        await conn.execute("DROP TABLE IF EXISTS quarantine CASCADE;")
         schema_sql = SCHEMA_FILE.read_text(encoding="utf-8")
         await conn.execute(schema_sql)
     yield
     async with pg_pool.acquire() as conn:
         await conn.execute("DROP TABLE IF EXISTS checkpoints CASCADE;")
+        await conn.execute("DROP TABLE IF EXISTS quarantine CASCADE;")
