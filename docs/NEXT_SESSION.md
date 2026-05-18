@@ -1,6 +1,35 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE NIGHT — Tier 2.1 + 2.1d audit hardening FULLY SHIPPED. Multi-tenant production-ready post 16-finding audit closure.
+Last updated: 2026-05-18 LATE NIGHT (final) — Tier 2.1 + 2.1d shipped, doc sweep + slides/brief refresh + LinkedIn post + GitHub repo description all aligned to current state.
+
+## 2026-05-18 LATE NIGHT (final) — Doc + comms alignment after Tier 2.1d
+
+Continuation of the same session that shipped Tier 2.1d. After the 6 audit-hardening commits + wrap:
+
+| Commit | Scope |
+|---|---|
+| `c265252` | README hero refresh — durable + multi-tenant paragraph, 5 production siblings paragraph, 953 tests + 8 audit cycles tail |
+| `be2ff32` | LESSONS_LEARNED.md — 8 process lessons from Tier 2.1 + 2.1d (FORCE RLS decay, 4-axis audit catches, M-PC-1/H-IND-1 at N=2, error-msg enumeration side channel, tenant_id-as-field over ContextVar, doc-gate fragility, AST gate completeness, memory-rule-after-2-reminders) |
+| `b3a55d0` | chore: remove stray file `185` from prior shell redirect |
+| `0550306` | `docs/slides/durable_slides.md` full refresh (was multi-tier stale) + new `docs/slides/durable-executive-brief.md` matching format of 6 domain briefs |
+| `f9e8dde` | Test count bumps (766→768 lib, 176→185 sibling) across CLAUDE.md / README.md / architecture / deployment-architecture / NEXT_SESSION + SECURITY_MODEL.md §4 2.1d hardening summary |
+
+**External-facing artifacts also updated:**
+
+- GitHub repo `About` description refreshed via `gh repo edit --description` (pushed live): includes 36 workflows + 6 domains + durable subpackage + 5 siblings + 953 tests + 8 audit cycles
+- LinkedIn post drafted (CTO / VP-Platform / SRE audience) on multi-tenant 4-axis audit; saved to `~/.claude/projects/.../memory/linkedin_posts_2026-05-18.md` with composition notes. Hook: "Shipping multi-tenant AI is easy. Shipping it so your general counsel can defend it is not." Trim pattern documented: findings-as-prose + shipped-items-as-bullets, ~2,600 chars, under LinkedIn's 3,000 limit.
+
+### Resume point: no in-flight work; backlog open
+
+**Tier 3 backlog (production-readiness-gaps.md):**
+
+- **Tier 3.4** — Tenant-shard scheduling (>100k paused-run scale; defer until signal)
+- **Tier 3.5** — Tenant-aware backup/restore automation (3-5d sibling-only; manual procedure documented in `durable-backup-restore.md` §8a)
+- **2.1d LOW-1** — Helper boilerplate around resolver construction in caller daemons (parallel diff structure remains; hoist when 4th sibling lands)
+
+**Session total: 17 commits.** Working tree clean. 768 library tests + 185 sibling tests = 953 passing. mypy strict + ruff clean. 8 audit cycles 0/0/0/0.
+
+---
 
 ## 2026-05-18 LATE NIGHT — Tier 2.1d exhaustive audit + fold-ins
 
