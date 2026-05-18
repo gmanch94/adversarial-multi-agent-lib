@@ -20,9 +20,15 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
+
+# A16-L-01: server-side regex validation of run_ids — defense at the
+# consumer; restore.sh passes argv unquoted (intentional word-split), so
+# this layer rejects shell-metacharacter smuggling at the verifier.
+_RUN_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9\-]{0,63}$")
 
 # Make the daemon's cipher.py importable without a package install. The
 # encryption module ships with the library and is the canonical verifier.
@@ -110,6 +116,17 @@ def main() -> int:
     if not run_ids:
         print("[verify] no run_ids supplied — empty sample (caller decides if OK)")
         return 0
+    # A16-L-01: validate each run_id matches the canonical regex before any
+    # DB call. Rejects shell-metacharacter smuggling that could survive the
+    # unquoted $SAMPLE_RUN_IDS expansion in restore.sh.
+    bad = [r for r in run_ids if not _RUN_ID_RE.fullmatch(r)]
+    if bad:
+        print(
+            f"FATAL: rejected {len(bad)} run_id(s) that do not match "
+            f"^[a-zA-Z0-9][a-zA-Z0-9\\-]{{0,63}}$ — possible argv injection: {bad!r}",
+            file=sys.stderr,
+        )
+        return 2
     return asyncio.run(_verify(run_ids))
 
 

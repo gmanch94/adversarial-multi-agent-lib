@@ -1,6 +1,19 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 NIGHT (Tier 1.5 SHIPPED — backup / restore / PITR)
+Last updated: 2026-05-18 PM (late) — Cycle-16 closure
+
+## 2026-05-18 PM (late) — Cycle-16 closure
+
+Independent re-audit (range `b0c86d5..HEAD`, ~5,860 LOC) found **2 HIGH + 4 MED + 4 LOW** that inline cycle-11..15 audits missed. All 10 drained in single commit. Library tests 727 → **729** (+2 from A16-H-01 `refuse_legacy_aead` branch coverage).
+
+Cumulative session-wide posture after closure: **0 CRIT / 0 HIGH / 4 MED carried** (3 OTel operator-owned + 1 backup-bucket placeholder) **/ 4 LOW carried**.
+
+Key fixes:
+- **A16-H-01:** `EncryptedCheckpointStore(refuse_legacy_aead=True)` + `DURABLE_REFUSE_LEGACY_AEAD=1` env var — converts the empty-`integrity_tag` warn-and-pass branch into `IntegrityViolation`. Post-reseal hardening flag mirroring `DURABLE_REFUSE_UNVERSIONED`.
+- **A16-H-02:** PII redaction now scrubs attribute VALUES (128-char cap + SSN/CC/long-digit denylist), sanitizes span NAME (safe charset + 80-char cap), and filters RESOURCE attrs to OTel-standard keys only. Closes "single-path-of-control" gap — redactor was decorative for allowlisted KEYs carrying raw PHI in their values, plus span-name/resource were never touched.
+- **A16-M-01..04, A16-L-01..04:** operational hardening — fail-fast guards, `--full-integrity-check` flag, prefix-collision tightening, shape validation, public `inner` property, run_id regex defense-in-depth, k8s digest pin enforcement.
+
+Cycle-16 validates the independent-reviewer cadence: 6 cumulative findings the inline audits missed, caught in ~30min independent pass. Closure summary appended at end of `docs/security-audits/2026-05-18-cumulative-independent-cycle-16-sweep.md`.
 
 ## 2026-05-18 NIGHT — Tier 1.5 SHIPPED (backup / restore / PITR)
 

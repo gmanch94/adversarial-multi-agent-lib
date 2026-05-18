@@ -23,9 +23,48 @@ to a fully-stripped span (all attrs removed, no events) — secure default.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 _LOG = logging.getLogger(__name__)
+
+# A16-H-02 closure: cap allowlisted attribute VALUES too, not just KEYS.
+# Allowlisted keys (e.g. pause_reason, error_class) can carry unbounded PHI
+# if a caller passes raw request content. Truncation + shape-based redaction
+# are the second line of defense behind low-cardinality caller discipline.
+_MAX_VALUE_CHARS = 128
+
+# Regex denylist for obvious PHI shapes — SSN, long CC runs, raw long digit
+# runs. Patterns deliberately conservative to avoid false-positive on
+# legitimate identifiers (round.index, attempt.index are ints, not strings).
+_VALUE_DENYLIST_PATTERNS: list[tuple[str, "re.Pattern[str]"]] = [
+    ("ssn", re.compile(r"\b\d{3}-\d{2}-\d{4}\b")),
+    ("cc", re.compile(r"\b\d{16}\b")),
+    ("long_digits", re.compile(r"\b\d{10,}\b")),
+]
+
+# Span name normalization: anything not in this charset is replaced with `_`
+# and the result is truncated to 80 chars. Drops PHI smuggled via span names
+# like f"workflow.{patient_id}".
+_SPAN_NAME_SAFE_RE = re.compile(r"[^a-zA-Z0-9._\-:/]")
+_MAX_SPAN_NAME_CHARS = 80
+
+# Resource attribute allowlist — OTel-standard keys only. Caller-supplied
+# resource attributes (e.g. customer_tenant_id, hostname carrying customer
+# initials) get stripped on export.
+_ALLOWED_RESOURCE_KEYS: frozenset[str] = frozenset(
+    {
+        "service.name",
+        "service.version",
+        "service.namespace",
+        "service.instance.id",
+        "telemetry.sdk.name",
+        "telemetry.sdk.version",
+        "telemetry.sdk.language",
+        "otel.scope.name",
+        "otel.scope.version",
+    }
+)
 
 
 # D-OTEL-2: strict allowlist. Adding a key here is a security review point.
@@ -61,14 +100,74 @@ _ALLOWED_ATTRS: frozenset[str] = frozenset(
 )
 
 
+def _redact_value(v: Any) -> Any:
+    """A16-H-02: scrub allowlisted attribute VALUES.
+
+    - Strings exceeding `_MAX_VALUE_CHARS` are truncated with marker.
+    - Strings matching denylist patterns (SSN, CC, long-digit runs) are
+      replaced with `[redacted-shape:<name>]`.
+    - Lists/dicts (non-scalar) are coerced to `"[redacted-nonscalar]"`
+      since their nested values aren't filtered.
+    - Other scalars (int, float, bool) pass through unchanged.
+    """
+    if isinstance(v, (int, float, bool)) or v is None:
+        return v
+    if isinstance(v, str):
+        for name, pat in _VALUE_DENYLIST_PATTERNS:
+            if pat.search(v):
+                return f"[redacted-shape:{name}]"
+        if len(v) > _MAX_VALUE_CHARS:
+            return v[:_MAX_VALUE_CHARS] + "...[truncated]"
+        return v
+    # Non-scalar (list, dict, tuple, set, custom): too risky to ship.
+    return "[redacted-nonscalar]"
+
+
 def _filter_attrs(attrs: Any) -> dict[str, Any]:
-    """Return new dict with only allowlisted keys. Secure default on error."""
+    """Return new dict with only allowlisted keys + scrubbed values.
+    Secure default on error."""
     if attrs is None:
         return {}
     try:
-        return {k: v for k, v in dict(attrs).items() if k in _ALLOWED_ATTRS}
+        return {
+            k: _redact_value(v)
+            for k, v in dict(attrs).items()
+            if k in _ALLOWED_ATTRS
+        }
     except Exception:
         return {}
+
+
+def _sanitize_span_name(name: Any) -> str:
+    """A16-H-02: drop PHI smuggled via span name (e.g. f'workflow.{patient_id}').
+    Replaces unsafe chars with `_` and truncates to `_MAX_SPAN_NAME_CHARS`."""
+    if not isinstance(name, str):
+        return "redacted"
+    cleaned = _SPAN_NAME_SAFE_RE.sub("_", name)
+    if len(cleaned) > _MAX_SPAN_NAME_CHARS:
+        cleaned = cleaned[:_MAX_SPAN_NAME_CHARS]
+    return cleaned or "redacted"
+
+
+def _filter_resource(resource: Any) -> Any:
+    """A16-H-02: filter Resource attributes to OTel-standard keys only.
+    Caller-supplied resource attrs (hostname, tenant id) get stripped."""
+    if resource is None:
+        return resource
+    try:
+        from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
+    except ImportError:
+        return resource
+    try:
+        raw = dict(getattr(resource, "attributes", {}) or {})
+        filtered = {k: v for k, v in raw.items() if k in _ALLOWED_RESOURCE_KEYS}
+        return Resource.create(filtered)
+    except Exception:
+        # Secure default: empty resource rather than leaking.
+        try:
+            return Resource.create({})
+        except Exception:
+            return resource
 
 
 def _sanitize_exception_event(event: Any) -> Any:
@@ -128,8 +227,12 @@ class _RedactedSpan:
         self._original = original
         self._attrs = _filter_attrs(getattr(original, "attributes", None))
         self._events = _redact_events(getattr(original, "events", None))
+        # A16-H-02: pre-compute sanitized name + filtered resource so the
+        # exporter cannot reach the raw values via property re-evaluation.
+        self._name = _sanitize_span_name(getattr(original, "name", ""))
+        self._resource = _filter_resource(getattr(original, "resource", None))
 
-    # OTel exporter read surface — delegate everything except attrs/events.
+    # OTel exporter read surface — delegate everything except attrs/events/name/resource.
     @property
     def attributes(self) -> dict[str, Any]:
         return self._attrs
@@ -137,6 +240,16 @@ class _RedactedSpan:
     @property
     def events(self) -> list[Any]:
         return self._events
+
+    @property
+    def name(self) -> str:
+        """A16-H-02: sanitized span name — drops PHI smuggled via name template."""
+        return self._name
+
+    @property
+    def resource(self) -> Any:
+        """A16-H-02: filtered resource — only OTel-standard keys survive."""
+        return self._resource
 
     def __getattr__(self, item: str) -> Any:
         # Anything not overridden falls through to the original span.
@@ -184,6 +297,12 @@ __all__ = [
     "PIIRedactionSpanProcessor",
     "_RedactedSpan",
     "_filter_attrs",
+    "_filter_resource",
+    "_redact_value",
     "_sanitize_exception_event",
+    "_sanitize_span_name",
     "_ALLOWED_ATTRS",
+    "_ALLOWED_RESOURCE_KEYS",
+    "_MAX_VALUE_CHARS",
+    "_MAX_SPAN_NAME_CHARS",
 ]

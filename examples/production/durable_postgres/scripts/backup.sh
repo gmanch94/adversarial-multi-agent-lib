@@ -22,7 +22,17 @@
 #
 # Spec: docs/superpowers/specs/2026-05-18-backup-restore-design.md
 # Runbook: docs/runbooks/durable-backup-restore.md
+#
+# A16-L-02: PGPASSFILE vs PGPASSWORD — prefer PGPASSFILE pointing at a
+# mode-0600 ~/.pgpass (host:port:db:user:password) so the secret never lives
+# in this process's `/proc/PID/environ` (visible to same-uid attackers).
+# PGPASSWORD is supported as a fallback for CI / ephemeral runners only.
+# This script warns once if neither is set.
 set -euo pipefail
+
+if [ -z "${PGPASSWORD:-}" ] && [ -z "${PGPASSFILE:-}" ] && [ ! -f "${HOME}/.pgpass" ]; then
+    echo "WARN: neither PGPASSFILE, PGPASSWORD, nor ~/.pgpass set — psql/pg_dump will prompt and likely fail under -e set." >&2
+fi
 
 TOOL_VERSION="1.5"
 SCHEMA_VERSION="1"
@@ -76,6 +86,18 @@ CHECKPOINT_COUNT="$(PGPASSWORD="${PGPASSWORD:-}" psql \
 WAL_SEGMENT="$(PGPASSWORD="${PGPASSWORD:-}" psql \
     --host="${PGHOST}" --port="${PGPORT}" --username="${PGUSER}" --dbname="${PGDATABASE}" \
     --tuples-only --no-align --command='SELECT pg_walfile_name(pg_current_wal_lsn());')"
+
+# A16-M-04: shape-validate before interpolating into manifest JSON.
+# CHECKPOINT_COUNT must be pure digits; WAL_SEGMENT must be a 24-char
+# uppercase hex string (pg_walfile_name format: 24 hex chars).
+if ! [[ "${CHECKPOINT_COUNT}" =~ ^[0-9]+$ ]]; then
+    echo "FATAL: CHECKPOINT_COUNT from psql is not a non-negative integer: '${CHECKPOINT_COUNT}'" >&2
+    exit 2
+fi
+if ! [[ "${WAL_SEGMENT}" =~ ^[0-9A-F]{24}$ ]]; then
+    echo "FATAL: WAL_SEGMENT from pg_walfile_name does not match ^[0-9A-F]{24}$: '${WAL_SEGMENT}'" >&2
+    exit 2
+fi
 
 # Build age_recipients list (strip comments + blanks).
 AGE_RECIPIENTS_JSON="$(grep -E '^[[:space:]]*age1' "${AGE_RECIPIENTS_FILE}" \

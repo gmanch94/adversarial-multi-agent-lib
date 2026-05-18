@@ -61,12 +61,12 @@ async def _reseal_all(
 
     # Library-private symbols this script reaches through — fail loud at the
     # start of the sweep, not silently mid-loop.
-    if not hasattr(store, "_inner"):
+    if not hasattr(store, "inner"):
         raise RuntimeError(
             "reseal_all_checkpoints requires EncryptedCheckpointStore with "
-            "_inner attribute. Library private API changed — update this script."
+            "`inner` property. Library public API changed — update this script."
         )
-    inner: PostgresCheckpointStore = store._inner  # type: ignore[attr-defined]
+    inner: PostgresCheckpointStore = store.inner  # A16-L-04: public accessor
     if not isinstance(inner, PostgresCheckpointStore):
         raise RuntimeError(
             f"reseal_all_checkpoints requires PostgresCheckpointStore inside the "

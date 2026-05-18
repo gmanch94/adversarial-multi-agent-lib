@@ -127,6 +127,25 @@ Render tests skip-if-kustomize-not-installed. Library root `pyproject.toml`
 sets `testpaths = ["tests"]` so this directory is excluded from `pytest -q`
 at repo root.
 
+## Image pinning (A16-L-03)
+
+Base manifest uses mutable tag `:slice-a` with `imagePullPolicy: Always` so a
+node with a stale cached image cannot run an old binary against a new schema.
+**Prod overlay (`overlays/prod/kustomization.yaml`) MUST replace the
+placeholder digest** with the SHA256 of the image actually built for release:
+
+```
+# overlays/prod/kustomization.yaml
+images:
+  - name: ghcr.io/example/durable-daemon
+    newName: <your-registry>/durable-daemon
+    digest: sha256:<64-hex-digits>
+```
+
+The committed placeholder (`sha256:0000...`) intentionally fails
+`kubectl apply --dry-run=server` because no matching digest exists in the
+registry. Fail-loud is the point — staging/dev keep the mutable tag.
+
 ## Known gaps
 
 - Cloud-managed Postgres (RDS / Cloud SQL / AlloyDB) integration is operator work.

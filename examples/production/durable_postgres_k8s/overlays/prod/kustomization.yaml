@@ -24,3 +24,15 @@ patches:
   - path: patches/daemon-affinity.yaml
   - path: patches/pdb-min-available.yaml
   - path: patches/sealed-secret-required.yaml
+
+# A16-L-03: prod overlay MUST pin the daemon image to an immutable digest.
+# Base uses mutable tag `:slice-a` for fast iteration; prod replaces it with
+# `@sha256:...`. Operator action before `kubectl apply`: replace the
+# placeholder digest below with the SHA256 of the image actually built for
+# release. The placeholder will fail `kubectl apply --dry-run=server`
+# because no matching digest exists in the registry — fail-loud, not
+# fail-silent.
+images:
+  - name: ghcr.io/example/durable-daemon
+    newName: ghcr.io/example/durable-daemon
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000

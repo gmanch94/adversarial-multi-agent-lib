@@ -269,6 +269,47 @@ class _RecordingMetrics:
         pass
 
 
+# ---------------------------------------------------------------------------
+# 13-14. A16-H-01: refuse_legacy_aead flag — post-reseal hardening
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_legacy_row_raises_when_refuse_legacy_aead_set() -> None:
+    """A16-H-01: when refuse_legacy_aead=True, a row with empty integrity_tag
+    (insider strip attack) MUST raise IntegrityViolation, not just warn."""
+    inner = MemoryCheckpointStore()
+    cipher = FakeCipher()
+    # Stage a legacy row (encrypted last_request_json, no integrity_tag).
+    ct = cipher.encrypt('{"member_id": "PAT-001"}')
+    legacy = make_checkpoint(last_request_json=f"ENC:v1:{ct}", integrity_tag=None)
+    await inner.write(legacy)
+
+    hardened = EncryptedCheckpointStore(
+        inner=inner, cipher=cipher, refuse_legacy_aead=True
+    )
+    with pytest.raises(IntegrityViolation) as ei:
+        await hardened.read("run-int-001")
+    assert ei.value.run_id == "run-int-001"
+    assert "no-tag-but-refuse-legacy-enabled" in ei.value.expected_hash
+
+
+@pytest.mark.asyncio
+async def test_legacy_row_still_warns_when_refuse_legacy_aead_unset() -> None:
+    """A16-H-01 backward-compat: default behavior preserved. When the flag
+    is unset, the legacy row reads successfully with a warning."""
+    inner = MemoryCheckpointStore()
+    cipher = FakeCipher()
+    ct = cipher.encrypt('{"member_id": "PAT-001"}')
+    legacy = make_checkpoint(last_request_json=f"ENC:v1:{ct}", integrity_tag=None)
+    await inner.write(legacy)
+
+    permissive = EncryptedCheckpointStore(inner=inner, cipher=cipher)
+    assert permissive._refuse_legacy_aead is False
+    with pytest.warns(LegacyPartialAEADWarning):
+        out = await permissive.read("run-int-001")
+    assert out.last_request_json == '{"member_id": "PAT-001"}'
+
+
 @pytest.mark.asyncio
 async def test_decrypt_failure_counter_fires_on_tag_decrypt_failure() -> None:
     inner = MemoryCheckpointStore()

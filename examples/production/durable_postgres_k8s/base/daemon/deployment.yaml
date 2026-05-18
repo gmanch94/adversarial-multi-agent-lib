@@ -34,7 +34,12 @@ spec:
       containers:
         - name: daemon
           image: ghcr.io/example/durable-daemon:slice-a
-          imagePullPolicy: IfNotPresent
+          # A16-L-03: `IfNotPresent` with a mutable tag (`:slice-a`) lets a
+          # node with a stale cached image run an old binary against a new
+          # schema. `Always` makes the kubelet re-pull every restart; the
+          # prod overlay pins a digest (`images:` transformer in
+          # overlays/prod/kustomization.yaml) so re-pull is idempotent.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 8080

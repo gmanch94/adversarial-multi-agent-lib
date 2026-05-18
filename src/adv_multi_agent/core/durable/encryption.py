@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
+import re
 import warnings
 from dataclasses import asdict
 from datetime import datetime
@@ -122,6 +124,12 @@ class EncryptedCheckpointStore:
     # detect un-encrypted legacy checkpoints (created before this decorator
     # was wrapped) and pass them through untouched.
     _ENC_PREFIX = "ENC:v1:"
+    # A16-M-03 closure: tighten pass-through guard so plaintext starting with
+    # ENC:v1: doesn't accidentally short-circuit encryption. Real ciphertext
+    # is base64 (Fernet: urlsafe-b64 `A-Za-z0-9_\-=`); JSON `last_request_json`
+    # always starts with `{` or `[` and almost never with `ENC:v1:` followed
+    # by pure base64 chars. The character-class fullmatch is the safety net.
+    _ENC_REMAINDER_RE = re.compile(r"^[A-Za-z0-9_\-=]+$")
 
     def __init__(
         self,
@@ -130,6 +138,7 @@ class EncryptedCheckpointStore:
         *,
         metrics: Any | None = None,
         workflow_class: str = "unknown",
+        refuse_legacy_aead: bool = False,
     ) -> None:
         self._inner = inner
         self._cipher = cipher
@@ -140,13 +149,35 @@ class EncryptedCheckpointStore:
             metrics = NoopMetricsBackend()
         self._metrics = metrics
         self._workflow_class = workflow_class
+        # A16-H-01 closure: post-reseal hardening. When set (via kwarg OR
+        # env var DURABLE_REFUSE_LEGACY_AEAD=1, mirroring DURABLE_REFUSE_UNVERSIONED
+        # in reseal_all_checkpoints.py), any row read with no integrity_tag
+        # is treated as tampering (insider strip attack) rather than a legacy
+        # pre-1.9 warning. Operators flip this AFTER a successful reseal sweep.
+        self._refuse_legacy_aead = bool(refuse_legacy_aead) or (
+            os.environ.get("DURABLE_REFUSE_LEGACY_AEAD") == "1"
+        )
+
+    @property
+    def inner(self) -> Any:
+        """A16-L-04 closure: documented accessor for the wrapped inner store.
+        Operator tooling (migrate_schema, reseal_all_checkpoints) should
+        prefer ``store.inner`` over reaching into the private ``_inner``."""
+        return self._inner
 
     def _encrypt_request_json(self, cp: Checkpoint) -> Checkpoint:
         # Return a NEW Checkpoint with last_request_json swapped to ciphertext.
         # Do not mutate the caller's instance.
         if cp.last_request_json.startswith(self._ENC_PREFIX):
-            # Already encrypted (e.g., re-write after read); pass through
-            return cp
+            # Already encrypted (e.g., re-write after read); pass through.
+            # A16-M-03: validate the remainder looks like Fernet ciphertext
+            # so plaintext starting with the sentinel doesn't get short-
+            # circuited and bricked on subsequent decrypt.
+            remainder = cp.last_request_json[len(self._ENC_PREFIX):]
+            if remainder and self._ENC_REMAINDER_RE.fullmatch(remainder):
+                return cp
+            # else fall through and re-encrypt (treat as plaintext that
+            # accidentally starts with the sentinel)
         ciphertext = self._cipher.encrypt(cp.last_request_json)
         return Checkpoint(
             run_id=cp.run_id,
@@ -232,6 +263,14 @@ class EncryptedCheckpointStore:
         # is detected by the integrity check, not by Cipher.decrypt's own AEAD
         # failure (clearer error attribution).
         if not cp.integrity_tag:
+            if self._refuse_legacy_aead:
+                # A16-H-01: post-reseal hardening. Empty integrity_tag is
+                # treated as insider-strip attack — fail-closed.
+                raise IntegrityViolation(
+                    run_id=cp.run_id,
+                    expected_hash="<no-tag-but-refuse-legacy-enabled>",
+                    observed_hash="<empty>",
+                )
             warnings.warn(
                 f"EncryptedCheckpointStore.read: run {cp.run_id!r} has no "
                 f"integrity_tag (pre-1.9 row, A10-H2). Run "

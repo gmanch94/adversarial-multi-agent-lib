@@ -97,12 +97,12 @@ async def _migrate_all(
         PostgresCheckpointStore,
     )
 
-    if not hasattr(store, "_inner"):
+    if not hasattr(store, "inner"):
         raise RuntimeError(
-            "migrate_schema requires EncryptedCheckpointStore with _inner "
-            "attribute. Library private API changed — update this script."
+            "migrate_schema requires EncryptedCheckpointStore with `inner` "
+            "property. Library public API changed — update this script."
         )
-    inner: PostgresCheckpointStore = store._inner  # type: ignore[attr-defined]
+    inner: PostgresCheckpointStore = store.inner  # A16-L-04: public accessor
     if not isinstance(inner, PostgresCheckpointStore):
         raise RuntimeError(
             f"migrate_schema requires PostgresCheckpointStore inside the "
@@ -274,6 +274,22 @@ async def _main(argv: list[str]) -> int:
     args = _parse_args(argv)
     apply = bool(args.apply)
     target_version = int(args.target_version)
+
+    # A16-M-01: fail-fast guard. The payload-reconstruction branch at the
+    # body of _migrate_all builds a {run_id, schema_version} dict only.
+    # That's safe at v1 because REGISTRY is empty and every row hits the
+    # noop branch — but if someone wires the first real v2 migration
+    # WITHOUT rewriting the SELECT to fetch every column, _payload_to_checkpoint
+    # would raise mid-sweep leaving a partial-state DB. Refuse to run.
+    from adv_multi_agent.core.durable.schema_migrations import REGISTRY
+    if len(REGISTRY) > 0:
+        raise NotImplementedError(
+            "migrate_schema.py payload reconstruction loop is stubbed; "
+            "rewrite the SELECT at _migrate_all to fetch every column + "
+            "build the full Checkpoint payload before enabling REGISTRY "
+            "with real migrations. See A16-M-01 in "
+            "docs/security-audits/2026-05-18-cumulative-independent-cycle-16-sweep.md"
+        )
 
     if target_version > CURRENT_SCHEMA_VERSION:
         LOG.error(

@@ -33,10 +33,15 @@ STORAGE_BACKEND="${STORAGE_BACKEND:-file}"
 AGE_IDENTITY_FILE="${AGE_IDENTITY_FILE:?required: path to age PRIVATE key}"
 BACKUP_ID="${BACKUP_ID:?required: backup uuid to restore}"
 CONFIRMED=0
+# A16-M-02: --full-integrity-check iterates every checkpoint instead of a
+# random 10-row sample. Use for forensic restores after suspected DB-side
+# compromise. See docs/runbooks/durable-backup-restore.md.
+FULL_INTEGRITY=0
 
 for arg in "$@"; do
     case "$arg" in
         --confirm) CONFIRMED=1 ;;
+        --full-integrity-check) FULL_INTEGRITY=1 ;;
         --help|-h)
             sed -n '1,40p' "$0"
             exit 0
@@ -161,12 +166,19 @@ if [ "${OBSERVED_COUNT}" != "${EXPECTED_COUNT}" ]; then
     exit 1
 fi
 
-# Verification (c): integrity_tag round-trip on 10 random checkpoints.
-echo "[restore] verify (c): integrity_tag sample (10 random checkpoints)..."
+# Verification (c): integrity_tag round-trip — default 10 random checkpoints,
+# or every row when --full-integrity-check is passed (A16-M-02 closure).
+if [ "${FULL_INTEGRITY}" = "1" ]; then
+    echo "[restore] verify (c): integrity_tag FULL sweep (every checkpoint)..."
+    SAMPLE_SQL='SELECT run_id FROM checkpoints ORDER BY run_id;'
+else
+    echo "[restore] verify (c): integrity_tag sample (10 random checkpoints)..."
+    SAMPLE_SQL='SELECT run_id FROM checkpoints ORDER BY random() LIMIT 10;'
+fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SAMPLE_RUN_IDS="$(PGPASSWORD="${PGPASSWORD:-}" psql \
     --host="${PGHOST}" --port="${PGPORT}" --username="${PGUSER}" --dbname="${PGDATABASE}" \
-    --tuples-only --no-align --command='SELECT run_id FROM checkpoints ORDER BY random() LIMIT 10;' | tr '\n' ' ')"
+    --tuples-only --no-align --command="${SAMPLE_SQL}" | tr '\n' ' ')"
 
 if [ -z "$(echo "${SAMPLE_RUN_IDS}" | tr -d ' ')" ]; then
     echo "[restore] verify (c): table empty — skipping integrity sample."
