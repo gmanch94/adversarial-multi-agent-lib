@@ -1,6 +1,73 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE (post Tier-1.9 closure) — integrity_tag + workflow_version_hash round-trip fix SHIPPED
+Last updated: 2026-05-18 NIGHT — Tier 2.1a/2.1b/2.1c-1/2.1c-2 all SHIPPED (multi-tenant primitives complete; D-TENANT-0 gate flippable)
+
+## 2026-05-18 NIGHT — Tier 2.1 (multi-tenant isolation) SHIPPED in 4 sub-tiers
+
+**7 commits on main today + 2 audit closures. Pre-commit security audit ran on every library-touching commit per saved memory rule (after 2 missed audits early — user reminders led to the memory write).**
+
+### Resume point: flip D-TENANT-0 onboarding gate + wire sibling daemons to per-tenant resolvers
+
+Per-tenant cipher (D-TENANT-7) + budget (D-TENANT-8) primitives both exist as library APIs. D-TENANT-0 onboarding gate ("do NOT onboard tenant #2 until 2.1c ships") is now **FLIPPABLE** because 2.1c-1 + 2.1c-2 both shipped.
+
+**Resume work order:**
+
+1. **Sibling daemons wire up resolvers.** Three siblings hold legacy single-cipher/single-budget construction:
+   - `examples/production/durable_postgres/daemon.py` — `FernetCipher(keys=...)` + `BudgetTracker(max_X=...)` → migrate to `cipher_for_tenant` callable + `BudgetCaps`-bound `caps_for_tenant` callable. For demo: static dict per-tenant Fernet keyring.
+   - `examples/production/cipher_gcp_kms/daemon.py` — `GcpKmsCipher(keyring_resource_name=...)` → migrate to resolver mapping tenant→distinct KMS keyring resource name. **Standing autonomy:** prefer KMS-per-tenant for security>durability>scalability (security wins — DEK isolation per tenant means single-tenant KMS-key compromise leaks one tenant's payloads, not all).
+   - `examples/production/cipher_aws_kms/daemon.py` — same pattern for AWS KMS.
+
+2. **Flip D-TENANT-0 doc banner — 4 surfaces.** Update from "do NOT onboard tenant #2" to "Multi-tenant supported (Tier 2.1c shipped). Operator-action checklist: wire `cipher_for_tenant` + `caps_for_tenant` resolvers; provision per-tenant KMS keys; audit cardinality on OTel gauges before scaling above ~100 tenants":
+   - `docs/SECURITY_MODEL.md` §4 transitional-state warning banner (line ~67-77)
+   - `docs/runbooks/durable-compliance.md` §5.6 ONBOARDING GATE block (line ~426+)
+   - `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` D-TENANT-0
+   - `docs/production-readiness-gaps.md` §2.1 (still says SHIPPED for 2.1a only — promote to all-shipped)
+
+3. **Pre-commit audit on sibling wiring.** Sibling daemons touch operator-visible code; spawn pre-commit reviewer per saved memory rule. Probable MEDIUM concerns: KMS resolver caching semantics (lru_cache strategy), demo dict-resolver fail-closed behavior on unknown tenant.
+
+4. **Append D-TENANT-2.1c-1 + D-TENANT-2.1c-2 to `docs/decisions.md`.** Already implicit via commit bodies; explicit rows pending. Mirror format of D-TENANT-2.1b-1..4.
+
+5. **Test counts post-2.1c (current):** 251 library tests pass + 49 sibling tests + 63 needs_postgres skipped. Update `README.md` + `docs/architecture.md` + `docs/deployment-architecture.md` test count refs after sibling wiring lands (will add ~10-20 more sibling tests for resolver fixtures).
+
+6. **Backlog still open (`docs/production-readiness-gaps.md` §Tier 3):**
+   - **3.4** Tenant-shard scheduling (>100k paused runs ceiling) — 1-2w, not critical path
+   - **3.5** Tenant-aware backup/restore (pg_dump cross-tenant residual) — 3-5d sibling-only
+
+### Today's 7 commits (newest first)
+
+| Commit | Tier | Scope |
+|---|---|---|
+| `8bd5a59` | 2.1c-2 | feat: per-tenant budget caps — `BudgetCaps` value object + `caps=` kwarg additive (D-TENANT-8). 12 tests; audit SHIP-CLEAN; 4 fold-ins closed pre-commit |
+| `d15a199` | 2.1c-1 | feat: per-tenant cipher resolver — `cipher_for_tenant` additive + `UnknownTenantError` (D-TENANT-7). 8 tests; audit SHIP-CLEAN; 2 fold-ins closed pre-commit |
+| `dc3baf0` | 2.1b-audit | fix: 3 LOW findings (delete row-count signal, tenant_id case-sensitivity doc, read-write roundtrip test) |
+| `a0c9e44` | 2.1b | feat: library breaking change — `Checkpoint.tenant_id` required + drop sibling 2.1a transitional plumbing. 50+ callsites updated |
+| `ddd78df` | 2.1a-audit | fix: 4 findings (FORCE RLS, onboarding gate banner, missing tests, grep gate ordering) |
+| `48e394f` | 2.1a | feat: multi-tenant schema preparation — `tenant_id` column + RLS + sibling wiring (D-TENANT-0..10) |
+| `bc3d758` | 2.1-design | docs: multi-tenant design spec + D-TENANT-0..10 + Tier 3.4/3.5 backlog |
+
+### State at compact (commit `8bd5a59`)
+
+- **Library:** 251 tests pass; mypy strict clean; ruff clean
+- **Sibling:** 49 sibling tests pass + 63 needs_postgres skipped; CI grep gate (`check_set_local_pattern.py`) passes
+- **Decisions log:** D-TENANT-0..10 + D-TENANT-2.1b-1..4 appended; D-TENANT-2.1c-1/2 pending append next session
+- **Public API surface:** added `UnknownTenantError` to `__all__`; `BudgetCaps` re-exported (transitive only, not in `__all__` — D-API-3 BudgetTracker family posture)
+- **Working tree:** clean; no uncommitted changes; no in-progress work
+
+### Memory rules added this session (persisted in `~/.claude/projects/.../memory/`)
+
+- `feedback_track_gaps.md` — surface out-of-scope/residual items into `production-readiness-gaps.md`, not just the originating spec
+- `feedback_security_audit_before_commit.md` — auth/RLS/tenancy PRs need **pre-commit** independent reviewer subagent (NOT post-merge cleanup); rule emerged after user reminded twice on 2.1a + 2.1b
+
+### Standing autonomy reminder
+
+Per `~/.claude/rules/autonomy.md` + project CLAUDE.md: when user unavailable, pick **security > durability > scalability**; surface choice in commit body.
+
+**Recent decisions surfaced this session:**
+- 2.1b "hard-breaking vs additive-optional" → user said "no one is using existing artifacts" → hard-breaking shipped
+- 2.1c-1/2 "split vs atomic, additive vs hard-break" → user said "A + Y" (split commits, additive APIs)
+- 2.1c sibling wiring — pending session-resume. Recommend: KMS-per-tenant for cipher_gcp_kms/cipher_aws_kms (security wins); static-dict resolver acceptable for `durable_postgres` demo.
+
+---
 
 ## 2026-05-18 LATE — Tier 1.9 closure SHIPPED (integrity_tag + workflow_version_hash round-trip)
 
