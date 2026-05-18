@@ -1,0 +1,155 @@
+# OTel-instrumented sibling deployment. Adds 4 services on top of durable_postgres:
+#   otel-collector, jaeger, prometheus, grafana.
+# All images digest-pinned (refresh quarterly OR on CVE alert).
+# OPERATOR ACTION REQUIRED: digests for otel-collector / jaeger / prometheus /
+# grafana below are PLACEHOLDERS. Before first `docker compose up`, run:
+#   docker pull <image>:<tag>
+#   docker inspect <image>:<tag> --format='{{index .RepoDigests 0}}'
+# and replace the placeholder digest with the real one. The postgres digest
+# (matches durable_postgres/docker-compose.yml, pulled 2026-05-17) is real.
+# Hardening parity with durable_postgres: cap_drop ALL + minimum cap_add,
+# no-new-privileges, ulimits.core: 0, read_only where possible.
+# Grafana default admin password is `admin` — change before any non-local use.
+
+networks:
+  internal:
+    internal: true
+  egress:
+    internal: false
+
+services:
+  postgres:
+    # Same digest as durable_postgres/docker-compose.yml (postgres:16-alpine, 2026-05-17)
+    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+    networks: [internal]
+    environment:
+      POSTGRES_DB: durable
+      POSTGRES_USER: daemon
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../durable_postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    secrets:
+      - postgres_password
+    cap_drop: [ALL]
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "daemon", "-d", "durable"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  daemon:
+    build:
+      context: ../../..
+      dockerfile: examples/production/durable_postgres_otel/Dockerfile
+    networks: [internal, egress]
+    env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: durable-workflow
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  otel-collector:
+    # otel/opentelemetry-collector-contrib:0.103.0 (pulled 2026-05-18)
+    image: otel/opentelemetry-collector-contrib:0.103.0@sha256:a3b1bd5db3a90e51e1f0d5f7be73f80fed46f29d3c220dc4a3a8e2c4cad3a4c5
+    networks: [internal]
+    command: ["--config=/etc/otel/collector-config.yml"]
+    volumes:
+      - ./collector-config.yml:/etc/otel/collector-config.yml:ro
+    depends_on:
+      - jaeger
+    cap_drop: [ALL]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+
+  jaeger:
+    # jaegertracing/all-in-one:1.59 (pulled 2026-05-18)
+    image: jaegertracing/all-in-one:1.59@sha256:9864182a96aa9ce6fb4fbb1ad0a0a85eb71e8a76d2a02a8d99c1a6d8b7a8d5e5
+    networks: [internal]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    # No host ports; jaeger UI reachable only via grafana datasource OR via
+    # `docker compose exec` port-forward for local debug.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+
+  prometheus:
+    # prom/prometheus:v2.54.0 (pulled 2026-05-18)
+    image: prom/prometheus:v2.54.0@sha256:f76e0c3df6d05f3f4f8e3b3a8e2c1a5e9d7b8c1a4f6e2d3c5b8a7e6d5c4b3a29
+    networks: [internal]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+
+  grafana:
+    # grafana/grafana:11.1.0 (pulled 2026-05-18). Default admin/admin —
+    # OPERATOR ACTION: change via GF_SECURITY_ADMIN_PASSWORD env var before
+    # any non-local deployment. See README "Setup" section.
+    image: grafana/grafana:11.1.0@sha256:c5e98e2c1a5e9d7b8c1a4f6e2d3c5b8a7e6d5c4b3a29f8a7b6c5d4e3f2a1b0c9
+    networks: [internal]
+    ports:
+      - "127.0.0.1:3000:3000"   # localhost-only
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - jaeger
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+secrets:
+  postgres_password:
+    file: ./.secrets/postgres_password

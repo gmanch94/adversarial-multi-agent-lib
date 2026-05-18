@@ -1,0 +1,45 @@
+# OpenTelemetry Collector config — receivers, processors, exporters, pipelines.
+# Trust boundary: collector accepts OTLP gRPC on the internal docker network
+# only (no host port binding). Daemon is the sole producer.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        # Operator note: production deployments should enable TLS + mTLS here.
+        # Local compose runs on the internal-only docker network so plaintext
+        # is acceptable for the reference deploy.
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+  # memory_limiter prevents OOM on collector if downstream backs up.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # const_labels can leak across tenants; we keep this empty by design.
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+  telemetry:
+    logs:
+      level: info
