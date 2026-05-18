@@ -326,6 +326,33 @@ Wired metric emissions (8 distinct names):
 
 **Effort:** 1 week (depends on 3.1 landing first).
 
+### 3.4 Tenant-shard scheduling — scale beyond ~100k paused runs
+
+**Gap.** `PollingDaemon.poll_ready()` lists paused runs across all tenants on every poll cycle (Tier 2.1 BYPASSRLS option (a)). Existing partial index `WHERE status='paused' (wake_at NULLS LAST)` keeps poll well under 1s up to 100k rows. Above that ceiling, poll latency starts blocking workflow throughput — at 1M paused rows, single-daemon poll exceeds the wake-interval window.
+
+**Failure mode without it.** Operator deploys 2.1 multi-tenant successfully, signs 50 tenants × 5k paused-runs each (250k total), wonders why throughput degrades. No alert today — `DurablePollLatency` not yet defined.
+
+**Deliverable:**
+- Tenant-shard scheduler: one daemon-process per shard (configurable shard count); each shard owns a hash-range of `tenant_id`. Eliminates the cross-tenant poll. Tier 2.1 BYPASSRLS becomes shard-scoped (option (b) from Tier 2.1 D-TENANT-3) — daemon role can be RLS-scoped per shard.
+- OR: `LISTEN/NOTIFY` per tenant — daemon subscribes to per-tenant channel; workflow `wake_at` insert fires NOTIFY; daemon wakes specifically for that tenant. Eliminates polling entirely.
+- `DurablePollLatency` Prometheus alert: fires at p95 poll > 500ms.
+- `capacity-model.md` row for the 100k → 1M scaling band with measured numbers.
+
+**Effort:** 1-2 weeks. Touches scheduler + sibling daemon + alerts.
+
+### 3.5 Tenant-aware backup / restore
+
+**Gap.** Tier 2.1 ships per-tenant DEKs (D-TENANT-7) but does not orchestrate backup. `pg_dump` of the full cluster crosses tenants by default; superuser/replication role bypasses RLS. Operator's threat model dictates whether full-cluster dumps are acceptable (each tenant's payload stays sealed per-tenant DEK; metadata leaks).
+
+**Failure mode without it.** Compliance audit asks "show me tenant X's backup retention proof"; operator has cluster-wide dumps with no per-tenant slice. Re-deriving from cluster dump requires the full key-set, defeating per-tenant DEK isolation.
+
+**Deliverable:**
+- `scripts/backup_tenant.py --tenant <id>` — `pg_dump --table=checkpoints --where="tenant_id='X'"` + matching `quarantine` slice. Output is `tenant_id`-scoped, ciphertext-only (still requires that tenant's DEK to decrypt).
+- `scripts/restore_tenant.py --tenant <id> --from <dump>` — idempotent restore; CHECK constraint validates `tenant_id` in dump matches `--tenant` flag (defense against cross-tenant restore-injection).
+- `durable-compliance.md` §5.7 — per-tenant backup procedure + retention policy template.
+
+**Effort:** 3-5 days. Sibling-only (no library impact).
+
 ---
 
 ## Tier 4 — quality-of-life, not blockers
