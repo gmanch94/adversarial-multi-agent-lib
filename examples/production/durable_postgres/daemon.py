@@ -387,10 +387,23 @@ async def main() -> None:
             await asyncio.sleep(cfg.poll_interval)
 
     _sat_task = asyncio.create_task(_sample_pool_saturation())
+
+    # Tier 2.4: durable quarantine mirror. Runs alongside scheduler; INSERTs
+    # newly-quarantined run_ids into the `quarantine` table and processes
+    # operator-driven requeues by discarding from in-memory state.
+    from examples.production.durable_postgres.quarantine import QuarantineSync
+    quarantine_sync = QuarantineSync(daemon, query_pool, poll_interval_seconds=cfg.poll_interval)
+    quarantine_sync.start()
+
     try:
         await daemon.run_forever()
     finally:
+        # A14-M-02: cancel + await _sat_task before pool teardown so in-flight
+        # queries don't race against a closing pool. quarantine_sync.stop()
+        # already drains its own task.
         _sat_task.cancel()
+        await asyncio.gather(_sat_task, return_exceptions=True)
+        await quarantine_sync.stop()
         # F-H-04 v2: force-close any still-held lock handles BEFORE pool teardown.
         # asyncpg pool.close() does NOT close idle connections that are merely
         # held (an advisory lock holder is "idle" from the pool's perspective).

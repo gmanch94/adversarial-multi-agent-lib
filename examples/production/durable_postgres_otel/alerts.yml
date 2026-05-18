@@ -37,3 +37,26 @@ groups:
         annotations:
           summary: Lock pool above 85 percent saturation
           runbook: docs/runbooks/otel-operations.md#durablelockpoolnearsaturation
+      # Tier 2.4: dead-letter / quarantine surface. Threshold + duration are
+      # tunable per fleet; default trips at >10 active for 15m. The gauge is
+      # exported by the sibling daemon's quarantine sampler (quarantine.py
+      # QuarantineSync.quarantine_size()).
+      - alert: DurableQuarantineGrowing
+        expr: durable_quarantine_size > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Quarantine size above 10 active runs for 15m
+          runbook: docs/runbooks/otel-operations.md#durablequarantinegrowing
+      # A14-H-02: durable_quarantine_size is a GAUGE; increase()/rate() are
+      # for counters. Use gauge-delta to detect a real net rise even when
+      # requeues are draining the set in parallel.
+      - alert: DurableQuarantineSpike
+        expr: (durable_quarantine_size - (durable_quarantine_size offset 10m)) > 5
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Quarantine grew by >5 net rows in 10m (poison-input storm)
+          runbook: docs/runbooks/otel-operations.md#durablequarantinespike

@@ -82,6 +82,34 @@ Each subsection matches an alert in `examples/production/durable_postgres_otel/a
 
 **Triage:** inspect the lock-pool saturation gauge alongside the lock-acquire-failed panel. Sustained 0.85+ saturation without failed acquisitions = headroom is shrinking but workload is being served; sustained 0.85+ saturation with rising failures = wedge.
 
+### 2.5 DurableQuarantineGrowing
+
+**Trigger:** `durable_quarantine_size > 10` for 15m.
+**Severity:** warning.
+
+**Background:** Tier 2.4 dead-letter handling. The library scheduler quarantines a run_id after `max_retries` consecutive resume failures (RunNotFound, CheckpointCorrupt, SchemaVersionMismatch, or generic exception). The sibling `QuarantineSync` task mirrors the in-memory set to the `quarantine` Postgres table. The gauge reports `COUNT(*) WHERE requeued_at IS NULL`.
+
+**Hypothesis tree:**
+1. **Poison input shape** — a class of malformed request is reaching the scheduler in volume. Inspect with `python -m scripts.list_quarantined --limit 50`; group by `quarantined_at` clustering. If the run_ids share a tenant/feature prefix, escalate to that caller.
+2. **Stale checkpoints from a rolled-back migration** — recently-removed columns / fields leave deserialization failing. Cross-check `reason=checkpoint_corrupt` against the most recent `schema_version` bump. Fix is to bump `SCHEMA_MIN_VERSION` or to backfill the missing fields.
+3. **Quarantine never drains** — operators are not requeueing. By design, requeue is explicit (`python -m scripts.requeue <run_id>`); the alert is informational pressure to triage, not to auto-clear.
+
+**Triage:** `list_quarantined.py` is read-only and safe to invoke from any operator host with `POSTGRES_DSN` exported. Requeue is one-at-a-time and requires interactive confirmation unless `--yes` is passed.
+
+### 2.6 DurableQuarantineSpike
+
+**Trigger:** `increase(durable_quarantine_size[10m]) > 5` for 10m.
+**Severity:** critical.
+
+**Background:** quarantine grew by more than 5 active rows in 10 minutes. Almost always a **poison-input storm**: an upstream caller is replaying the same malformed payload, hitting `max_retries`, getting quarantined, and the loop repeats with a new run_id.
+
+**Hypothesis tree:**
+1. **Caller misconfiguration** — a deploy went out with a bad schema. Page the upstream service oncall; rollback or fix forward.
+2. **Replay of dead-letter queue** — operator (or upstream) is re-submitting a previously-failed batch without first fixing the root cause. Suspend ingress, drain quarantine via `list_quarantined`, identify common shape, fix, then requeue.
+3. **Library regression** — `max_retries` not honoring its limit, runs cycle endlessly. Check `failure_count` distribution in quarantine table; if values cluster at exactly `max_retries`, library is correct. If values are wildly above the limit, file a library bug.
+
+**Triage:** never bulk-requeue. The spike's root cause must be fixed at the caller or schema layer first; requeueing without fix produces an infinite loop. The requeue script's interactive confirm + per-run_id design is intentional friction.
+
 ---
 
 ## 3. Cardinality budget

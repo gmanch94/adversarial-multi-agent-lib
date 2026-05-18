@@ -171,10 +171,36 @@ async def main() -> None:
             await asyncio.sleep(cfg.poll_interval)
 
     _sat_task = asyncio.create_task(_sample_pool_saturation())
+
+    # Tier 2.4: durable quarantine mirror + OTel gauge sampler.
+    from examples.production.durable_postgres.quarantine import QuarantineSync
+    quarantine_sync = QuarantineSync(
+        daemon, query_pool, poll_interval_seconds=cfg.poll_interval,
+    )
+    quarantine_sync.start()
+
+    async def _sample_quarantine_size() -> None:
+        while True:
+            try:
+                size = await quarantine_sync.quarantine_size()
+                metrics.gauge("durable.quarantine.size", float(size), tags={})
+            except Exception:
+                # Telemetry must never crash the daemon.
+                pass
+            await asyncio.sleep(cfg.poll_interval)
+
+    _quar_task = asyncio.create_task(_sample_quarantine_size())
+
     try:
         await daemon.run_forever()
     finally:
+        # A14-M-02: cancel + await background tasks before pool teardown so
+        # in-flight queries don't race against a closing pool (InterfaceError
+        # + unretrieved task exceptions).
+        _quar_task.cancel()
         _sat_task.cancel()
+        await asyncio.gather(_quar_task, _sat_task, return_exceptions=True)
+        await quarantine_sync.stop()
         await lock_registry.force_close_all()
         await healthcheck.close()
         await lock_pool.close()

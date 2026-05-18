@@ -1,6 +1,44 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE NIGHT — Tier 1.3 AWS KMS sibling SHIPPED
+Last updated: 2026-05-18 OVERNIGHT — Tier 2.4 quarantine / dead-letter SHIPPED
+
+**Standing autonomy (2026-05-17 + reaffirmed 2026-05-18):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+## 2026-05-18 OVERNIGHT — Tier 2.4 SHIPPED (quarantine / dead-letter)
+
+**Sibling-only — zero library impact. `examples/production/durable_postgres/` + `_otel/` only.**
+
+Closes gaps doc §2.4. The library scheduler's in-memory `_quarantine` set is now mirrored to a Postgres `quarantine` table by a sibling `QuarantineSync` async task, giving operators durable visibility + an explicit requeue path.
+
+**Divergence from `2026-05-18-quarantine-design.md` spec:** spec called for a library-side API (`quarantine`, `requeue`, `list_quarantined` methods + `"quarantined"` status value + `QuarantineSummary` export + golden-set update in `test_public_api_stability.py`). After advisor consult, took the sibling-only path: attr-access into `daemon._quarantine` + `daemon._failures` (already-public via getattr — see daemon.py:356 healthcheck precedent). D-QUAR-1 captures the choice; library surface stays at Tier 1.x posture.
+
+**Shipped:**
+- `quarantine.py` — `QuarantineSync` async task. Each poll: snapshot in-memory set → INSERT new rows (ON CONFLICT DO NOTHING). Poll `WHERE requeued_at IS NOT NULL` → discard from in-memory + bump `requeue_count` + clear marker. Exception-swallowing so a DB glitch never crashes the daemon.
+- `schema.sql` + `scripts/0003_add_quarantine.sql` — new `quarantine` table. Closed reason enum CHECK (`'max_retries_exceeded' | 'manual' | 'unknown'`). `failure_count` CHECK bounds (0..1000). run_id charset CHECK mirrors checkpoints table. Partial index `idx_quarantine_active WHERE requeued_at IS NULL` favors operator-listing hot path (per cycle-14 A14-M-01).
+- `scripts/list_quarantined.py` — paginated, redacted, env-DSN-only (D-QUAR-3). Hard-coded column allowlist (`_REDACTED_COLUMNS`) so future schema additions can't leak. `--limit` capped at 500.
+- `scripts/requeue.py` — interactive confirmation prompt + `--yes` override. Regex gate on run_id at CLI BEFORE DB query (defense in depth above the DB CHECK). Returns `requeued | already_pending | not_found`.
+- `daemon.py` (both `durable_postgres` + `durable_postgres_otel`) — wires `QuarantineSync.start()` alongside `daemon.run_forever()`. Cancels + awaits background tasks before pool close (cycle-14 A14-M-02).
+- `durable_postgres_otel/daemon.py` — adds `durable.quarantine.size` gauge sampler (tags={}; no PII).
+- `durable_postgres_otel/alerts.yml` — 2 new alerts. `DurableQuarantineGrowing` (>10 for 15m, warning). `DurableQuarantineSpike` (gauge-delta > 5 over 10m for 10m, critical). Cycle-14 A14-H-02 corrected the spike alert from `increase()` (counter operator) to a true gauge-delta — `increase()` on a gauge silently mutes during partial drain.
+- `docs/runbooks/otel-operations.md` §2.5 + §2.6 — per-alert hypothesis trees + triage paths.
+- `tests/test_quarantine.py` — 18 new unit tests (asyncpg mocked). Covers diff-and-insert, requeue ordering, size-zero/N, failure-count cap at CHECK bound, regex injection rejection, schema-vs-Python regex parity, list_quarantined column redaction + WHERE-clause variation, run_forever exception swallowing, start/stop idempotency.
+- 7 decision rows D-QUAR-1..7 appended to `docs/decisions.md`.
+- Cycle-14 audit: `docs/security-audits/2026-05-18-tier-2-4-cycle-14-sweep.md`. 0 CRITICAL / 2 HIGH (both fixed in same diff) / 2 MEDIUM (both fixed) / 5 LOW (accepted / documented).
+
+**Standing autonomy applied:**
+- Sibling-only over library API expansion — minimized library churn, kept Tier 1.x library posture intact, no `test_public_api_stability.py` golden update needed. Secure→durable→scalable: tied on security; sibling-only better preserves durability (smaller library surface = smaller regression surface).
+- Reason enum closed CHECK instead of free-form — chose security (no exception-message PII leak via `reason` column) over operator-debuggability (logs hold the detail anyway).
+- Operator scripts env-DSN-only — chose security (no password in shell history / `ps`) over CLI ergonomics.
+
+**Library tests:** 185 unchanged. Sibling tests: 39 pass + 33 skipped (DB-dependent) — 18 of those 39 are the new quarantine tests. OTel sibling: 3 skipped (collector-dependent).
+
+**Open follow-ups:**
+- Tier 2.5 cost-capacity model (spec `2026-05-18-cost-capacity-model-design.md`, ~1d lean cut, pure docs + `scripts/load_test.py`).
+- Cycle-14 LOW-tier deferrals: tighten `test_run_forever_swallows_iteration_exceptions` to assert call_count > 0; add `DurableQuarantineNonZero` floor alert at `>0 for 1h` warning severity for slow-burn poison detection.
+
+---
+
+## 2026-05-18 LATE NIGHT — Tier 1.3 AWS KMS sibling SHIPPED
 
 ## 2026-05-18 LATE NIGHT — Tier 1.3 AWS KMS sibling SHIPPED (~1d slice)
 
