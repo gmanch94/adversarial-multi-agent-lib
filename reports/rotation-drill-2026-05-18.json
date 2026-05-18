@@ -1,0 +1,429 @@
+{
+  "started_at": "2026-05-18T05:44:45.914229+00:00",
+  "n_seed": 20,
+  "m_mixed": 10,
+  "phases": {
+    "1_setup": {
+      "fingerprint_a": "64bd4821",
+      "ok": true
+    },
+    "2_seed_under_a": {
+      "rows": 20,
+      "ok": true
+    },
+    "3_multi_a_and_b": {
+      "fingerprint_b_primary": "d6a3e6cc",
+      "ok": true
+    },
+    "4_mixed_write": {
+      "rows": 10,
+      "ok": true
+    },
+    "5_pre_rotation_read": {
+      "rows_decrypted_ok": 30,
+      "ok": true
+    },
+    "6_reencrypt": {
+      "rows_re_encrypted": 30,
+      "ok": true
+    },
+    "7_b_only": {
+      "fingerprint_b_only": "d6a3e6cc",
+      "ok": true
+    },
+    "8_post_rotation_read": {
+      "rows_decrypted_ok": 30,
+      "ok": true
+    },
+    "9_negative_path_a_only": {
+      "samples_checked": 5,
+      "samples_rejected_as_expected": 5,
+      "ok": true
+    }
+  },
+  "captured_warnings": [
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0010' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0011' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0012' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0013' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0014' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0015' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0016' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0017' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0018' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0019' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0010' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0011' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0012' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0013' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0014' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0015' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0016' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0017' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0018' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0019' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0010' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0011' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0012' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0013' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0014' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0015' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0016' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0017' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0018' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0019' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0005' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0006' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0007' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0008' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-b-0009' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0000' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0001' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0002' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0003' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    },
+    {
+      "category": "LegacyPartialAEADWarning",
+      "message": "EncryptedCheckpointStore.unseal: run 'drill-a-0004' has no integrity_tag (pre-1.9 row, A10-H2). Run reseal_all_checkpoints.py to upgrade."
+    }
+  ],
+  "verdict": "PASS",
+  "finished_at": "2026-05-18T05:44:47.188893+00:00",
+  "wall_clock_s": 1.2747063636779785
+}

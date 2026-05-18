@@ -1,6 +1,54 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 OVERNIGHT (post-Tier-2.5) — Tier 2.5 cost/capacity model SHIPPED
+Last updated: 2026-05-18 OVERNIGHT (post-Tier-1.4/1.5-EVE) — scheduler hot-path tests + rotation drill SHIPPED
+
+## 2026-05-18 OVERNIGHT (post-Tier-1.4/1.5-EVE) — Tier 1.4-EVE + Tier 1.5-EVE SHIPPED
+
+**Two slices closing 2026-05-18 EVE follow-ups. Both sibling-only.**
+
+### Slice A — scheduler hot-path tests against live Postgres (commit `767e73b`)
+
+12 integration tests under `examples/production/durable_postgres/tests/test_scheduler_hot_path.py`. Run `PollingScheduler` + `SchedulerDaemon` against `PostgresCheckpointStore` + real `postgres:16-alpine` via the existing `needs_postgres` skip-gate.
+
+Coverage: `poll_ready` SQL semantics (status filter, wake_at NULL-or-past, NULLS FIRST ordering, batch_size cap, empty result), `SchedulerDaemon` round-loop iteration with live tokens, quarantine accumulation after `max_retries` on `CheckpointCorrupt` + skip-on-subsequent-poll verification, failure-counter clearing on flake-then-success, token-resolver hook firing, `stop()` returning within one poll interval, 100-paused `poll_ready` under 1s sanity floor.
+
+Wall clock: 12 tests in **21s** against fresh schema.
+
+### Slice B — quarterly cipher-key rotation drill (this commit)
+
+`examples/production/durable_postgres/scripts/rotation_drill.py` — 9-phase end-to-end exercise of the §5.2 rotation procedure. Compliance runbook gets §5.4 documenting cadence + invocation + post-drill audit-evidence pattern.
+
+Drill PASS on shipping commit: 20 seed rows under cipher A + 10 mixed rows under cipher B + reencrypt sweep + B-only verify + negative path (A-only must reject B-encrypted rows). 1.3s wall clock. Captured 95 warnings in `report["captured_warnings"]` (see open finding below). Reference artifact: `reports/rotation-drill-2026-05-18.json`.
+
+Phase 9 except is narrowed to `(InvalidToken, CheckpointCorrupt)` only — pattern parity with cycle-14 A14-L-02 fix. Anything else propagates and fails the drill loudly.
+
+**Standing autonomy applied:** advisor flagged 3 pre-commit issues — narrow except, stage report JSON as audit evidence, investigate the LegacyPartialAEADWarning. Resolved all three before commit. The third investigation surfaced a real sibling bug (see Open finding) rather than suppressing the warning.
+
+### Open finding — sibling `_serialize` / `_deserialize` does not round-trip `integrity_tag`
+
+**Surface:** Tier 1.9 added the `integrity_tag` column to `examples/production/durable_postgres/schema.sql` + the `reseal_all_checkpoints.py` script. The `PostgresCheckpointStore._serialize` and `_deserialize` helpers (in `store.py`) build/parse the JSON body of the `payload` column but DO NOT include `integrity_tag`. So:
+
+1. `EncryptedCheckpointStore.write(cp)` calls `self.seal(cp)` → returns a Checkpoint with `integrity_tag` computed.
+2. `self._inner.write(sealed)` → `PostgresCheckpointStore.write_with_class(sealed)` → `_serialize(sealed)` → **integrity_tag is dropped from the body dict**.
+3. INSERT writes payload WITHOUT integrity_tag.
+4. On read: `_deserialize` returns a Checkpoint with `integrity_tag=None`.
+5. `EncryptedCheckpointStore.unseal(cp)` sees None → emits `LegacyPartialAEADWarning` (does NOT raise unless `_refuse_legacy_aead` is set).
+
+**Impact:** every new row is effectively pre-1.9 shape until `reseal_all_checkpoints.py` runs. `_refuse_legacy_aead=True` deployments would crash on the very first read after a fresh write. The schema column was added but the live write path was never wired.
+
+**Mitigation (operator-side, until library fix lands):** in production rotations, run `reseal_all_checkpoints.py` BEFORE `reencrypt_all.py` so the sweep operates on integrity-tag-bearing rows. Documented in compliance runbook §5.4.
+
+**Fix path (sibling slice, next session):**
+- `PostgresCheckpointStore._serialize`: add `"integrity_tag": cp.integrity_tag` to body dict.
+- `PostgresCheckpointStore._deserialize`: read `body.get("integrity_tag")` into the Checkpoint constructor.
+- Update the schema column-mirror INSERT to write `cp.integrity_tag` alongside payload (denormalized for the reseal partial index).
+- Add a unit test asserting integrity_tag round-trips through `write()` → `read()`.
+- Re-run rotation drill; expect 0 captured warnings.
+- Estimated effort: 0.3d, sibling-only, no library impact.
+
+---
+
+## 2026-05-18 OVERNIGHT (post-Tier-2.5) — Tier 2.5 cost/capacity model SHIPPED
 
 **Standing autonomy (2026-05-17 + reaffirmed 2026-05-18):** when user not available to choose, pick secure → durable → scalable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
 

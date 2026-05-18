@@ -237,7 +237,60 @@ bash examples/production/cipher_gcp_kms/scripts/audit_iam_grants.sh \
 
 Run before every production deploy. Fails if unexpected principals appear with encrypt/decrypt grants.
 
-### 5.4 Key compromise response
+### 5.4 Rotation drill (operator exercise)
+
+The procedure in §5.2 is necessary but not sufficient — until you've **exercised** it end-to-end, you don't know whether your `MultiFernet` config, your `reencrypt_all.py` invocation, and your post-rotation key-drop work together against the *current* library + sibling code.
+
+The drill script `examples/production/durable_postgres/scripts/rotation_drill.py` runs the full rotation lifecycle against a test Postgres and verifies every phase. Exit 0 = drill PASS; exit 1 = a phase regressed and the procedure in §5.2 will not work in production until the regression is fixed.
+
+**Phases the drill verifies:**
+
+| Phase | What is proven |
+|---|---|
+| 1. Setup | Fresh schema + cipher A construction works |
+| 2. Seed-under-A | Library writes encrypt under the primary key (A) |
+| 3. Multi-A-and-B | `MultiFernet([B, A])` accepts old reads, encrypts new writes under B |
+| 4. Mixed-write | Writes under the new primary land cleanly alongside A-encrypted rows |
+| 5. Pre-rotation read | Every existing row (A) AND every new row (B) decrypts |
+| 6. Re-encrypt | `reencrypt_all.py` sweeps all rows from A → B; `count + skipped == total` invariant holds |
+| 7. B-only | Cipher reconstructed with B alone; A is dropped |
+| 8. Post-rotation read | Every row decrypts under B-only → **proves the sweep missed nothing** |
+| 9. Negative path | A-only cipher attempting to read B-encrypted rows raises `InvalidToken` / `CheckpointCorrupt` → proves A really did stop being needed |
+
+**Cadence:**
+
+- Quarterly at minimum, immediately before each scheduled production rotation per §5.2.
+- Whenever the library, the cipher sibling, or `reencrypt_all.py` changes.
+- Whenever the `EncryptedCheckpointStore` public API (`seal`, `unseal`, `inner`) is touched — Tier 2.2 sealed those, but a future bump that renames any of them invalidates the script.
+
+**Run it:**
+
+```
+docker compose -f examples/production/durable_postgres/docker-compose.yml up -d postgres
+export POSTGRES_DSN=postgresql://...test-target...
+python -m examples.production.durable_postgres.scripts.rotation_drill \
+    --n-seed 20 --m-mixed 10 \
+    --report-out reports/rotation-drill-$(date +%Y-%m-%d).json
+```
+
+The script refuses to run against a non-test DSN unless `--i-know-this-is-prod` is passed. Synthetic rows are tagged with run_id prefix `drill-` and cleaned up on exit (whether the drill passed or failed).
+
+**What to commit alongside the run:**
+
+- The JSON report (`reports/rotation-drill-YYYY-MM-DD.json`) as audit evidence.
+- A line in the compliance audit log noting the date + verdict + library SHA the drill ran against.
+
+**What the drill does NOT verify:**
+
+- Real KMS-backed cipher rotation (the drill uses `FernetCipher`). Operators on `GcpKmsCipher` / `AwsKmsCipher` rely on §5.3 cloud-native rotation evidence; their key rotation is handled by the KMS service, not the library, and does not require `reencrypt_all.py`.
+- That production keys are stored correctly (caller-owned per §5.1).
+- That production operators have the IAM / runbook access needed to execute §5.2 step 5 (drop old key). Verify via tabletop exercise.
+
+**Reference drill artifact:** `reports/rotation-drill-2026-05-18.json` (initial drill on shipping commit). 20 seed rows + 10 mixed rows = 30 total, all 9 phases PASS, ~1.3s wall clock.
+
+**Open finding from the 2026-05-18 inaugural drill — `LegacyPartialAEADWarning` on every read:** the drill captures **95 warnings** in `report["captured_warnings"]`, all variants of `EncryptedCheckpointStore.unseal: run 'drill-…' has no integrity_tag (pre-1.9 row, A10-H2)`. This is the drill doing its job. Root cause: `PostgresCheckpointStore._serialize` / `_deserialize` (`examples/production/durable_postgres/store.py`) do not round-trip `Checkpoint.integrity_tag` — Tier 1.9 added the schema column + the reseal script, but the live `write()` path doesn't populate it. New rows are effectively pre-1.9 shape until `reseal_all_checkpoints.py` runs. **Operator implication for production rotation:** run `reseal_all_checkpoints.py` BEFORE `reencrypt_all.py` so the rotation sweep operates on integrity-tag-bearing rows. Tracked as a Tier 1.9 follow-up in `docs/NEXT_SESSION.md`. The drill PASSES because the warning is the documented pre-1.9 path; it'd FAIL with `IntegrityViolation` only if `_refuse_legacy_aead` were set.
+
+### 5.5 Key compromise response
 
 1. **Rotate immediately** per §5.2 (Fernet) or `scripts/rotate_kms_key_version.sh` (GcpKms); halt at step 2 (do not deploy yet).
 2. **Audit access logs** to KMS / Vault — when was key last accessed? By what principal?
