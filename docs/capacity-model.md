@@ -134,7 +134,7 @@ Reproduce in your own OTel stack — no library-specific dashboard required.
 | Dimension | 100 paused | 1K paused | 10K paused | 100K paused |
 |---|---|---|---|---|
 | Scale | single-team pilot / staging | single-team production | multi-team production / small SaaS | enterprise multi-tenant or large SaaS |
-| Status | **MEASURED** (`scripts/load_test.py` 2026-05-18) | `[MODELED]` | `[MODELED]` | `[MODELED]` |
+| Status | **MEASURED** for populate+schema cells (`scripts/load_test.py` run 2026-05-18, `reports/load-test-2026-05-18.json`); **`[MODELED]`** for API + KMS + latency cells (skeleton does not spawn the daemon — operator extension) | `[MODELED]` | `[MODELED]` | `[MODELED]` |
 | Postgres class | db.t4g.medium | db.t4g.large | db.r6g.large | db.r6g.xlarge |
 | asyncpg pool_size | 15 (per §3.1) | 30 | 75 | 150 |
 | Daemon replicas | 1 | 1 | 3 | 12 |
@@ -154,6 +154,13 @@ Cell sources: every modeled number cites a formula in §3.4 + assumption IDs in 
 - KMS storage is the floor — even at 100 paused runs the key-storage cost is half the KMS bill.
 - OTLP egress is a rounding line until ~10K. At 100K it crosses $2/mo per replica — still small relative to API spend.
 - Postgres storage is bounded by the checkpoint table re-using rows; growth is dominated by quarantine + ledger tables, both small.
+
+**100-run measurement notes (2026-05-18 run, `reports/load-test-2026-05-18.json`):**
+- 100 synthetic checkpoints populated and cleaned without warnings; schema applied clean (2 tables + 3 partial indexes).
+- Total DB size at steady state: **7.87 MB** (Postgres catalog overhead dominates; 100 raw rows × 8 KB ≈ 0.8 MB).
+- Active connections peak: 1 (script's own — no daemon spawned).
+- DB size growth during 30s soak: 0 bytes (expected — no daemon spawned, no rounds executed).
+- **What this run does NOT measure:** p95 round latency, lock-pool saturation, Anthropic / OpenAI / KMS spend, cipher op cost. Those require the operator-owned daemon-spawn extension documented in `scripts/load_test.py` (`--external-daemon` hook). The numbers in the API + KMS + Postgres-class cells above remain MODELED via §3.4 formulas.
 
 ---
 

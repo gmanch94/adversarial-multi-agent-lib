@@ -1,0 +1,34 @@
+name: Docs freshness
+
+# D-COST-6: capacity-model.md must be refreshed quarterly. WARN at 90d (green),
+# FAIL at 180d (red). Runs weekly on schedule + on every push to capacity-model.md
+# + manual dispatch. Not wired into branch-protection required-checks; staleness
+# nudges via the workflow run log, not the merge gate.
+
+on:
+  schedule:
+    # Mondays 09:00 UTC — surfaces in the weekly inbox triage.
+    - cron: "0 9 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "docs/capacity-model.md"
+      - "scripts/check_capacity_model_freshness.py"
+      - ".github/workflows/docs-freshness.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capacity-model-freshness:
+    name: capacity-model.md freshness (90d warn / 180d fail)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check freshness stamp
+        run: python scripts/check_capacity_model_freshness.py

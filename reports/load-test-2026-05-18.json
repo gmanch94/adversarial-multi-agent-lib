@@ -1,0 +1,63 @@
+{
+  "started_at": 1779081610.540716,
+  "n_paused_target": 100,
+  "duration_s_target": 30,
+  "phase": "done",
+  "warnings": [],
+  "synthetic_rows_inserted": 100,
+  "snapshot_start": {
+    "active_connections": 1,
+    "db_size_bytes": 7871511,
+    "loadtest_checkpoint_rows": 100
+  },
+  "snapshots": [
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 5.007439851760864
+    },
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 10.025925636291504
+    },
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 15.043689966201782
+    },
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 20.06055974960327
+    },
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 25.07600712776184
+    },
+    {
+      "active_connections": 1,
+      "db_size_bytes": 7871511,
+      "loadtest_checkpoint_rows": 100,
+      "t_offset_s": 30.00536847114563
+    }
+  ],
+  "snapshot_end": {
+    "active_connections": 1,
+    "db_size_bytes": 7871511,
+    "loadtest_checkpoint_rows": 100
+  },
+  "db_size_bytes_peak": 7871511,
+  "db_size_bytes_growth": 0,
+  "active_connections_peak": 1,
+  "synthetic_rows_cleaned": 100,
+  "cleanup_skipped": false,
+  "finished_at": 1779081640.740934,
+  "wall_clock_s": 30.200217962265015
+}
