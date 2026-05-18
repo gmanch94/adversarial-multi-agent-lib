@@ -274,34 +274,27 @@ spec:
 
 ## 8. Schema-version migration procedure
 
-`Checkpoint.schema_version` bumps when the dataclass shape changes incompatibly (D-DURABLE-1). Migration tool is **REFERENCE-IMPL-PENDING** — sketch only.
+`Checkpoint.schema_version` bumps when the dataclass shape changes incompatibly (D-DURABLE-1). **Status (post Tier 1.4, 2026-05-18):** mechanism + deployment script SHIPPED as `OPERATIONAL (scaffolding only)`. The library `REGISTRY` is **EMPTY at v1** by design — additive changes (Tier 1.6 `workflow_version_hash`, Tier 1.9 `integrity_tag`) ship without bumping the schema version via the nullable-field + deserializer-exemption convention documented in `core/durable/schema_migrations.py`. The first real migration lands the same day the first non-additive change does. Until then, running the tool against a healthy deployment is a verified no-op.
 
 ### 8.1 Procedure
 
 1. **Freeze deploys.** No new library version rolls out during migration.
 2. **Stop `SchedulerDaemon`** to prevent mid-migration resumes.
 3. **Inventory** — `SELECT count(*), schema_version FROM checkpoints GROUP BY schema_version` (Postgres) or directory scan (File).
-4. **Run migration tool** — iterates checkpoints, applies transform, writes back. Idempotent on `(run_id, target_version)`.
-5. **Verify** — re-inventory; all rows at target version.
-6. **Restart daemon.**
-7. **Smoke-test** — resume one migrated token end-to-end.
+4. **Run migration tool** (dry-run first) — `python migrate_schema.py --dsn $DSN --dry-run` then `--apply`. Iterates checkpoints, applies registered migrations via `chain_migrations`, writes back with optimistic-CAS guard.
+5. **Reseal** — `python reseal_all_checkpoints.py --dsn $DSN --apply`. Migration rewrites bytes; A10-H2 integrity tag must be recomputed. Skipping this step leaves every row failing tag verification on next read.
+6. **Verify** — re-inventory; all rows at target version; sample read decrypts cleanly.
+7. **Restart daemon.**
+8. **Smoke-test** — resume one migrated token end-to-end.
 
-### 8.2 Migration tool contract (REFERENCE-IMPL-PENDING)
+### 8.2 Migration tool contract (OPERATIONAL — scaffolding)
 
-```python
-class CheckpointMigrator:
-    """Iterate all checkpoints; apply per-version transform."""
+- **Library:** `adv_multi_agent.core.durable.schema_migrations` — `REGISTRY: dict[int, Callable[[dict], dict]]` keyed by source version, `chain_migrations(row, target_version)` primitive, `MissingMigrationError` + `BrokenMigrationError` exceptions.
+- **Deployment script:** `examples/production/durable_postgres/scripts/migrate_schema.py` — `--dry-run` default (D-SCHEMA-4), `--apply` explicit, forward-only (aborts on `schema_version > CURRENT_SCHEMA_VERSION` per D-SCHEMA-5), exit-code-0 clean / 1 CAS-conflicts / 2 abort.
+- **Smoke tests:** `examples/production/durable_postgres/scripts/test_migrate_schema_smoke.py` — 4 tests exercising helper mechanism (no DB required).
+- **Library mechanism tests:** `tests/unit/durable/test_schema_migrations.py` — 5 tests (empty registry no-op, synthetic v1->v2, missing migration error, broken migration error, chained v1->v3).
 
-    transforms: dict[tuple[int, int], Callable[[dict], dict]]
-    # key: (from_version, to_version); value: transform function
-
-    async def migrate(
-        self,
-        store: CheckpointStore,
-        target_version: int,
-        dry_run: bool = True,
-    ) -> MigrationReport: ...
-```
+**Critical invariant:** the library runtime stays fail-closed (`Checkpoint.from_dict` raises on version mismatch). The migration tool is the ONLY supported bypass. It runs OFFLINE with the daemon stopped.
 
 ### 8.3 Rollback
 

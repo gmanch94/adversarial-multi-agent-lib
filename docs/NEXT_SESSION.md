@@ -1,6 +1,27 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 EVE (Tier 1.2 SHIPPED — k8s deployment sibling, ~30 files, cycle-13 clean)
+Last updated: 2026-05-18 LATE (Tier 1.4 SHIPPED — schema-migration scaffolding, advisor-revised lean cut)
+
+## 2026-05-18 LATE — Tier 1.4 SHIPPED (schema migration scaffolding, lean cut)
+
+**Single 0.5d slice; advisor reframed original 4-5d spec as premature abstraction.**
+
+- **Library (NEW):** `src/adv_multi_agent/core/durable/schema_migrations.py` — `REGISTRY: dict[int, Callable[[dict], dict]]` **EMPTY at v1** + `chain_migrations(row, target_version)` primitive + `MissingMigrationError` + `BrokenMigrationError`. Module docstring documents additive-vs-bump convention with cross-refs to Tier 1.6 (`workflow_version_hash`) + Tier 1.9 (`integrity_tag`).
+- **Library tests (NEW):** `tests/unit/durable/test_schema_migrations.py` — 5 mechanism tests via monkeypatched synthetic migrations (empty-registry no-op, single-step, missing-migration, broken-migration, multi-step ordering). All pass.
+- **Deployment (NEW):** `examples/production/durable_postgres/scripts/migrate_schema.py` (CLI) + `_migrate_helpers.py` (pure helper, unit-testable) + `test_migrate_schema_smoke.py` (4 smoke tests, no DB required, all pass). Mirrors `reseal_all_checkpoints.py` shape: `--dry-run` default, `--apply` explicit, optimistic-CAS, exits 0/1/2.
+- **Runbook flip:** `docs/runbooks/durable-operations.md` §8 from REFERENCE-IMPL-PENDING → OPERATIONAL (scaffolding only — explicit note that REGISTRY is empty at v1 + post-migrate reseal step added to procedure).
+- **Decisions:** D-SCHEMA-1..5 appended (registry-in-library + empty-at-v1, deployment-script shape, synthetic-monkeypatch test fixture, dry-run-default, forward-only-with-abort).
+- **Cycle-14 audit:** `docs/security-audits/2026-05-18-tier-1-4-cycle-14-sweep.md`. 0 CRIT / 0 HIGH / 0 MEDIUM / 2 LOW (both accepted). Verified: (a) runtime fail-closed preserved (no edits to `checkpoint.py`/`token.py`/`workflow.py`), (b) post-migration reseal documented in 3 places (runbook + script docstring + LOG line), (c) `--dry-run` default, (d) D-SCHEMA-5 triple-defense future-version abort (helper + sweep + arg-time), (e) no PHI in error messages.
+
+**Critical invariant (held):** library runtime stays fail-closed on `schema_version != CURRENT_SCHEMA_VERSION`. The migration tool is the ONLY supported bypass, runs OFFLINE only. `chain_migrations` is never invoked on the read hot-path.
+
+**Library tests:** 722 → 727 (+5 mechanism). Smoke tests in scripts/ don't count toward library total (matches `test_reseal_smoke.py` precedent).
+
+**First-real-migration follow-up:** when a non-additive change requires a `CURRENT_SCHEMA_VERSION` bump, the same PR must (1) add the `_vN_to_vN_plus_1` fn to REGISTRY, (2) extend the payload reconstruction in `migrate_schema.py:_migrate_all` (currently a stub guarded by the `row_version == target_version` short-circuit), (3) ship a real migration test alongside the synthetic mechanism tests.
+
+---
+
+## 2026-05-18 EVE — Tier 1.2 SHIPPED (k8s deployment sibling)
 
 ## 2026-05-18 EVE — Tier 1.2 SHIPPED (k8s deployment sibling)
 
