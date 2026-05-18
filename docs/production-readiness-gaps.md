@@ -203,7 +203,7 @@ Wired metric emissions (8 distinct names):
 
 ## Tier 2 — needed before multi-tenant or multi-team use
 
-### 2.1 Multi-tenant isolation — **FULLY SHIPPED 2026-05-18 NIGHT** in 4 library tiers + 2 sibling-wiring tiers (D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2)
+### 2.1 Multi-tenant isolation — **FULLY SHIPPED 2026-05-18 LATE NIGHT** in 4 library tiers + 2 sibling-wiring tiers + 1 exhaustive-audit tier (D-TENANT-0..10 + 2.1b-1..4 + 2.1c-1/2 + 2.1d)
 
 **Final status:**
 - **2.1a (commit `48e394f` + audit closure `ddd78df`):** schema preparation — `tenant_id` column + 3 SQL migrations + 8 RLS policies + sibling store/daemon/quarantine wiring + operator scripts gain `--tenant` flag + `check_set_local_pattern.py` CI grep gate.
@@ -212,6 +212,7 @@ Wired metric emissions (8 distinct names):
 - **2.1c-2 (commit `8bd5a59`):** `BudgetCaps` frozen value object + `BudgetTracker(caps=...)` additive kwarg.
 - **2.1c-sibling-1 (commit `d37c22f`):** cipher_for_tenant wiring across 3 sibling daemons (`durable_postgres` Fernet, `cipher_gcp_kms` GCP KMS, `cipher_aws_kms` AWS KMS) via `DURABLE_TENANT_*_JSON` env maps. Shared `_parse_json_map` + `_make_resolver` helpers. 3 pre-commit audit fold-ins closed (M1 tenant_id charset validation at boot, M2 UnknownTenantError reports count not catalog, L1 drop per-tenant fingerprint enumeration log).
 - **2.1c-sibling-2 (commit `67bdf39`):** library `SchedulerDaemon` factory signature bumped `Callable[[str], DurableWorkflow]` → `Callable[[str, str], DurableWorkflow]` (threads tenant_id from ResumeToken). caps_for_tenant wiring across 3 sibling daemons via `DURABLE_TENANT_BUDGET_CAPS_JSON` env map. 1 pre-commit audit fold-in closed (BudgetCaps type + non-negativity validation at boot).
+- **2.1d exhaustive audit (commits `114bef4` → `5c309b1`):** 4 parallel reviewers (code/security/perf/ops) surfaced 5 BLOCKERs + 8 MEDIUMs + 4 SCALE-concerns. All BLOCKERs + MEDIUMs closed across 6 commits. HIGH-1 (FORCE RLS on schema.sql + migration 0007 + CI gate) was the gate-flip blocker — without it, operator running `psql -f schema.sql` had decorative RLS. B1 (`tenant` metric label) closes the observability gap — at 10 tenants previously didn't work AT ALL. B5 (`scripts/verify_multi_tenant.py`) gives operators a 3-check smoke gate before onboarding tenant #2. SMELL-S1 hoist (`examples/production/_shared/tenant_env.py`) ends the M-PC-1/H-IND-1 triplication shape. Full list in D-TENANT-2.1d decision row.
 
 **D-TENANT-0 onboarding gate flipped:** multi-tenant supported. Operator-action checklist in `docs/runbooks/durable-compliance.md` §5.6.
 

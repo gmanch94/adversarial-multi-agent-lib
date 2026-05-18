@@ -1,6 +1,42 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE NIGHT — Tier 2.1 FULLY SHIPPED + sibling wiring + D-TENANT-0 gate FLIPPED. Multi-tenant production-ready.
+Last updated: 2026-05-18 LATE NIGHT — Tier 2.1 + 2.1d audit hardening FULLY SHIPPED. Multi-tenant production-ready post 16-finding audit closure.
+
+## 2026-05-18 LATE NIGHT — Tier 2.1d exhaustive audit + fold-ins
+
+**Trigger:** user asked "exhaustive review (code/security/performance/operational gaps) before we call it a wrap." 4 parallel independent reviewers ran against the Tier 2.1 surface; surfaced 5 BLOCKERs + 8 MEDIUMs + 4 SCALE-concerns. All BLOCKERs + MEDIUMs closed across 6 commits. SCALE-concerns documented + env-tunable.
+
+### 6 commits on `main` (newest first)
+
+| Commit | Tier | Scope |
+|---|---|---|
+| `5c309b1` | 2.1d-ergo | B3 .env.example for cipher_aws_kms + DURABLE_TENANT_*_JSON examples · B5 scripts/verify_multi_tenant.py smoke gate · S1 per-tenant compromise runbook · S2 per-tenant export+crypto-shred · S4 sibling README posture |
+| `6bac587` | 2.1d-obs | B1 `tenant` label on every metric (workflow.py + encryption.py + cardinality fixture) · B2 4 tenant-aware Prometheus alerts |
+| `f743046` | 2.1d-daemons | MED-3 /health returns `"per_tenant"` sentinel · BUG-B1 asymmetric per-tenant config warns at boot · SCALE-1 QUERY_POOL_MAX_SIZE env-tunable |
+| `2ec2854` | 2.1d-hoist | SMELL-S1 helper hoist to `examples/production/_shared/tenant_env.py` (ends M-PC-1/H-IND-1 triplication) · MED-1 reserved-tenant reject (`_default`/`_legacy`) · LOW-2/T2 AST smoke harden |
+| `e2860bb` | 2.1d-library | MED-2 scheduler explicit `except UnknownTenantError` → immediate quarantine · BUG-B2 BudgetTracker(caps=BudgetCaps()) all-None fail-loud |
+| `114bef4` | 2.1d-rls | **HIGH-1 BLOCKER:** FORCE ROW LEVEL SECURITY on schema.sql + migration 0007 + CI gate. Pre-flip the gate flip was decorative on common-deploy paths. |
+
+### Resume point: no in-flight work; backlog open
+
+**Open backlog (production-readiness-gaps.md §Tier 3):**
+
+- **Tier 3.4** — Tenant-shard scheduling (>100k paused-run scale signal; defer until then)
+- **Tier 3.5** — Tenant-aware backup/restore (manual `pg_dump --where="tenant_id='...'"` procedure documented in §8a until then; 3-5d sibling-only when prioritized)
+- **2.1d LOW-1** — Single mega-finding from this audit not yet folded: helper module is now hoisted but caller daemons still have *some* parallel boilerplate around resolver construction. Tracked for next time someone touches the cipher selection logic.
+
+### State at end-of-session
+
+- **Library:** 207 tests pass; mypy strict clean; ruff clean. `SchedulerDaemon.__init__` takes `scheduler: PollingScheduler`; explicit `UnknownTenantError` branch in `run_forever`; `BudgetTracker(caps=BudgetCaps())` raises ValueError.
+- **Sibling:** 185 sibling tests pass + 68 needs_postgres skipped (392 total). 4 daemon entry points all construct `SchedulerDaemon(scheduler=PollingScheduler(checkpoint_store=store), ...)` — AST smoke gate enforces.
+- **Observability:** every durable metric carries `{workflow, tenant}` tags. Cardinality fixture pinned. 4 new tenant-aware Prometheus alerts.
+- **Operational:** 3 sibling `.env.example` files + 3 README `Deployment posture` sections + 3 runbook additions + 1 operator smoke script.
+
+### Outstanding standing-autonomy note
+
+Per `~/.claude/rules/autonomy.md` + project CLAUDE.md: when user unavailable, pick **security > durability > scalability**; surface choice in commit body. This tier's HIGH-1 fix (FORCE RLS) was a security-over-everything call — operator may run as table owner in dev/POC and lose the safety net. Documented as precondition in 0007 SQL + schema.sql comment.
+
+---
 
 ## 2026-05-18 LATE NIGHT — Tier 2.1c sibling wiring + D-TENANT-0 flip
 
