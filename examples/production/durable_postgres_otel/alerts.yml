@@ -49,6 +49,17 @@ groups:
         annotations:
           summary: Quarantine size above 10 active runs for 15m
           runbook: docs/runbooks/otel-operations.md#durablequarantinegrowing
+      # A14-L-05: floor alert for slow-burn poison. Gauge stuck >0 for >1h
+      # means operators have not triaged. Lower-severity nudge to look at the
+      # list_quarantined dashboard before the Growing/Spike alerts trip.
+      - alert: DurableQuarantineNonZero
+        expr: durable_quarantine_size > 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: Quarantine non-zero for 1h (slow-burn poison or operator backlog)
+          runbook: docs/runbooks/otel-operations.md#durablequarantinenonzero
       # A14-H-02: durable_quarantine_size is a GAUGE; increase()/rate() are
       # for counters. Use gauge-delta to detect a real net rise even when
       # requeues are draining the set in parallel.

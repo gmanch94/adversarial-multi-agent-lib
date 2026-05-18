@@ -110,6 +110,19 @@ Each subsection matches an alert in `examples/production/durable_postgres_otel/a
 
 **Triage:** never bulk-requeue. The spike's root cause must be fixed at the caller or schema layer first; requeueing without fix produces an infinite loop. The requeue script's interactive confirm + per-run_id design is intentional friction.
 
+### 2.7 DurableQuarantineNonZero
+
+**Trigger:** `durable_quarantine_size > 0` for 1h.
+**Severity:** info.
+
+**Background:** floor alert. A handful of quarantined runs sitting untriaged for an hour. Neither `DurableQuarantineGrowing` (>10 for 15m) nor `DurableQuarantineSpike` (gauge-delta >5 in 10m) trips on a slow trickle — this fills the gap.
+
+**Hypothesis tree:**
+1. **Operator backlog** — runs landed in quarantine and nobody looked. Action: run `list_quarantined.py`, decide per-row whether to requeue (root cause fixed) or to leave (intentional dead letter pending caller fix).
+2. **Long-tail poison** — one bad payload shape recurring every few hours, never enough velocity to trip Growing/Spike. Same triage; the trailing `requeue_count` column in the listing flags repeats.
+
+**Triage:** info-severity, no page. Treat as a daily-cadence nudge. If the alert is firing >24h continuously, escalate to warning manually in alertmanager OR raise the Growing threshold.
+
 ---
 
 ## 3. Cardinality budget

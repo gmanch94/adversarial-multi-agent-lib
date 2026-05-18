@@ -204,7 +204,11 @@ async def test_stop_cancels_running_task():
 
 
 async def test_run_forever_swallows_iteration_exceptions():
-    """A glitch in snapshot or requeue must never crash the daemon."""
+    """A glitch in snapshot or requeue must never crash the daemon.
+
+    A14-L-02: also assert the exception path actually executed — otherwise the
+    test passes vacuously if _run_forever exits before entering the try-body.
+    """
     daemon = _FakeDaemon(quarantine={"r1"})
     pool = _FakePool()
 
@@ -223,9 +227,10 @@ async def test_run_forever_swallows_iteration_exceptions():
     sync.start()
     # Let it run a few iterations.
     import asyncio
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.15)
     await sync.stop()
-    # If we got here, no exception escaped — the daemon would still be alive.
+    # Iteration body actually fired (otherwise test passes vacuously).
+    assert boom_conn.execute.call_count > 0, "iteration body never executed"
 
 
 # ----------------------------------------------------------------------
