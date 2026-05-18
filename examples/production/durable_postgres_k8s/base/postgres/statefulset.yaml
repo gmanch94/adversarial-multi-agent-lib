@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # Postgres image runs as UID 70 (alpine) or 999 (debian); the alpine
+        # variant pinned here uses 70. fsGroup ensures PVC mount writable.
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: pg
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: durable
+            - name: POSTGRES_USER
+              value: daemon
+            - name: POSTGRES_PASSWORD_FILE
+              value: /var/run/secrets/postgres/postgres_password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+              ephemeral-storage: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            # Alpine postgres needs CHOWN/DAC_OVERRIDE/FOWNER/SETGID/SETUID
+            # for initdb + data-dir bootstrap (parity with compose cap_add).
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, daemon, -d, durable]
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, daemon, -d, durable]
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: secrets
+              mountPath: /var/run/secrets/postgres
+              readOnly: true
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+        - name: secrets
+          secret:
+            secretName: durable-daemon-secrets
+            defaultMode: 0400
+            items:
+              - key: postgres_password
+                path: postgres_password
+        - name: run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

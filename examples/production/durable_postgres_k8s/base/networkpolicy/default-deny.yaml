@@ -1,0 +1,10 @@
+# D-K8S-4: default-deny baseline. All pod-to-pod traffic blocked unless
+# an explicit NetworkPolicy allows it. dev overlay removes via patch
+# (set spec to empty + name to a no-op), staging + prod keep enforced.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]

@@ -1,0 +1,7 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: durable-daemon
+spec:
+  # replicas=2, allow 1 down during voluntary disruption.
+  minAvailable: 1

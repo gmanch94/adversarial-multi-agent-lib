@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: durable-daemon
+spec:
+  # D-K8S-7: protect paused-run holders during node drains.
+  # Overlays patch to (replicas - 1); base assumes single-replica dev floor.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: durable-daemon

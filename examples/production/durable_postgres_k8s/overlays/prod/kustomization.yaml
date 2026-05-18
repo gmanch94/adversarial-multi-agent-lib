@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: adv-multi-agent
+
+resources:
+  - ../../base
+  - patches/hpa.yaml
+
+components:
+  # D-K8S-2 prod requirement: SealedSecret REQUIRED. The component refers to a
+  # SealedSecret manifest the operator MUST commit (encrypted via kubeseal).
+  # See examples/production/durable_postgres_k8s/components/sealed-secrets/README.md.
+  - ../../components/sealed-secrets
+
+# D-K8S-2 prod posture:
+#   - 3 replicas + HPA on lock-pool saturation (CPU fallback)
+#   - podAntiAffinity across nodes (replica resiliency)
+#   - PDB minAvailable: 2 (replicas - 1)
+#   - SealedSecret reference (component); plain Secret reference is a render-time error
+#   - NetworkPolicy default-deny enforced (base default)
+patches:
+  - path: patches/daemon-replicas.yaml
+  - path: patches/daemon-affinity.yaml
+  - path: patches/pdb-min-available.yaml
+  - path: patches/sealed-secret-required.yaml

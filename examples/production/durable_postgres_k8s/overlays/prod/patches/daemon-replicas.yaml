@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durable-daemon
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: daemon
+          env:
+            - name: DEPLOYMENT_ENV
+              value: prod

@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+# D-K8S-9: opt-in observability stack. Mirrors examples/production/durable_postgres_otel
+# compose stack. Include from an overlay via:
+#   components:
+#     - ../../components/otel
+resources:
+  - collector/deployment.yaml
+  - collector/service.yaml
+  - collector/configmap.yaml
+  - collector/networkpolicy.yaml
+  - jaeger/deployment.yaml
+  - jaeger/service.yaml
+  - prometheus/statefulset.yaml
+  - prometheus/service.yaml
+  - prometheus/configmap.yaml
+  - prometheus/pvc.yaml
+  - grafana/deployment.yaml
+  - grafana/service.yaml
+  - grafana/configmap.yaml

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app.kubernetes.io/name: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/alerts.yml
+
+    scrape_configs:
+      - job_name: otel-collector
+        static_configs:
+          - targets: ["otel-collector:8889"]
+  alerts.yml: |
+    groups:
+      - name: durable-workflow
+        interval: 30s
+        rules:
+          - alert: DurableHighRoundLatency
+            expr: histogram_quantile(0.95, sum by (le) (rate(durable_round_latency_seconds_bucket[5m]))) > 30
+            for: 10m
+            labels:
+              severity: warning
+            annotations:
+              summary: p95 round latency above 30s for 10m
+              runbook: docs/runbooks/otel-operations.md#durablehighroundlatency
+          - alert: DurableCipherDecryptFailureSpike
+            expr: rate(durable_cipher_decrypt_failed_total[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: Cipher decrypt failure rate above 0.1 per second
+              runbook: docs/runbooks/otel-operations.md#durableciperdecryptfailurespike
+          - alert: DurablePauseResumeImbalance
+            expr: (rate(durable_workflow_pause_total[1h]) - rate(durable_workflow_start_total[1h])) > 0
+            for: 30m
+            labels:
+              severity: warning
+            annotations:
+              summary: Pauses outpacing starts; paused runs accumulating
+              runbook: docs/runbooks/otel-operations.md#durablepauseresumeimbalance
+          - alert: DurableLockPoolNearSaturation
+            expr: durable_lock_pool_saturation > 0.85
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: Lock pool above 85 percent saturation
+              runbook: docs/runbooks/otel-operations.md#durablelockpoolnearsaturation

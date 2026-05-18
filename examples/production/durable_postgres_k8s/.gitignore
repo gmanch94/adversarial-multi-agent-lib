@@ -1,0 +1,6 @@
+# Operator-local secrets — never commit.
+.secret.local.yaml
+*.local.yaml
+.secrets/
+# Rendered manifests for review
+/render-out/

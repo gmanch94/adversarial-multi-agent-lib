@@ -1,0 +1,35 @@
+# Base kustomization for adv-multi-agent durable_postgres_k8s sibling.
+# Translates examples/production/durable_postgres/docker-compose.yml into
+# k8s primitives. Hardening per D-K8S-3. NetworkPolicy per D-K8S-4.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: adv-multi-agent
+
+commonLabels:
+  app.kubernetes.io/part-of: adv-multi-agent
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - daemon/serviceaccount.yaml
+  - daemon/deployment.yaml
+  - daemon/service.yaml
+  - daemon/pdb.yaml
+  - postgres/pvc.yaml
+  - postgres/statefulset.yaml
+  - postgres/service.yaml
+  - secrets/secret-template.yaml
+  - networkpolicy/default-deny.yaml
+  - networkpolicy/daemon-egress.yaml
+  - networkpolicy/postgres-ingress.yaml
+
+images:
+  # Operator override: kustomize edit set image durable-daemon=<your-registry>/durable-daemon:<tag>
+  - name: ghcr.io/example/durable-daemon
+    newTag: slice-a
+  # Postgres digest matches durable_postgres/docker-compose.yml (2026-05-17).
+  - name: postgres
+    newName: postgres
+    newTag: 16-alpine
+    digest: sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229

@@ -1,0 +1,47 @@
+# D-K8S-6: HPA on lock-pool saturation (custom metric via prometheus-adapter).
+# Falls back to CPU-based scaling if the custom metric pipeline isn't installed
+# (operator removes the Pods metric block).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: durable-daemon
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: durable-daemon
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    # Primary: custom metric (requires prometheus-adapter). Target 70 percent saturation.
+    - type: Pods
+      pods:
+        metric:
+          name: durable_lock_pool_saturation
+        target:
+          type: AverageValue
+          averageValue: "700m"
+    # Fallback: CPU. Always present.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+      selectPolicy: Max

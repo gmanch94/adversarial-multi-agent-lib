@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durable-daemon
+  labels:
+    app.kubernetes.io/name: durable-daemon
+    app.kubernetes.io/component: daemon
+spec:
+  # Overlays patch replicas: dev=1, staging=2, prod=3.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: durable-daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: durable-daemon
+        app.kubernetes.io/component: daemon
+    spec:
+      serviceAccountName: durable-daemon
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: daemon
+          image: ghcr.io/example/durable-daemon:slice-a
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # D-K8S-5: secret values mounted as files; daemon reads via *_FILE pattern.
+            - name: POSTGRES_PASSWORD_FILE
+              value: /var/run/secrets/durable/postgres_password
+            - name: FERNET_KEY_FILE
+              value: /var/run/secrets/durable/fernet_key
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: durable
+            - name: POSTGRES_USER
+              value: daemon
+            - name: DEPLOYMENT_ENV
+              value: dev
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          # D-K8S-8: probe split. /health bootstraps; /ready gates traffic; /live restarts on stuck loop.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: secrets
+              mountPath: /var/run/secrets/durable
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: secrets
+          secret:
+            secretName: durable-daemon-secrets
+            defaultMode: 0400
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

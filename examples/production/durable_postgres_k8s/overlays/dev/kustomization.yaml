@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: adv-multi-agent
+
+resources:
+  - ../../base
+
+# D-K8S-2 dev posture:
+#   - 1 replica (base default)
+#   - emptyDir Postgres (no PVC) — wiped on pod restart
+#   - NetworkPolicy default-deny REMOVED (eases local kubectl port-forward debugging)
+patches:
+  - path: patches/postgres-emptydir.yaml
+  - path: patches/remove-default-deny.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: default-deny

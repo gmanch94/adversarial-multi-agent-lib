@@ -1,0 +1,19 @@
+# Staging: alerts ship to a logs sink (stdout). Operator replaces with
+# real receiver before prod promotion.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: logs-sink
+      group_by: [alertname, severity]
+    receivers:
+      - name: logs-sink
+        # Placeholder webhook target; replace with real AlertManager destination.
+        webhook_configs:
+          - url: http://localhost:9999/alerts
+            send_resolved: true

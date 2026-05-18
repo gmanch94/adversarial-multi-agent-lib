@@ -1,0 +1,26 @@
+# dev: postgres uses emptyDir (data lost on pod restart). Removes PVC dependency.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  template:
+    spec:
+      volumes:
+        - name: data
+          $patch: replace
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: secrets
+          secret:
+            secretName: durable-daemon-secrets
+            defaultMode: 0400
+            items:
+              - key: postgres_password
+                path: postgres_password
+        - name: run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

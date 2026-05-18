@@ -1,0 +1,25 @@
+# prod: spread replicas across nodes. Falls back to soft anti-affinity if
+# cluster has fewer nodes than replicas (preferredDuringScheduling).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: durable-daemon
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: durable-daemon
+                topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: durable-daemon

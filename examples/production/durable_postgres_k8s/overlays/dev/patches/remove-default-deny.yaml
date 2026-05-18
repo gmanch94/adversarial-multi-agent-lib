@@ -1,0 +1,7 @@
+# dev: drop default-deny NetworkPolicy to ease local debugging.
+# staging + prod keep it enforced.
+$patch: delete
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
