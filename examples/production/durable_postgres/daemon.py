@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -52,6 +53,54 @@ HEALTHCHECK_KEYS: set[str] = {
 def redacted_log_record(raw: dict[str, Any]) -> dict[str, Any]:
     """Drop every field not in LOG_FIELD_ALLOWLIST. Order preserved."""
     return {k: v for k, v in raw.items() if k in LOG_FIELD_ALLOWLIST}
+
+
+_TENANT_ID_BOOT_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
+
+
+def _parse_json_map(raw: str, env_var_name: str) -> dict[str, Any]:
+    """Parse non-empty JSON object env var; fail-loud on malformed input.
+
+    M1 audit fold-in: every tenant_id key is charset-validated at boot
+    against the same regex the library enforces on Checkpoint.tenant_id
+    (`^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$`). Bad keys fail-loud at daemon
+    start, not at first run that happens to touch the bad tenant.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{env_var_name} not valid JSON: {e}") from e
+    if not isinstance(parsed, dict) or not parsed:
+        raise ValueError(f"{env_var_name} must be a non-empty JSON object")
+    for tid in parsed:
+        if not isinstance(tid, str) or not _TENANT_ID_BOOT_RE.fullmatch(tid):
+            raise ValueError(
+                f"{env_var_name}: tenant_id {tid!r} violates charset "
+                f"{_TENANT_ID_BOOT_RE.pattern}"
+            )
+    return parsed
+
+
+def _make_resolver(per_tenant: dict[str, Any], env_var_name: str) -> Any:
+    """D-TENANT-7: fails-closed resolver — UnknownTenantError on miss.
+
+    M2 audit fold-in: error message reports COUNT of configured tenants, not
+    their identifiers. Enumerating the legitimate tenant universe to any
+    party able to trigger an unknown-tenant lookup is a side-channel even
+    though tenant_id is non-secret in checkpoint logs.
+    """
+    from adv_multi_agent.core.durable import UnknownTenantError
+
+    def _resolve(tid: str) -> Any:
+        try:
+            return per_tenant[tid]
+        except KeyError as exc:
+            raise UnknownTenantError(
+                f"no cipher configured for tenant_id={tid!r}; "
+                f"{env_var_name} has {len(per_tenant)} configured tenants"
+            ) from exc
+
+    return _resolve
 
 
 @dataclass(frozen=True)
@@ -289,9 +338,37 @@ async def main() -> None:
         openai_api_key=cfg.openai_api_key,
     )
 
-    cipher = FernetCipher(keys=list(cfg.fernet_keys))
-    # F-M-02: log cipher_fingerprint at INFO so operator can verify rotation
-    logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
+    # D-TENANT-7 (Tier 2.1c-1): per-tenant cipher resolver via env JSON map.
+    # `DURABLE_TENANT_FERNET_KEYS_JSON` shape:
+    #   {"tenant_a": "key1,key2", "tenant_b": "key3"}
+    # When unset: legacy single-tenant path (cipher=) preserved exactly.
+    # When set: cipher_for_tenant resolver fails-closed on unknown tenant.
+    tenant_keys_json = os.environ.get("DURABLE_TENANT_FERNET_KEYS_JSON", "").strip()
+    if tenant_keys_json:
+        t_map = _parse_json_map(tenant_keys_json, "DURABLE_TENANT_FERNET_KEYS_JSON")
+        per_tenant_ciphers: dict[str, FernetCipher] = {}
+        for tid, keys_csv in t_map.items():
+            keys_t = [k.strip().encode() for k in str(keys_csv).split(",") if k.strip()]
+            if not keys_t:
+                raise ValueError(
+                    f"DURABLE_TENANT_FERNET_KEYS_JSON tenant {tid!r} has no keys"
+                )
+            per_tenant_ciphers[tid] = FernetCipher(keys=keys_t)
+        cipher = next(iter(per_tenant_ciphers.values()))
+        cipher_for_tenant = _make_resolver(
+            per_tenant_ciphers, "DURABLE_TENANT_FERNET_KEYS_JSON"
+        )
+        # L1 audit fold-in: log only the count, not the catalog. Per-tenant
+        # fingerprints enumerable via /health endpoint if needed (cipher
+        # selector is gated behind tenant_id which the operator owns).
+        logging.info(
+            "cipher.per_tenant=true tenant_count=%d", len(per_tenant_ciphers)
+        )
+    else:
+        cipher = FernetCipher(keys=list(cfg.fernet_keys))
+        cipher_for_tenant = None
+        # F-M-02: log cipher_fingerprint at INFO so operator can verify rotation
+        logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
     # v4: reference deployment supports one workflow class. Multi-workflow
     # deploys construct separate stores per class OR use write_with_class.
     _DEMO_WORKFLOW_CLASS = (
@@ -301,7 +378,15 @@ async def main() -> None:
     inner_store = PostgresCheckpointStore(
         query_pool, default_workflow_class=_DEMO_WORKFLOW_CLASS,
     )
-    store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
+    # D-TENANT-7: mutually-exclusive `cipher` vs `cipher_for_tenant` per library
+    # XOR check. Single-tenant deploys keep cipher=; multi-tenant route through
+    # cipher_for_tenant resolver.
+    if cipher_for_tenant is not None:
+        store = EncryptedCheckpointStore(
+            inner=inner_store, cipher_for_tenant=cipher_for_tenant
+        )
+    else:
+        store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
     # F-H-04 v2: registry tracks active lock handles for shutdown force-close
     lock_registry = _ActiveLockRegistry()
     lock = PostgresAdvisoryLock(lock_pool, registry=lock_registry)

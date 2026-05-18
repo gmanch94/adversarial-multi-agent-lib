@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal
@@ -60,6 +61,49 @@ HEALTHCHECK_KEYS: set[str] = {
 def redacted_log_record(raw: dict[str, Any]) -> dict[str, Any]:
     """Drop every field not in LOG_FIELD_ALLOWLIST. Order preserved."""
     return {k: v for k, v in raw.items() if k in LOG_FIELD_ALLOWLIST}
+
+
+def _make_resolver(
+    per_tenant: dict[str, Any], env_var_name: str
+) -> Callable[[str], Any]:
+    """D-TENANT-7: fails-closed resolver — UnknownTenantError on miss."""
+    from adv_multi_agent.core.durable import UnknownTenantError
+
+    def _resolve(tid: str) -> Any:
+        try:
+            return per_tenant[tid]
+        except KeyError as exc:
+            raise UnknownTenantError(
+                f"no cipher configured for tenant_id={tid!r}; "
+                f"{env_var_name} has {len(per_tenant)} configured tenants"
+            ) from exc
+
+    return _resolve
+
+
+_TENANT_ID_BOOT_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$")
+
+
+def _parse_json_map(raw: str, env_var_name: str) -> dict[str, Any]:
+    """Parse non-empty JSON object env var; fail-loud on malformed input.
+
+    M1 audit fold-in: charset-validate each tenant_id key at boot against
+    library's Checkpoint.tenant_id regex. Bad keys fail-loud at daemon
+    start, not at first run.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{env_var_name} not valid JSON: {e}") from e
+    if not isinstance(parsed, dict) or not parsed:
+        raise ValueError(f"{env_var_name} must be a non-empty JSON object")
+    for tid in parsed:
+        if not isinstance(tid, str) or not _TENANT_ID_BOOT_RE.fullmatch(tid):
+            raise ValueError(
+                f"{env_var_name}: tenant_id {tid!r} violates charset "
+                f"{_TENANT_ID_BOOT_RE.pattern}"
+            )
+    return parsed
 
 
 @dataclass(frozen=True)
@@ -329,24 +373,85 @@ async def main() -> None:
 
     # B3: cipher selection — fail-loud at startup, not at first encrypt.
     backend: CipherBackend = cfg.cipher_backend  # type: ignore[assignment]
+    cipher: FernetCipher | GcpKmsCipher
+    cipher_for_tenant: Callable[[str], FernetCipher | GcpKmsCipher] | None = None
+
+    # D-TENANT-7 (Tier 2.1c-1): per-tenant cipher resolver via env JSON map.
+    # `DURABLE_TENANT_GCP_KMS_KEYS_JSON` shape:
+    #   {"tenant_a": "projects/p/locations/l/keyRings/r/cryptoKeys/k1",
+    #    "tenant_b": "projects/p/.../cryptoKeys/k2"}
+    # Per autonomy (security > durability > scalability): KMS-per-tenant
+    # gives DEK isolation — single tenant's KMS-key compromise does NOT
+    # leak other tenants' payloads. Standing autonomy rationale per
+    # docs/NEXT_SESSION.md 2026-05-18 NIGHT.
+    # When unset: legacy single-tenant path preserved exactly.
+    tenant_kms_json = os.environ.get("DURABLE_TENANT_GCP_KMS_KEYS_JSON", "").strip()
+    tenant_fernet_json = os.environ.get("DURABLE_TENANT_FERNET_KEYS_JSON", "").strip()
+
     if backend == "fernet":
-        if not cfg.fernet_keys:
-            raise ValueError("CIPHER_BACKEND=fernet requires DURABLE_CHECKPOINT_KEYS")
-        cipher: FernetCipher | GcpKmsCipher = FernetCipher(keys=list(cfg.fernet_keys))
+        if tenant_fernet_json:
+            t_map_f = _parse_json_map(
+                tenant_fernet_json, "DURABLE_TENANT_FERNET_KEYS_JSON"
+            )
+            per_tenant: dict[str, FernetCipher | GcpKmsCipher] = {}
+            for tid, keys_csv in t_map_f.items():
+                keys_t = [
+                    k.strip().encode() for k in str(keys_csv).split(",") if k.strip()
+                ]
+                if not keys_t:
+                    raise ValueError(
+                        f"DURABLE_TENANT_FERNET_KEYS_JSON tenant {tid!r} has no keys"
+                    )
+                per_tenant[tid] = FernetCipher(keys=keys_t)
+            cipher = next(iter(per_tenant.values()))
+            cipher_for_tenant = _make_resolver(per_tenant, "DURABLE_TENANT_FERNET_KEYS_JSON")
+        else:
+            if not cfg.fernet_keys:
+                raise ValueError(
+                    "CIPHER_BACKEND=fernet requires DURABLE_CHECKPOINT_KEYS"
+                )
+            cipher = FernetCipher(keys=list(cfg.fernet_keys))
     elif backend == "gcp_kms":
-        if not cfg.gcp_kms_key_name:
-            raise ValueError("CIPHER_BACKEND=gcp_kms requires GCP_KMS_KEY_NAME")
-        cipher = GcpKmsCipher(
-            kms_key_name=cfg.gcp_kms_key_name,
-            dek_cache_size=cfg.dek_cache_size,
-            dek_cache_ttl_seconds=cfg.dek_cache_ttl_seconds,
-        )
+        if tenant_kms_json:
+            t_map_k = _parse_json_map(
+                tenant_kms_json, "DURABLE_TENANT_GCP_KMS_KEYS_JSON"
+            )
+            per_tenant_k: dict[str, FernetCipher | GcpKmsCipher] = {}
+            for tid, key_name in t_map_k.items():
+                if not isinstance(key_name, str) or not key_name.strip():
+                    raise ValueError(
+                        f"DURABLE_TENANT_GCP_KMS_KEYS_JSON tenant {tid!r} key name empty"
+                    )
+                per_tenant_k[tid] = GcpKmsCipher(
+                    kms_key_name=key_name.strip(),
+                    dek_cache_size=cfg.dek_cache_size,
+                    dek_cache_ttl_seconds=cfg.dek_cache_ttl_seconds,
+                )
+            cipher = next(iter(per_tenant_k.values()))
+            cipher_for_tenant = _make_resolver(
+                per_tenant_k, "DURABLE_TENANT_GCP_KMS_KEYS_JSON"
+            )
+        else:
+            if not cfg.gcp_kms_key_name:
+                raise ValueError(
+                    "CIPHER_BACKEND=gcp_kms requires GCP_KMS_KEY_NAME"
+                )
+            cipher = GcpKmsCipher(
+                kms_key_name=cfg.gcp_kms_key_name,
+                dek_cache_size=cfg.dek_cache_size,
+                dek_cache_ttl_seconds=cfg.dek_cache_ttl_seconds,
+            )
     else:
         raise ValueError(
             f"unknown CIPHER_BACKEND: {backend!r}; expected fernet|gcp_kms"
         )
     # F-M-02: log cipher_fingerprint + backend at INFO so operator can verify
-    logging.info("cipher.backend=%s fingerprint=%s", backend, cipher.key_fingerprint())
+    if cipher_for_tenant is None:
+        logging.info(
+            "cipher.backend=%s fingerprint=%s", backend, cipher.key_fingerprint()
+        )
+    else:
+        logging.info("cipher.backend=%s per_tenant=true", backend)
 
     # Two-pool model (advisor #2): locks never starve queries.
     lock_pool = await asyncpg.create_pool(
@@ -370,7 +475,13 @@ async def main() -> None:
     inner_store = PostgresCheckpointStore(
         query_pool, default_workflow_class=_DEMO_WORKFLOW_CLASS,
     )
-    store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
+    # D-TENANT-7 mutex: pass either cipher= OR cipher_for_tenant=, not both
+    if cipher_for_tenant is not None:
+        store = EncryptedCheckpointStore(
+            inner=inner_store, cipher_for_tenant=cipher_for_tenant
+        )
+    else:
+        store = EncryptedCheckpointStore(inner=inner_store, cipher=cipher)
     # F-H-04 v2: registry tracks active lock handles for shutdown force-close
     lock_registry = _ActiveLockRegistry()
     lock = PostgresAdvisoryLock(lock_pool, registry=lock_registry)
