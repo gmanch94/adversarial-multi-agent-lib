@@ -1,0 +1,77 @@
+# AWS KMS cipher deployment. Mirrors cipher_gcp_kms compose; swaps ADC mount
+# for ~/.aws mount.
+#
+# AWS credentials chain:
+#   Dev (compose):  mount ~/.aws read-only; set AWS_PROFILE in .env
+#   EKS prod:       IRSA via service account annotation (no mount needed)
+#   EC2 prod:       instance profile via IMDSv2 (no mount needed)
+#
+# Usage:
+#   docker compose -f examples/production/cipher_aws_kms/docker-compose.yml up
+
+networks:
+  internal:
+    internal: true
+  egress:
+    internal: false
+
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+    networks: [internal]
+    environment:
+      POSTGRES_DB: cipher
+      POSTGRES_USER: daemon
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "daemon", "-d", "cipher"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  scheduler:
+    build:
+      context: ../../..
+      dockerfile: examples/production/cipher_aws_kms/Dockerfile
+    networks: [internal, egress]
+    env_file: .env
+    # D-CIPHER-AWS-9: IMDSv1 disabled at container env (also baked into Dockerfile).
+    environment:
+      AWS_EC2_METADATA_V1_DISABLED: "true"
+    volumes:
+      # Dev path: mount host ~/.aws read-only for AWS_PROFILE-based auth.
+      # Production (EKS/EC2) leaves this unmounted and uses IRSA / instance profile.
+      - ${AWS_CONFIG_DIR:-~/.aws}:/home/appuser/.aws:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      core: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  postgres_data:
+
+secrets:
+  postgres_password:
+    file: ./.secrets/postgres_password

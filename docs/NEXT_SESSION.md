@@ -1,6 +1,41 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 NIGHT — Tier 2.3 SHIPPED (budget-exceeded recovery)
+Last updated: 2026-05-18 LATE NIGHT — Tier 1.3 AWS KMS sibling SHIPPED
+
+## 2026-05-18 LATE NIGHT — Tier 1.3 AWS KMS sibling SHIPPED (~1d slice)
+
+**Sibling-only — zero library impact. `examples/production/cipher_aws_kms/`.**
+
+Closes gaps doc §1.3 AWS slice. AWS sibling joins GCP + Fernet as the third reference cipher. Operators with an AWS-only IAM posture can now answer SOC2 / HITRUST KSP "where do payload keys live?" with "AWS KMS CMK, never on the host."
+
+**Shipped:**
+- `cipher.py` — `AwsKmsCipher` envelope encryption (GenerateDataKey + AES-256-GCM local + KMS Decrypt). `AKMSv1:` ciphertext prefix (distinct from `GKMSv1:` / Fernet). Strict alias/ARN regex validation. Narrow `(ClientError, BotoCoreError)` catch with `from None` (P4) to avoid account/ARN leakage via OTel exception spans.
+- `dek_cache.py` — TTL-bounded LRU cache, **independent copy** (D-CIPHER-AWS-7: no shared `kms_base` at N=2).
+- `daemon.py` — `CIPHER_BACKEND=aws_kms|gcp_kms|fernet` dispatch (3-way, mirrors GCP sibling shape). `assert_aws_runtime_safety()` startup gate refuses if `AWS_EC2_METADATA_V1_DISABLED` is unset (D-CIPHER-AWS-9) OR static AWS keys + IRSA token both present (ambiguous creds).
+- `Dockerfile` + `docker-compose.yml` — mirrors GCP hardening (non-root, read-only rootfs, cap_drop ALL, no-new-privileges, no core dumps). `AWS_EC2_METADATA_V1_DISABLED=true` baked into image. `~/.aws` mount for dev; IRSA/instance-profile in prod (no mount).
+- `scripts/provision_cmk.sh` — idempotent CMK + alias + key policy + optional CloudTrail Data Events.
+- `scripts/rotate_cmk_now.sh` — manual `kms:RotateKeyOnDemand`; no daemon restart needed.
+- `scripts/audit_iam_grants.sh` — pre-deploy gate; lists every principal with `kms:Decrypt` on the CMK.
+- `README.md` — when-to-use vs FernetCipher / GcpKmsCipher; threat model; setup; rotation; pre-deploy audit; failure modes; cost (~$2.80/mo at 1k workflows/day).
+- 49 tests pass (1 live-KMS env-gated skipped):
+  - `test_cipher.py` — 27 unit tests (AKMSv1 prefix, roundtrip, unicode PHI, single-GDK, DEK cache hit/TTL/LRU, wrong-prefix x2, truncated, tampered ct/nonce/wrapped-DEK, AccessDenied → `KmsDecryptError`, transient KMS error doesn't corrupt cache, repr/str redact CMK, fingerprint stable, F-string str-not-bytes, construction validation x4 + accept x3, no KMS on construction, dek_cache_stats reachable, live latency env-gated).
+  - `test_daemon_config.py` — 13 tests (env load × 3 backends, custom cache, repr redaction, bounds, IMDSv1 + ambiguous-creds + happy path safety gates, unknown-backend dispatch).
+  - `test_dek_cache.py` — 9 tests (copy of GCP coverage).
+- `pyproject.toml` mypy override extended for `boto3` / `botocore` (`ignore_missing_imports = true`). Baseline mypy parity with GCP sibling (only the standing `asyncpg` / `adv_multi_agent` untyped-import warnings remain).
+- 10 decision rows D-CIPHER-AWS-1..10 appended to `docs/decisions.md`.
+
+**Library impact: zero.** `Cipher` Protocol untouched. Async bridge inherited from the GCP cycle B1 fix.
+
+**Tree state:** all 185 durable unit tests green. AWS sibling tests 49 pass / 1 skip. Ruff clean. Mypy parity.
+
+**Standing autonomy applied:**
+- Independent sibling over shared `_kms_common/` — chose security-leaning (avoid convention-level compounding into the production-deployment surface) over DRY at N=2.
+- Fail-closed on KMS unavailability — chose security (defeats SOC2 audit answer to fall back) over resilience.
+- IMDSv1 refuse-start at daemon startup — chose security (Capital One 2019 breach class) over operational convenience.
+
+**Next:** Tier 2.4 quarantine (per "Parallel design only, sequential ship" order). Spec: `docs/superpowers/specs/2026-05-18-quarantine-design.md`. 2-slice arc ~1.4d (library + scripts). Then Tier 2.5 cost model (lean cut, ~1d, pure docs + script).
+
+---
 
 ## 2026-05-18 NIGHT — Tier 2.3 SHIPPED (budget recovery primitive)
 

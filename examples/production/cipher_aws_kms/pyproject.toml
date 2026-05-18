@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adv-multi-agent-cipher-aws-kms"
+version = "0.1.0"
+description = "Reference deployment: AWS KMS cipher impl for the durable subpackage"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "pip-audit", "bandit", "cyclonedx-bom"]
