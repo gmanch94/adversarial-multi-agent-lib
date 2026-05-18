@@ -289,11 +289,15 @@ async def main() -> None:
     cfg = load_config_from_env()  # DaemonConfig instance (F-H-07)
 
     # Two-pool model (advisor #2): locks never starve queries.
+    # Tier 2.1d / SCALE-1 audit: query_pool_max_size is env-tunable. Each
+    # paused-run resume holds a connection for unseal+work+seal; saturation
+    # at batch_size becomes a perf wall. Recommend max_size >= batch_size + 4.
+    query_pool_max_size = int(os.environ.get("QUERY_POOL_MAX_SIZE", "10"))
     lock_pool = await asyncpg.create_pool(
         cfg.postgres_dsn, min_size=2, max_size=cfg.max_concurrent_runs,
     )
     query_pool = await asyncpg.create_pool(
-        cfg.postgres_dsn, min_size=2, max_size=10,
+        cfg.postgres_dsn, min_size=2, max_size=query_pool_max_size,
     )
 
     agent_cfg = Config(
@@ -350,6 +354,26 @@ async def main() -> None:
         )
     else:
         caps_for_tenant = None
+
+    # Tier 2.1d / BUG-B1 audit fold-in: warn loudly on asymmetric per-tenant
+    # configuration. cipher per-tenant + budget single-tenant means every
+    # tenant shares one budget pool (one noisy tenant exhausts everyone).
+    # cipher single + caps per-tenant is less dangerous but still a likely
+    # operator error worth surfacing.
+    if cipher_for_tenant is not None and caps_for_tenant is None:
+        logging.warning(
+            "asymmetric_per_tenant_config: cipher is per-tenant but "
+            "budget is single-pool (every tenant shares cfg.max_X caps). "
+            "Set DURABLE_TENANT_BUDGET_CAPS_JSON for per-tenant budget "
+            "isolation. Continuing — but see runbook 5.6."
+        )
+    elif cipher_for_tenant is None and caps_for_tenant is not None:
+        logging.warning(
+            "asymmetric_per_tenant_config: budget is per-tenant but "
+            "cipher is single-key (all tenants share one DEK). Set "
+            "DURABLE_TENANT_FERNET_KEYS_JSON for per-tenant cipher "
+            "isolation. Continuing — but see runbook 5.6."
+        )
 
     # v4: reference deployment supports one workflow class. Multi-workflow
     # deploys construct separate stores per class OR use write_with_class.
@@ -428,13 +452,24 @@ async def main() -> None:
         #   SELECT count(*) FROM checkpoints WHERE status='PAUSED'
         # for an authoritative figure outside this healthcheck.
         paused = getattr(daemon, "_last_paused_count", None)
+        # Tier 2.1d / MED-3 audit fold-in: under per-tenant mode, surfacing
+        # a single sentinel cipher's fingerprint is misleading (rotating
+        # tenant-B's key leaves the unchanged tenant-A fingerprint visible
+        # on /health, so operators infer rotation failed). Return the
+        # string sentinel "per_tenant" instead — operator can query
+        # per-tenant fingerprints out-of-band (KMS / Fernet introspection)
+        # or via the boot-time log lines.
+        cipher_fp = (
+            "per_tenant" if cipher_for_tenant is not None
+            else cipher.key_fingerprint()
+        )
         return {
             "daemon_running": True,
             "last_poll_at": getattr(daemon, "_last_poll_ts",
                                     datetime.now(timezone.utc).isoformat()),
             "paused_runs": paused,
             "quarantine_size": len(getattr(daemon, "_quarantine", set())),
-            "cipher_fingerprint": cipher.key_fingerprint(),
+            "cipher_fingerprint": cipher_fp,
         }
 
     healthcheck = HealthcheckServer(get_state=get_health_state, port=8080)

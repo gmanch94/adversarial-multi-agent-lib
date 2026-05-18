@@ -419,11 +419,13 @@ async def main() -> None:
         logging.info("cipher.backend=%s per_tenant=true", backend)
 
     # Two-pool model (advisor #2): locks never starve queries.
+    # Tier 2.1d / SCALE-1: query_pool_max_size env-tunable.
+    query_pool_max_size = int(os.environ.get("QUERY_POOL_MAX_SIZE", "10"))
     lock_pool = await asyncpg.create_pool(
         cfg.postgres_dsn, min_size=2, max_size=cfg.max_concurrent_runs,
     )
     query_pool = await asyncpg.create_pool(
-        cfg.postgres_dsn, min_size=2, max_size=10,
+        cfg.postgres_dsn, min_size=2, max_size=query_pool_max_size,
     )
 
     agent_cfg = Config(
@@ -469,6 +471,18 @@ async def main() -> None:
         )
     else:
         caps_for_tenant = None
+
+    # Tier 2.1d / BUG-B1 audit fold-in: warn on asymmetric per-tenant config.
+    if cipher_for_tenant is not None and caps_for_tenant is None:
+        logging.warning(
+            "asymmetric_per_tenant_config: cipher is per-tenant but "
+            "budget is single-pool. Set DURABLE_TENANT_BUDGET_CAPS_JSON."
+        )
+    elif cipher_for_tenant is None and caps_for_tenant is not None:
+        logging.warning(
+            "asymmetric_per_tenant_config: budget is per-tenant but "
+            "cipher is single-key. Set DURABLE_TENANT_GCP_KMS_KEYS_JSON."
+        )
 
     def workflow_factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
         if workflow_class not in _WORKFLOW_ALLOWLIST:
@@ -522,7 +536,12 @@ async def main() -> None:
                                     datetime.now(timezone.utc).isoformat()),
             "paused_runs": paused,
             "quarantine_size": len(getattr(daemon, "_quarantine", set())),
-            "cipher_fingerprint": cipher.key_fingerprint(),
+            # Tier 2.1d / MED-3 audit fold-in: per-tenant mode masks the
+            # sentinel fingerprint to avoid misleading operators.
+            "cipher_fingerprint": (
+                "per_tenant" if cipher_for_tenant is not None
+                else cipher.key_fingerprint()
+            ),
             "dek_cache_hit_count": cache_stats.get("hit_count", 0),
             "dek_cache_miss_count": cache_stats.get("miss_count", 0),
         }
