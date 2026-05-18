@@ -315,18 +315,23 @@ Migrations are forward-only. To roll back:
 
 ---
 
-## 9. Observability gaps (`MetricsBackend` Protocol)
+## 9. Observability (`MetricsBackend` Protocol)
 
-POC ships structured log lines only. `MetricsBackend` Protocol is a **named future seam** (REFERENCE-IMPL-PENDING) — design doc §7. Until then:
+**Status (post Tier 1.1, 2026-05-18):** `MetricsBackend` Protocol SHIPPED in library (Slice A, commit `52388a4`). OTel sibling SHIPPED with `OtelMetricsBackend` + PII redaction span processor (Slice B, commits `4f97968`..`9b8a669`). Grafana dashboard + Prometheus alert rules + operator runbook SHIPPED (Slice C, 2026-05-18). Library still emits structured log lines unchanged for callers who choose `_NoopMetricsBackend` (default).
 
-| Signal | Interim source |
-|---|---|
-| Counters (runs started / completed / failed by status) | Aggregator log queries (§2) |
-| Latencies (p50/p95 round duration, hook duration) | Aggregator from `duration_s` field |
-| Gauges (paused runs by reason, quarantine size) | `CheckpointStore.list_paused()` queried by daemon, exposed via daemon healthcheck endpoint |
-| Budget (USD burn rate, token throughput) | Sum `usd_spent` over time window in aggregator |
+| Signal | Library source | OTel sibling surface |
+|---|---|---|
+| Counters (runs started / completed / failed by status, pauses by reason) | `MetricsBackend.counter` | Prometheus metric `durable_workflow_*_total`; Grafana panels 1 + 2 |
+| Latencies (p50/p95/p99 round duration, lock-acquire latency) | `MetricsBackend.histogram` | Prometheus `durable_round_latency_seconds_bucket` + `durable_lock_acquire_latency_seconds_bucket`; Grafana panels 3 + 5 |
+| Gauges (lock pool saturation, budget tokens, schema_version distribution) | `MetricsBackend.gauge` | Prometheus `durable_lock_pool_saturation` + `durable_budget_*`; Grafana panels 6 + 8 |
+| Cipher decrypt failure rate | `MetricsBackend.counter` (Slice A) | Prometheus `durable_cipher_decrypt_failed_total`; Grafana panel 7; alert `DurableCipherDecryptFailureSpike` |
+| Round-level traces (per-round async ctx mgr) | `MetricsBackend.span` | Jaeger via OTel Collector |
 
-**Production should plug** OTel / Prometheus / Datadog via a future `MetricsBackend` impl when the Protocol ships. Until then, every metric is derivable from log fields.
+**SLO surface (§1 above) now OPERATIONAL via:** `examples/production/durable_postgres_otel/alerts.yml` defines the four default alerts wired to the runbook entries in `docs/runbooks/otel-operations.md` section 2. Capacity sizing (§4) is observable via the `durable_lock_pool_saturation` gauge — the `DurableLockPoolNearSaturation` alert is the capacity signal.
+
+**Log-to-alert mapping (§2 above)** remains the source of truth for log-driven alerting; metric-driven alerting is additive and runs alongside.
+
+**For OTel-specific operator concerns** (Grafana provisioning, alert wiring, container digest refresh, PII boundary for span attributes, cardinality budget, mTLS for the collector receiver): see `docs/runbooks/otel-operations.md`.
 
 ---
 
