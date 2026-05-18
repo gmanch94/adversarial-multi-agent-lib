@@ -66,15 +66,18 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 
 ## 4. Known gaps
 
-> **⚠️ Tier 2.1a transitional state (2026-05-18, D-TENANT-0)**
+> **✅ Multi-tenant supported (2026-05-18, D-TENANT-0 FLIPPED)**
 >
-> Tier 2.1a shipped multi-tenant **schema preparation only**: `tenant_id` column + RLS policies + sibling wiring + operator script flags. The deployment is **NOT** yet multi-tenant isolated because:
+> Tier 2.1c shipped per-tenant cipher (D-TENANT-7) and per-tenant budget caps (D-TENANT-8) as additive APIs on `EncryptedCheckpointStore` and `BudgetTracker`. Sibling daemons (`durable_postgres`, `cipher_gcp_kms`, `cipher_aws_kms`) wire resolvers when the operator sets the per-tenant env JSON maps; single-tenant `tenant_id='_default'` deployments remain backward-compat.
 >
-> 1. Daemon SELECT is RLS-unscoped (scheduler poll spans tenants) — required for the cross-tenant poll model
-> 2. A **single Fernet/KMS keyring decrypts every tenant's payloads** — per-tenant cipher (D-TENANT-7) is deferred to Tier 2.1c
-> 3. Per-tenant budget enforcement is deferred to Tier 2.1c (single global cap today)
+> **Operator-action checklist before scaling beyond one tenant:**
 >
-> **HARD ONBOARDING GATE:** do NOT onboard a second tenant until Tier 2.1c (per-tenant cipher + budget) ships. Single-tenant deployments using `tenant_id='_default'` are unaffected. Cross-references: `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` §D-TENANT-0, `docs/runbooks/durable-compliance.md` §5.6 onboarding gate, `docs/production-readiness-gaps.md` §2.1.
+> 1. Wire `cipher_for_tenant` resolver — set `DURABLE_TENANT_FERNET_KEYS_JSON` (durable_postgres), `DURABLE_TENANT_GCP_KMS_KEYS_JSON` (cipher_gcp_kms), or `DURABLE_TENANT_AWS_KMS_CMKS_JSON` (cipher_aws_kms). One distinct CMK/keyring per tenant — DEK isolation means single-tenant key compromise does not leak others.
+> 2. Wire `caps_for_tenant` resolver — set `DURABLE_TENANT_BUDGET_CAPS_JSON` per the shape `{"tenant_a": {"max_tokens_in": ..., "max_usd": ...}, ...}`. Fail-loud on unknown tenant via `UnknownTenantError`.
+> 3. Audit cardinality on OTel gauges before scaling above ~100 tenants (Tier 3.4 tenant-shard scheduling deferred until then).
+> 4. Provision per-tenant KMS keys via `examples/production/cipher_gcp_kms/scripts/provision_keyring.sh` once per tenant; mirror for AWS.
+>
+> Cross-references: design spec `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` §D-TENANT-0/7/8, runbook `docs/runbooks/durable-compliance.md` §5.6, gaps `docs/production-readiness-gaps.md` §2.1.
 
 | Gap | Status |
 |---|---|

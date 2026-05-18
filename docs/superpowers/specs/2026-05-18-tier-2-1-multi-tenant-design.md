@@ -59,15 +59,15 @@ Three sub-tiers, each independently shippable. Roll back at any boundary without
 
 Sub-tiers ship in order. 2.1a alone gives row isolation under benign assumptions (daemon code is honest). 2.1b makes the library tenant-aware so callers can't accidentally skip a tenant context. 2.1c gives crypto-level isolation (cipher leak = one-tenant blast radius, not all-tenant).
 
-### D-TENANT-0: "Multi-tenant supported" claim gates on 2.1c shipping
+### D-TENANT-0: "Multi-tenant supported" claim gates on 2.1c shipping — **FLIPPED 2026-05-18 NIGHT**
 
-Between 2.1a-merge and 2.1c-merge the deployment holds a transitional state: RLS is live, but daemon is BYPASSRLS for poll AND a single keyring decrypts all payloads. **This is NOT multi-tenant isolation.** It is schema-and-policy preparation.
+Between 2.1a-merge and 2.1c-merge the deployment held a transitional state: RLS live, daemon BYPASSRLS for poll, single keyring decrypts all payloads. The hard rule: README / runbooks / specs MUST NOT claim "multi-tenant supported" until 2.1c is merged and tagged.
 
-Hard rule: README, `production-readiness-gaps.md`, `durable-compliance.md`, `architecture.md`, `deployment-architecture.md` MUST NOT claim "multi-tenant supported" until 2.1c is merged and tagged. Until then, the language is "multi-tenant schema preparation (2.1a/b shipped; isolation requires 2.1c)."
+**Status:** Tier 2.1c-1 (D-TENANT-7 cipher resolver) shipped at commit `d15a199` and Tier 2.1c-2 (D-TENANT-8 BudgetCaps) at commit `8bd5a59`. Sibling daemon wiring shipped at commits `d37c22f` (cipher resolvers across 3 daemons + audit fold-ins M1/M2/L1) and `67bdf39` (factory signature bump + caps_for_tenant resolvers + audit fold-in: type / non-negativity validation on BudgetCaps fields).
 
-This prevents operators from declaring victory after 2.1b based on visible "schema has tenant_id, RLS is on" evidence while still running a single global keyring.
+**Gate flipped:** README, `production-readiness-gaps.md`, `durable-compliance.md`, `architecture.md`, `deployment-architecture.md`, `SECURITY_MODEL.md` may now claim "multi-tenant supported, with operator-action checklist." The checklist (per `durable-compliance.md` §5.6) requires setting per-tenant cipher + budget env JSON maps before onboarding tenant #2.
 
-Atomic release was considered (ship 2.1a+b+c as one commit). Rejected: ~10 day diff size makes review intractable; sub-tier slicing gives reviewable diffs + rollback boundaries. The doc-gate is the operator-facing mitigation.
+Atomic release was considered (ship 2.1a+b+c as one commit). Rejected: ~10 day diff size makes review intractable; sub-tier slicing gave reviewable diffs + rollback boundaries. The doc-gate was the operator-facing mitigation during the gap. **Five-cycle pre-commit security audit pattern (per memory rule) caught 7 fold-in findings across the 4-tier ship: 4 from 2.1a-audit, 0 from 2.1b initial + 3 from 2.1b-audit, 2 from 2.1c-1, 4 from 2.1c-2, 3 from sibling-cipher, 1 from sibling-budget.**
 
 ---
 

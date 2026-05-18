@@ -425,23 +425,24 @@ SELECT relowner::regrole FROM pg_class WHERE relname = 'checkpoints';
 
 ---
 
-> **⚠️ ONBOARDING GATE — Tier 2.1a transitional state (D-TENANT-0)**
+> **✅ ONBOARDING GATE FLIPPED — Multi-tenant supported (Tier 2.1c-sibling shipped 2026-05-18 NIGHT)**
 >
-> Between Tier 2.1a-merge and Tier 2.1c-merge, the deployment is in **"multi-tenant schema preparation"** state. Daemon SELECT is RLS-unscoped (scheduler poll spans tenants) AND a **single Fernet/KMS keyring decrypts every tenant's payloads**. Worst-case blast radius if a tenant credential leaks: **all tenants' ciphertext is decryptable by the daemon process**.
+> Tier 2.1c-1 (D-TENANT-7 — per-tenant cipher resolver) and Tier 2.1c-2 (D-TENANT-8 — per-tenant `BudgetCaps`) shipped as library additive APIs and sibling daemon wiring. RLS write-scoping + per-tenant DEK isolation now hold simultaneously when the operator configures the resolvers below.
 >
-> **HARD RULE: do NOT onboard a second tenant until Tier 2.1c (per-tenant cipher) ships.**
+> **Operator-action checklist (REQUIRED before onboarding tenant #2):**
 >
-> Acceptable 2.1a use cases:
-> - Single-tenant deployment using `tenant_id='_default'` indefinitely (zero functional change vs pre-2.1)
-> - Internal staging where all "tenants" share the same trust boundary
-> - Schema-and-policy preparation against a NOT-YET-LIVE multi-tenant deployment
+> 1. Set `DURABLE_TENANT_FERNET_KEYS_JSON` (durable_postgres) OR `DURABLE_TENANT_GCP_KMS_KEYS_JSON` (cipher_gcp_kms) OR `DURABLE_TENANT_AWS_KMS_CMKS_JSON` (cipher_aws_kms) — one distinct cipher key/CMK per tenant. Recommend KMS-per-tenant for DEK isolation: a single-tenant CMK compromise does NOT leak other tenants' payloads.
+> 2. Set `DURABLE_TENANT_BUDGET_CAPS_JSON` to enforce per-tenant token + USD caps. Daemon refuses start on charset / type / negative-value violations.
+> 3. Provision per-tenant KMS keys via the relevant `scripts/provision_keyring.sh` once per tenant; document the tenant → CMK mapping out-of-band (sales / billing / contract system).
+> 4. Audit cardinality on OTel gauges (`durable.budget.*`, `durable.cipher.*`) — current implementation is suitable up to ~100 tenants per daemon. Beyond that scale, Tier 3.4 (tenant-shard scheduling) and Tier 3.5 (tenant-aware backup/restore) become required.
+> 5. Verify resolver fail-closed semantics in staging: submit a checkpoint with an unconfigured `tenant_id` and confirm `UnknownTenantError` quarantines the run after `max_retries` (does NOT leak fingerprints or budget state).
 >
-> Forbidden 2.1a use cases:
-> - Onboarding a second customer/team/business unit as a real tenant
-> - Promoting a 2.1a deployment to "multi-tenant supported" in marketing / sales / docs
-> - Treating RLS WITH CHECK as the durable confidentiality boundary (it isn't — encryption is)
+> Acceptable use cases (post-2.1c):
+> - Single-tenant deployment using `tenant_id='_default'` (legacy path preserved — `cipher=` + `BudgetTracker(max_X=...)` unchanged)
+> - Multi-tenant deployment with resolvers wired per the checklist above
+> - Mixed: per-tenant cipher + global budget caps, or vice versa (resolvers are independent)
 >
-> Cross-references: `docs/SECURITY_MODEL.md`, `docs/production-readiness-gaps.md` §2.1, design spec D-TENANT-0.
+> Pre-2.1c "schema-preparation-only" state is no longer the default. Cross-references: `docs/SECURITY_MODEL.md` §4, `docs/production-readiness-gaps.md` §2.1, design spec D-TENANT-0/7/8.
 
 ---
 

@@ -203,17 +203,21 @@ Wired metric emissions (8 distinct names):
 
 ## Tier 2 — needed before multi-tenant or multi-team use
 
-### 2.1 Multi-tenant isolation — **SHIPPED 2026-05-18 NIGHT** in 4 sub-tiers (D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2)
+### 2.1 Multi-tenant isolation — **FULLY SHIPPED 2026-05-18 NIGHT** in 4 library tiers + 2 sibling-wiring tiers (D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2)
 
 **Final status:**
-- **2.1a (commit `48e394f` + audit closure `ddd78df`):** schema preparation — `tenant_id` column + 3 SQL migrations (`0004_add_tenant_id.sql`, `0005_enable_tenant_rls.sql`, `0006_tenant_id_not_null.sql`) + 8 RLS policies (SELECT unscoped, INSERT/UPDATE/DELETE scoped via `current_setting('app.tenant_id')`) + sibling store/daemon/quarantine wiring + operator scripts gain `--tenant` flag + `check_set_local_pattern.py` CI grep gate.
-- **2.1b (commit `a0c9e44` + audit closure `dc3baf0`):** library breaking change — `Checkpoint.tenant_id` required field; `DurableWorkflow.start(request, *, tenant_id)` keyword-only required; `ResumeToken.tenant_id` additive optional with `_default` legacy compat; sibling 2.1a transitional plumbing (ContextVar, `_default` fallback, `_tenants_for_runs` cache, refresh task, `read_with_tenant`/`list_paused_with_tenants` extensions) all removed since `cp.tenant_id` is canonical.
-- **2.1c-1 (commit `d15a199`):** `EncryptedCheckpointStore` accepts `cipher_for_tenant: Callable[[str], Cipher]` resolver (additive) + new `UnknownTenantError(KeyError)` public exception. Mutual-exclusion with single-cipher path enforced at construction.
-- **2.1c-2 (commit `8bd5a59`):** `BudgetCaps` frozen value object + `BudgetTracker(caps=...)` additive kwarg. Per-tenant caps via caller-owned resolver pattern.
+- **2.1a (commit `48e394f` + audit closure `ddd78df`):** schema preparation — `tenant_id` column + 3 SQL migrations + 8 RLS policies + sibling store/daemon/quarantine wiring + operator scripts gain `--tenant` flag + `check_set_local_pattern.py` CI grep gate.
+- **2.1b (commit `a0c9e44` + audit closure `dc3baf0`):** library breaking change — `Checkpoint.tenant_id` required field; `DurableWorkflow.start(request, *, tenant_id)` keyword-only required; `ResumeToken.tenant_id` additive optional with `_default` legacy compat; sibling 2.1a transitional plumbing removed since `cp.tenant_id` is canonical.
+- **2.1c-1 (commit `d15a199`):** `EncryptedCheckpointStore` accepts `cipher_for_tenant: Callable[[str], Cipher]` resolver (additive) + new `UnknownTenantError(KeyError)` public exception.
+- **2.1c-2 (commit `8bd5a59`):** `BudgetCaps` frozen value object + `BudgetTracker(caps=...)` additive kwarg.
+- **2.1c-sibling-1 (commit `d37c22f`):** cipher_for_tenant wiring across 3 sibling daemons (`durable_postgres` Fernet, `cipher_gcp_kms` GCP KMS, `cipher_aws_kms` AWS KMS) via `DURABLE_TENANT_*_JSON` env maps. Shared `_parse_json_map` + `_make_resolver` helpers. 3 pre-commit audit fold-ins closed (M1 tenant_id charset validation at boot, M2 UnknownTenantError reports count not catalog, L1 drop per-tenant fingerprint enumeration log).
+- **2.1c-sibling-2 (commit `67bdf39`):** library `SchedulerDaemon` factory signature bumped `Callable[[str], DurableWorkflow]` → `Callable[[str, str], DurableWorkflow]` (threads tenant_id from ResumeToken). caps_for_tenant wiring across 3 sibling daemons via `DURABLE_TENANT_BUDGET_CAPS_JSON` env map. 1 pre-commit audit fold-in closed (BudgetCaps type + non-negativity validation at boot).
 
-**Remaining for next session:** sibling daemon wiring across 3 production siblings (`durable_postgres`, `cipher_gcp_kms`, `cipher_aws_kms`) to use the new resolvers + flip D-TENANT-0 onboarding gate banner across SECURITY_MODEL/runbook/spec/this-doc. Per-tenant cipher pattern recommended for KMS siblings (security>durability>scalability — DEK isolation means single-tenant compromise leaks one tenant, not all). Tier 3.4 (tenant-shard scheduling, >100k paused runs ceiling) and Tier 3.5 (tenant-aware backup/restore) remain on backlog.
+**D-TENANT-0 onboarding gate flipped:** multi-tenant supported. Operator-action checklist in `docs/runbooks/durable-compliance.md` §5.6.
 
-**Test counts post-2.1c-2:** 251 library tests + 49 sibling tests + 63 needs_postgres skipped.
+**Test counts post-shipping:** 205 library tests + 169 sibling tests + 68 needs_postgres skipped = 442 total (+91 from start-of-day 2026-05-18).
+
+**Pre-existing latent bug noted by audit (out-of-scope for 2.1c):** sibling daemons pass `SchedulerDaemon(checkpoint_store=store, ...)` but the library `__init__` signature takes `scheduler: PollingScheduler` as the first kwarg. Compiles fine but would TypeError on first daemon construction. Pre-dates the 2.1 sweep; covered by Tier ?? backlog item (TBD). Not blocking 2.1 shipped-status — siblings are reference deploys, not unit-tested end-to-end.
 
 ---
 
@@ -366,6 +370,19 @@ Wired metric emissions (8 distinct names):
 - `durable-compliance.md` §5.7 — per-tenant backup procedure + retention policy template.
 
 **Effort:** 3-5 days. Sibling-only (no library impact).
+
+### 3.6 SchedulerDaemon kwarg mismatch in sibling daemons — pre-existing latent bug
+
+**Gap.** All 3 production sibling daemons (`durable_postgres/daemon.py`, `cipher_gcp_kms/daemon.py`, `cipher_aws_kms/daemon.py`) and `durable_postgres_otel/daemon.py` construct `SchedulerDaemon(checkpoint_store=store, ...)` but the library `SchedulerDaemon.__init__` takes `scheduler: PollingScheduler` as the first kwarg. The siblings would TypeError at first daemon construction if run end-to-end. Pre-dates the Tier 2.1 sweep (introduced by commit `b8dc7cae` 2026-05-17); surfaced by Tier 2.1c-sibling-2 pre-commit audit.
+
+**Failure mode.** Smoke tests pass (they don't construct the daemon). Operator running the sibling docker-compose stack hits `TypeError: __init__() got an unexpected keyword argument 'checkpoint_store'`. No production impact because no one has tried to launch these end-to-end yet — they're reference deploys.
+
+**Deliverable:**
+- Fix all 4 daemon call sites: `SchedulerDaemon(scheduler=PollingScheduler(checkpoint_store=store), workflow_factory=..., ...)`
+- Add a smoke-test that constructs the daemon (without running it) to catch this regression class going forward
+- Optionally: library should reject unknown kwargs with a clearer error message (currently relies on `__init__`'s implicit TypeError)
+
+**Effort:** 2-3 hours. Sibling-only + one tiny library-level error-message tweak.
 
 ---
 
