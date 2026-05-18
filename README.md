@@ -321,6 +321,10 @@ done = await dw.resume(paused.token, fresh_inputs=updated_request)
 
 Pluggable storage (`CheckpointStore`), locking (`RunLock`), and scheduling (`SchedulerBackend`) Protocols. POC ships file + in-memory impls; production swaps Postgres/Redis/Postgres-advisory-lock without changing `DurableWorkflow`. Schema-versioned `ResumeToken` + `Checkpoint` for forward compatibility. See `docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md` and `D-DURABLE-1`.
 
+### Stability
+
+`adv_multi_agent.core.durable` follows the contract in [`docs/semver-policy.md`](docs/semver-policy.md): minor bumps may only add to the public surface; major bumps may remove or rename. Public symbols are exactly those listed in `core/durable/__init__.py:__all__` and pinned by `tests/unit/durable/test_public_api_stability.py`. Private (`_`-prefixed) symbols may change without notice.
+
 ---
 
 ## Architecture notes

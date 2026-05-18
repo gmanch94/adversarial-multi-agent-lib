@@ -1,6 +1,38 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 PM (late) — Cycle-16 closure
+Last updated: 2026-05-18 NIGHT — Tier 2.2 SHIPPED + CI green
+
+## 2026-05-18 NIGHT — Tier 2.2 SHIPPED (API stability + semver contract)
+
+**Single 0.5d slice. Library + tests + operator-script migration + semver policy doc. CI fix folded in.**
+
+Closes the gaps doc §2.2 "library API stability — public/private split + semver" item. Library tests **729 → 743** (+14: 5 seal/unseal round-trip + 9 API stability pin).
+
+**What shipped:**
+- `EncryptedCheckpointStore.seal(cp)` + `.unseal(cp)` — public async transforms (encrypt + integrity-tag / verify + decrypt). `write()` and `read()` now delegate to these. D-API-1.
+- `core/durable/__init__.py:__all__` expanded with 14 net additions (Checkpoint, CheckpointStore, IntegrityViolation, LegacyPartialAEADWarning, RunNotFound, SchemaVersionMismatch, RunLock, LockHandle, RunLocked, MemoryRunLock, FileRunLock, SchedulerBackend, HasWorkflowVersionInputs, chain_migrations + MissingMigrationError + BrokenMigrationError, FileCheckpointStore, MemoryCheckpointStore). D-API-3.
+- `tests/unit/durable/test_public_api_stability.py` — 9 tests pinning `__all__` set + `inspect.signature(...)` for load-bearing callables + dataclass field tuples for Checkpoint + ResumeToken. D-API-4.
+- `reencrypt_all.py` + `reseal_all_checkpoints.py` migrated off `_inner` / `_encrypt_request_json` / `_compute_integrity_payload` / `_replace_integrity_tag` reach-throughs. Now use public `store.inner` + `store.seal(cp)` exclusively. Zero `# type: ignore[attr-defined]` on private symbols remaining. D-API-2.
+- `docs/semver-policy.md` — patch/minor/major contract. Cross-referenced from README "Stability" section + SECURITY_MODEL. D-API-5.
+- `docs/decisions.md` — D-API-1..5 rows appended.
+
+**Folded-in CI fix:** CI had been failing on every push since the Tier 1.1 ship (2026-05-17 EVE) because the test job didn't set `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` and `Config.__post_init__` raises on unset reviewer key. Added dummy env vars to the pytest step (tests use Memory/Fake backends; never call live APIs). Going forward CI should be green on every push.
+
+**Posture at close:**
+- `python -m pytest -q`: 743 passed (+14 from prior 729) ✓
+- `python -m ruff check .`: all checks passed ✓
+- `python -m mypy src`: success, 81 source files ✓
+- `python scripts/check_no_secrets.py`: OK ✓
+- All operator-script `# type: ignore[attr-defined]` for private library symbols removed ✓
+
+**Next recommended lanes:**
+- **Tier 1.3** — AWS KMS or Vault Transit Cipher sibling (`cipher_gcp_kms` is the reference; ~1d each)
+- **Tier 2.3** — Budget enforcement (hard caps; builds on existing budget gauges from Tier 1.1)
+- **Tier 2.4** — Quarantine / dead-letter handling (operator CLI + alert)
+
+**Standing autonomy (2026-05-17):** active. Pick secure → durable → scalable when user unavailable; surface choice in commit body. Hard-stops per `~/.claude/rules/autonomy.md`.
+
+---
 
 ## 2026-05-18 PM (late) — Cycle-16 closure
 
