@@ -62,4 +62,11 @@ jobs:
       - name: Mypy
         run: mypy src
       - name: Pytest
+        # Dummy keys satisfy Config.__post_init__ guard rails; tests use
+        # Memory/Fake backends and never call the live APIs (CLAUDE.md: "no
+        # live API calls in CI").
+        env:
+          OPENAI_API_KEY: test-openai-key
+          ANTHROPIC_API_KEY: test-anthropic-key
+          GEMINI_API_KEY: test-gemini-key
         run: pytest -q
