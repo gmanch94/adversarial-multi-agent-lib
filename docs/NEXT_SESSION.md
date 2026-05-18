@@ -1,6 +1,44 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE (Tier 1.4 SHIPPED — schema-migration scaffolding, advisor-revised lean cut)
+Last updated: 2026-05-18 NIGHT (Tier 1.5 SHIPPED — backup / restore / PITR)
+
+## 2026-05-18 NIGHT — Tier 1.5 SHIPPED (backup / restore / PITR)
+
+**Single 1d slice. Operator-facing scripts + WAL archiving + runbook. NO library code changes.**
+
+- **Scripts (NEW, all in `examples/production/durable_postgres/scripts/`):**
+  - `backup.sh` — `pg_dump --format=custom --no-owner --no-acl` → `age` encrypt with public-key recipients → upload via `STORAGE_BACKEND` env switch (`s3` / `gcs` / `azure-blob` / `file`). Writes sibling `manifest.json` per D-BACKUP-6 (backup_id, timestamp, schema_version, checkpoint_count, wal_segment_at_backup, age_recipients, tool_version). Pre-flight refusal if recipients.txt contains `AGE-SECRET-KEY-` (private key in public-key file footgun guard).
+  - `restore.sh` — fetch + decrypt + `pg_restore --clean --if-exists` → verify (SELECT 1, count matches manifest, integrity_tag round-trip on 10 random checkpoints). DRY-RUN by default; requires `--confirm` flag OR `RESTORE_NONINTERACTIVE=1` env. World-readable identity-file refusal at startup.
+  - `verify_integrity_sample.py` — ~100 LOC Python helper imported by `restore.sh`; uses `adv_multi_agent.core.durable.encryption.EncryptedCheckpointStore` to round-trip sample tags. Env-driven Cipher selection mirrors daemon (fernet | gcp_kms). Exits 0 on all-pass, 1 on any failure.
+  - `setup_wal_archiving.sh` — PRINT-ONLY (operator owns postgresql.conf). Documents apply procedure.
+  - `recipients.txt` — placeholder with TODO header.
+- **Config (NEW):** `examples/production/durable_postgres/postgresql.conf.snippet` — mergeable WAL archiving block (`wal_level=replica`, `archive_mode=on`, `archive_command` piping through age + cloud CLI, `archive_timeout=60`).
+- **Runbook (NEW):** `docs/runbooks/durable-backup-restore.md` — RPO/RTO (≤1 WAL seg under PITR / ≤2h RTO), prerequisites (age + cloud CLI + Postgres ≥13), daily backup cron pattern, PITR setup, restore procedure (dry-run + confirmed), monthly restore-drill checklist (D-BACKUP-5), age recipient key rotation procedure, troubleshooting matrix (6 common failure modes).
+- **Runbook flip:** `docs/runbooks/durable-operations.md` §7 backup row REF-PENDING → OPERATIONAL (Tier 1.5) with pointer.
+- **README:** `examples/production/durable_postgres/README.md` — new "Backup / restore / PITR" section + files-table rows for all 7 new artifacts.
+- **Decisions:** D-BACKUP-1..6 appended (age client-side encryption defense-in-depth, STORAGE_BACKEND env switch with file default for awareness, WAL archiving for PITR backbone, mandatory integrity verification on restore, monthly drill cadence + RPO/RTO targets, sibling manifest.json for pre-restore verification).
+- **Cycle-15 audit:** `docs/security-audits/2026-05-18-tier-1-5-cycle-15-sweep.md`. 0 CRIT / 0 HIGH / 1 MEDIUM (operator-action, bucket-name placeholder in archive_command) / 2 LOW (both accepted). Verified all 12 audit items including: no plaintext keys in scripts, age recipients private-key refusal, restore --confirm/env-override gating, three-layer fail-closed integrity verification logic trace (age decrypt → integrity_tag decrypt → SHA recompute, each on independent key custody), set -euo pipefail everywhere, env-only credential reads, file-default STORAGE_BACKEND warning, WAL bucket inherits same recipients (single key-set invariant), best-effort stat permission check on identity file, no PHI in error messages, cross-tool key-custody separation. **Deviation logged:** subagent dispatch unavailable; inline walk per plan fallback (consistent with cycles 12/13/14).
+
+**Library tests:** 727 unchanged. Library + `pyproject.toml` UNCHANGED. Scripts excluded from `testpaths`.
+
+**Open follow-ups (Tier 1.X arc not closed by this slice):**
+- **Tier 1.5 follow-up #1** — Operator first-real-drill (creates `docs/runbooks/restore-drill-log.md`).
+- **Tier 1.5 follow-up #2** — Optional thin PITR wrapper script (currently a recipe in runbook §4.2; deferred until first operator with concrete cloud orchestrator needs it).
+- **Tier 1.2 follow-up** — add /ready + /live to daemon image (still open from cycle-13).
+
+---
+
+## 2026-05-18 — Tier 1.X arc summary (this session: Tier 1.2 + 1.4 + 1.5 SHIPPED)
+
+Three independent slices in one session, each ≤1d, all sibling-only (library + `pyproject.toml` UNCHANGED across all three; library test count 722 → 727 from Tier 1.4's 5 mechanism tests only):
+
+- **Tier 1.2 (k8s deployment sibling)** — `examples/production/durable_postgres_k8s/` with base + dev/staging/prod overlays + otel + sealed-secrets components. D-K8S-1..9 + cycle-13 audit.
+- **Tier 1.4 (schema migration scaffolding, advisor-revised lean cut)** — library REGISTRY EMPTY at v1 + `chain_migrations` primitive + deployment script with --dry-run default. D-SCHEMA-1..5 + cycle-14 audit.
+- **Tier 1.5 (backup / restore / PITR)** — operator scripts + WAL archiving + runbook with monthly drill cadence. D-BACKUP-1..6 + cycle-15 audit.
+
+**Pattern repeated across all three:** scope work to the sibling deployment, keep library at the protocol-only seam, document decisions inline with the slice, run focused cycle audit, surface deviations (subagent dispatch unavailable across cycles 12/13/14/15 — flag persists). Total library churn this session: +5 tests (Tier 1.4 mechanism tests). Total deployment surface added: ~40 files. Total decision rows: 21 (D-K8S × 9 + D-SCHEMA × 5 + D-BACKUP × 6 + earlier).
+
+---
 
 ## 2026-05-18 LATE — Tier 1.4 SHIPPED (schema migration scaffolding, lean cut)
 
