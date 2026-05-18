@@ -104,14 +104,15 @@ class PostgresCheckpointStore:
                 """
                 INSERT INTO checkpoints
                   (run_id, schema_version, status, wake_at, workflow_class,
-                   payload, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                   payload, integrity_tag, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (run_id) DO UPDATE
                   SET schema_version = EXCLUDED.schema_version,
                       status = EXCLUDED.status,
                       wake_at = EXCLUDED.wake_at,
                       workflow_class = EXCLUDED.workflow_class,
                       payload = EXCLUDED.payload,
+                      integrity_tag = EXCLUDED.integrity_tag,
                       updated_at = NOW()
                 """,
                 checkpoint.run_id,
@@ -120,6 +121,12 @@ class PostgresCheckpointStore:
                 wake_at_dt,
                 workflow_class,  # v4: from parameter, not from cp
                 payload_bytes,
+                # Tier 1.9 closure: write the denormalized integrity_tag mirror
+                # alongside the payload. Before this fix, the column stayed NULL
+                # forever and the unseal path emitted LegacyPartialAEADWarning
+                # on every read of a sibling-written row. Surfaced by the
+                # rotation drill (Tier 1.5-EVE inaugural run 2026-05-18).
+                checkpoint.integrity_tag,
             )
 
     async def read(self, run_id: str) -> Checkpoint:
@@ -128,7 +135,7 @@ class PostgresCheckpointStore:
             row = await conn.fetchrow(
                 """
                 SELECT run_id, schema_version, status, wake_at, workflow_class,
-                       payload, created_at, updated_at
+                       payload, integrity_tag, created_at, updated_at
                 FROM checkpoints
                 WHERE run_id = $1
                 """,
@@ -204,9 +211,10 @@ class PostgresCheckpointStore:
                        wake_at = $4,
                        workflow_class = $5,
                        payload = $6,
+                       integrity_tag = $7,
                        updated_at = NOW()
                  WHERE run_id = $1
-                   AND updated_at = $7
+                   AND updated_at = $8
                 """,
                 checkpoint.run_id,
                 checkpoint.schema_version,
@@ -214,6 +222,10 @@ class PostgresCheckpointStore:
                 wake_at_dt,
                 wf_class,  # v4: from parameter or default, not from cp
                 payload_bytes,
+                # Tier 1.9 closure: mirror integrity_tag during CAS write
+                # (rotation sweep) so reencrypt_all preserves the post-seal
+                # tag rather than dropping it.
+                checkpoint.integrity_tag,
                 expected_updated_at,
             )
         # N-M-05: asyncpg execute returns "UPDATE N" string. Parse defensively
@@ -241,6 +253,14 @@ class PostgresCheckpointStore:
         # last_request_json is already encrypted ciphertext (str) OR plaintext JSON
         # bytes depending on whether EncryptedCheckpointStore wraps. Either way
         # we encode to UTF-8 bytes for BYTEA storage.
+        #
+        # Tier 1.9 closure (post 2026-05-18 rotation drill finding): integrity_tag
+        # and workflow_version_hash MUST round-trip via the JSON body so
+        # EncryptedCheckpointStore.unseal does not emit LegacyPartialAEADWarning
+        # on every read of a sibling-written row, and so the 21 CFR Part 11
+        # attestation chain (workflow_version_hash) survives the persist boundary.
+        # integrity_tag also lives in the denormalized DB column for the reseal
+        # script's partial index; the JSON body is the canonical source.
         body = {
             "round": cp.round,
             "rounds_history": cp.rounds_history,
@@ -252,6 +272,8 @@ class PostgresCheckpointStore:
             "pinned_reviewer_model": cp.pinned_reviewer_model,
             "created_at": cp.created_at,
             "updated_at": cp.updated_at,
+            "workflow_version_hash": cp.workflow_version_hash,
+            "integrity_tag": cp.integrity_tag,
         }
         return json.dumps(body, ensure_ascii=False).encode("utf-8")
 
@@ -271,6 +293,11 @@ class PostgresCheckpointStore:
         # v4 NOTE: Checkpoint dataclass has no workflow_class field;
         # we read row["workflow_class"] only when constructing ResumeTokens
         # in _row_to_token, not when re-hydrating Checkpoint objects.
+        # Tier 1.9 closure: read both optional fields from body. `.get(..., None)`
+        # so pre-fix rows (written before this patch) continue to read as
+        # Checkpoint(integrity_tag=None, workflow_version_hash=None) — the
+        # EncryptedCheckpointStore.unseal warning path stays the upgrade signal
+        # until reseal_all_checkpoints.py runs against those legacy rows.
         return Checkpoint(
             run_id=row["run_id"],
             schema_version=row["schema_version"],
@@ -286,11 +313,17 @@ class PostgresCheckpointStore:
             wake_at=wake_at.isoformat() if wake_at is not None else None,
             created_at=body["created_at"],
             updated_at=body["updated_at"],
+            workflow_version_hash=body.get("workflow_version_hash"),
+            integrity_tag=body.get("integrity_tag"),
         )
 
     @staticmethod
     def _row_to_token(row: asyncpg.Record) -> ResumeToken:
         body = json.loads(bytes(row["payload"]).decode("utf-8"))
+        # Tier 1.9 closure: include workflow_version_hash in the ResumeToken so
+        # the daemon's resume path can enforce DURABLE_REFUSE_UNVERSIONED guards
+        # (21 CFR Part 11 attestation chain). Pre-fix rows return None and the
+        # library's existing warning path emits the upgrade nudge.
         return ResumeToken(
             run_id=row["run_id"],
             workflow_class=row["workflow_class"],
@@ -299,4 +332,5 @@ class PostgresCheckpointStore:
             schema_version=row["schema_version"],
             created_at=body["created_at"],
             wake_at=row["wake_at"].isoformat() if row["wake_at"] is not None else None,
+            workflow_version_hash=body.get("workflow_version_hash"),
         )

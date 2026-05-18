@@ -1,6 +1,45 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 OVERNIGHT (post-Tier-1.4/1.5-EVE) — scheduler hot-path tests + rotation drill SHIPPED
+Last updated: 2026-05-18 LATE (post Tier-1.9 closure) — integrity_tag + workflow_version_hash round-trip fix SHIPPED
+
+## 2026-05-18 LATE — Tier 1.9 closure SHIPPED (integrity_tag + workflow_version_hash round-trip)
+
+**Sibling-only — closes the open finding from the 2026-05-18 OVERNIGHT rotation drill. Library untouched.**
+
+The 2026-05-18 OVERNIGHT rotation drill captured 95 `LegacyPartialAEADWarning` per run because `PostgresCheckpointStore._serialize` / `_deserialize` silently dropped `Checkpoint.integrity_tag` on every write. While investigating, found the same gap shape on `Checkpoint.workflow_version_hash` — also silently dropped. Folded both into the same commit per CLAUDE.md fold-in policy (symmetric fix, low audit risk, surfaced explicitly in commit body).
+
+**Shipped:**
+
+- `examples/production/durable_postgres/store.py`:
+  - `_serialize` body adds `integrity_tag` + `workflow_version_hash` keys.
+  - `_deserialize` reads both via `body.get(...)` (None default → fully backward-compatible with pre-fix legacy rows).
+  - `write_with_class` INSERT/ON CONFLICT UPDATE writes the denormalized `integrity_tag` schema column alongside payload (mirror per Tier 1.9 schema comment).
+  - `write_if_unchanged` UPDATE writes `integrity_tag` on CAS sweep so `reencrypt_all.py` preserves the post-seal tag.
+  - `_row_to_token` includes `workflow_version_hash` so the daemon resume path can enforce `DURABLE_REFUSE_UNVERSIONED` guards (21 CFR Part 11 attestation chain).
+- `examples/production/durable_postgres/tests/test_integrity_tag_roundtrip.py` — 10 round-trip unit tests covering: both fields round-trip individually + together, None-default round-trips as None, denormalized column mirror matches body, write_if_unchanged preserves tag, legacy payload (pre-fix shape) reads as None, list_paused token includes workflow_version_hash, list_paused legacy yields None.
+- `docs/runbooks/durable-compliance.md` §5.4 — finding flipped from OPEN to CLOSED with full audit trail (pre-fix + post-fix artifact references, root cause, fix surface, operator action for legacy rows, compliance impact).
+- `docs/decisions.md` — D-RESEAL-1 (the round-trip fix surface) + D-RESEAL-2 (backward-compat design choice — `body.get` defaults preserve zero-downtime upgrade path; no schema migration required).
+- `reports/rotation-drill-2026-05-18-pre-fix.json` (preserved from `e786b5b`, 95 warnings) + `reports/rotation-drill-2026-05-18-post-fix.json` (this commit, 0 warnings). Both artifacts kept as audit evidence per advisor recommendation.
+
+**Verification:**
+
+- 10/10 new round-trip tests pass against `postgres:16-alpine` on port 5435.
+- Full sibling test suite: 103 pass + 3 skipped (smoke_test + scheduler hot-path + quarantine + integrity_tag_roundtrip + all prior tests).
+- Library suite: 185/185 unchanged.
+- Rotation drill: PASS with **0 captured warnings** post-fix (down from 95). Wall clock dropped 1.3s → 0.43s (fewer unseal warning-emit cycles).
+- Ruff: clean. Mypy: only pre-existing "missing library stubs" warnings — no new issues.
+
+**Single discriminating audit question:** do `reseal_all_checkpoints.py` + `migrate_schema.py` bypass `_serialize`? **No** — both go through `inner.write_if_unchanged(...)` (lines 125 + 214). The fix covers every write path in the sibling. Operator mitigation path documented in §5.4 (run `reseal_all_checkpoints.py` before next rotation sweep on already-deployed legacy rows) works correctly.
+
+**Standing autonomy applied:**
+
+- Folded `workflow_version_hash` fix into the integrity_tag PR — symmetric shape, low risk, surfaced explicitly. Could have shipped separately; chose security (close the 21 CFR Part 11 chain gap now) over single-concern PR hygiene.
+- Backward-compat via `body.get(...)` instead of schema-bumping migration — chose durability (zero-downtime upgrade path) over forward-only strict validation. D-RESEAL-2 captures.
+- Preserved both pre-fix and post-fix drill artifacts per advisor — chose audit-trail durability over disk-space minimalism (combined ~10 KB).
+
+---
+
+## 2026-05-18 OVERNIGHT (post-Tier-1.4/1.5-EVE) — scheduler hot-path tests + rotation drill SHIPPED
 
 ## 2026-05-18 OVERNIGHT (post-Tier-1.4/1.5-EVE) — Tier 1.4-EVE + Tier 1.5-EVE SHIPPED
 

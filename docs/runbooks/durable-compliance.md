@@ -286,9 +286,30 @@ The script refuses to run against a non-test DSN unless `--i-know-this-is-prod` 
 - That production keys are stored correctly (caller-owned per §5.1).
 - That production operators have the IAM / runbook access needed to execute §5.2 step 5 (drop old key). Verify via tabletop exercise.
 
-**Reference drill artifact:** `reports/rotation-drill-2026-05-18.json` (initial drill on shipping commit). 20 seed rows + 10 mixed rows = 30 total, all 9 phases PASS, ~1.3s wall clock.
+**Reference drill artifacts:**
 
-**Open finding from the 2026-05-18 inaugural drill — `LegacyPartialAEADWarning` on every read:** the drill captures **95 warnings** in `report["captured_warnings"]`, all variants of `EncryptedCheckpointStore.unseal: run 'drill-…' has no integrity_tag (pre-1.9 row, A10-H2)`. This is the drill doing its job. Root cause: `PostgresCheckpointStore._serialize` / `_deserialize` (`examples/production/durable_postgres/store.py`) do not round-trip `Checkpoint.integrity_tag` — Tier 1.9 added the schema column + the reseal script, but the live `write()` path doesn't populate it. New rows are effectively pre-1.9 shape until `reseal_all_checkpoints.py` runs. **Operator implication for production rotation:** run `reseal_all_checkpoints.py` BEFORE `reencrypt_all.py` so the rotation sweep operates on integrity-tag-bearing rows. Tracked as a Tier 1.9 follow-up in `docs/NEXT_SESSION.md`. The drill PASSES because the warning is the documented pre-1.9 path; it'd FAIL with `IntegrityViolation` only if `_refuse_legacy_aead` were set.
+- `reports/rotation-drill-2026-05-18-pre-fix.json` — inaugural drill (commit `e786b5b`). PASS verdict, **95 captured warnings**, 1.3s wall clock. Surfaced the integrity_tag round-trip gap (see CLOSED finding below).
+- `reports/rotation-drill-2026-05-18-post-fix.json` — re-run after the fix landed. PASS verdict, **0 captured warnings**, 0.43s wall clock.
+
+The pre-fix → post-fix transition is durable audit evidence that the drill caught a real regression in the sibling write path and the fix closed it.
+
+**CLOSED finding (2026-05-18) — `LegacyPartialAEADWarning` on every read:**
+
+The inaugural drill captured 95 warnings, all variants of `EncryptedCheckpointStore.unseal: run 'drill-…' has no integrity_tag (pre-1.9 row, A10-H2)`. Root cause: `PostgresCheckpointStore._serialize` / `_deserialize` (`examples/production/durable_postgres/store.py`) silently dropped `Checkpoint.integrity_tag` AND `Checkpoint.workflow_version_hash` on every write. Tier 1.9 had added the `integrity_tag` schema column + the `reseal_all_checkpoints.py` script, but the live `write()` path never populated either field. New rows were effectively pre-1.9 shape forever.
+
+**Fix:** the next commit after `e786b5b` (`see git log --grep="Tier 1.9 closure"`) wired both optional Checkpoint fields through:
+
+- `_serialize` body now carries `integrity_tag` + `workflow_version_hash`.
+- `_deserialize` reads both via `body.get(...)` (None default for legacy rows — fully backward-compatible).
+- `write_with_class` + `write_if_unchanged` INSERT/UPDATE statements now write the denormalized `integrity_tag` column alongside the payload (mirror per the schema comment).
+- `_row_to_token` includes `workflow_version_hash` so the daemon resume path can enforce `DURABLE_REFUSE_UNVERSIONED` guards.
+- 10 new round-trip unit tests in `tests/test_integrity_tag_roundtrip.py` pin the behavior (including legacy-payload backward compatibility).
+
+**Operator action for already-deployed deployments:** legacy rows written before the fix still carry pre-1.9 payload bodies. Run `python -m scripts.reseal_all_checkpoints` (which uses the fixed `write_if_unchanged` path) BEFORE the next `reencrypt_all.py` rotation sweep to upgrade in-place. The reseal script is idempotent — re-running on already-upgraded rows is a no-op.
+
+**Why this matters for compliance:**
+- `integrity_tag` is the AEAD seal binding the payload bytes (A10-H2). Without it, the unseal path skips integrity verification (or hard-fails if `_refuse_legacy_aead=True`).
+- `workflow_version_hash` is the 21 CFR Part 11 attestation chain — proof that the workflow definition the daemon resumed against is the same one that originally paused. Dropping it on every persist left a documented gap in the audit chain (`workflow_version_pinning.py:335` warning).
 
 ### 5.5 Key compromise response
 

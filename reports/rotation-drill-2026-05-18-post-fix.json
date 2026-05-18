@@ -1,0 +1,48 @@
+{
+  "started_at": "2026-05-18T05:54:45.816802+00:00",
+  "n_seed": 20,
+  "m_mixed": 10,
+  "phases": {
+    "1_setup": {
+      "fingerprint_a": "0c064d9c",
+      "ok": true
+    },
+    "2_seed_under_a": {
+      "rows": 20,
+      "ok": true
+    },
+    "3_multi_a_and_b": {
+      "fingerprint_b_primary": "ba2dc91d",
+      "ok": true
+    },
+    "4_mixed_write": {
+      "rows": 10,
+      "ok": true
+    },
+    "5_pre_rotation_read": {
+      "rows_decrypted_ok": 30,
+      "ok": true
+    },
+    "6_reencrypt": {
+      "rows_re_encrypted": 30,
+      "ok": true
+    },
+    "7_b_only": {
+      "fingerprint_b_only": "ba2dc91d",
+      "ok": true
+    },
+    "8_post_rotation_read": {
+      "rows_decrypted_ok": 30,
+      "ok": true
+    },
+    "9_negative_path_a_only": {
+      "samples_checked": 5,
+      "samples_rejected_as_expected": 5,
+      "ok": true
+    }
+  },
+  "captured_warnings": [],
+  "verdict": "PASS",
+  "finished_at": "2026-05-18T05:54:46.249754+00:00",
+  "wall_clock_s": 0.43297600746154785
+}
