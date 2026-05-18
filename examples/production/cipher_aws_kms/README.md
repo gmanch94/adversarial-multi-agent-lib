@@ -4,6 +4,12 @@
 **Pattern reference:** `examples/production/cipher_gcp_kms/` (shipped 2026-05-17).
 **Runbooks:** `docs/runbooks/durable-integration.md` · `durable-operations.md` · `durable-compliance.md`.
 
+## Deployment posture
+
+**Single-tenant (default):** leave `DURABLE_TENANT_*_JSON` unset; daemon uses `AWS_KMS_CMK_ALIAS` with `tenant_id='_default'`.
+
+**Multi-tenant (Tier 2.1c):** set `DURABLE_TENANT_AWS_KMS_CMKS_JSON` (one CMK per tenant) AND `DURABLE_TENANT_BUDGET_CAPS_JSON`. See `.env.example`, `docs/runbooks/durable-compliance.md` §5.6, and `../durable_postgres/scripts/verify_multi_tenant.py`.
+
 ---
 
 ## What this is

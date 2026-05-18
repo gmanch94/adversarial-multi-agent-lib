@@ -3,6 +3,12 @@
 **Spec:** `docs/superpowers/specs/2026-05-17-gcp-kms-cipher-design.md`.
 **Runbooks:** `docs/runbooks/durable-integration.md` · `durable-operations.md` · `durable-compliance.md`.
 
+## Deployment posture
+
+**Single-tenant (default):** leave `DURABLE_TENANT_*_JSON` unset; daemon uses `GCP_KMS_KEY_NAME` with `tenant_id='_default'`.
+
+**Multi-tenant (Tier 2.1c):** set `DURABLE_TENANT_GCP_KMS_KEYS_JSON` (one CryptoKey per tenant, DEK isolation) AND `DURABLE_TENANT_BUDGET_CAPS_JSON`. See `.env.example`, `docs/runbooks/durable-compliance.md` §5.6, and `../durable_postgres/scripts/verify_multi_tenant.py`.
+
 ---
 
 ## What this is

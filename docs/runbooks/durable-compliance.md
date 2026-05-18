@@ -454,6 +454,28 @@ SELECT relowner::regrole FROM pg_class WHERE relname = 'checkpoints';
 4. **Decision:** re-encrypt + retain (low-risk leak), OR delete + cancel-and-restart runs (high-risk leak).
 5. **Breach notification trigger** — see §8.
 
+### 5.5a Per-tenant key compromise (Tier 2.1c+ deployments)
+
+When `cipher_for_tenant` is wired, each tenant has an independent cipher / KMS keyring. **A compromised tenant key does NOT decrypt other tenants' payloads** — DEK isolation per autonomy.md rationale.
+
+**Scope query:** identify affected tenant's runs before rotation:
+```sql
+SELECT run_id, status, created_at, updated_at
+FROM   checkpoints
+WHERE  tenant_id = '<compromised_tenant>'
+ORDER  BY updated_at DESC;
+```
+
+**Rotation steps (single tenant):**
+
+1. Generate new key material for **only** the compromised tenant (new Fernet key OR rotate that tenant's KMS CryptoKey version).
+2. Update `DURABLE_TENANT_FERNET_KEYS_JSON` (or `DURABLE_TENANT_GCP_KMS_KEYS_JSON` / `DURABLE_TENANT_AWS_KMS_CMKS_JSON`) with the new key listed first, the compromised key second (rotation pair).
+3. Restart the daemon (resolver re-reads the env map).
+4. Run `scripts/reencrypt_all_checkpoints.py --tenant <id> --apply` to rewrite the tenant's rows under the new key.
+5. After verification, drop the compromised key from the JSON map; restart daemon.
+
+**Other tenants unaffected.** No need to coordinate downtime across the fleet — only the compromised tenant's resumes pause during step 3 restart.
+
 ---
 
 ## 6. Retention

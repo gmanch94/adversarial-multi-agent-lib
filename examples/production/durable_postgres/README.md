@@ -7,6 +7,12 @@ Working reference of `core/durable/` against real Postgres + Fernet + docker-com
 **Spec:** `docs/superpowers/specs/2026-05-16-prod-postgres-deployment-design.md`.
 **Runbooks:** `docs/runbooks/durable-integration.md` · `durable-operations.md` · `durable-compliance.md`.
 
+## Deployment posture
+
+**Single-tenant (default)** — leave `DURABLE_TENANT_*_JSON` unset. The daemon uses `DURABLE_CHECKPOINT_KEYS` + `MAX_*` envs with `tenant_id='_default'`. Zero functional change vs pre-2.1 deploys.
+
+**Multi-tenant (Tier 2.1c, optional)** — set `DURABLE_TENANT_FERNET_KEYS_JSON` (per-tenant cipher) AND `DURABLE_TENANT_BUDGET_CAPS_JSON` (per-tenant budget). See `.env.example` for shapes, `docs/runbooks/durable-compliance.md` §5.6 for the 5-step onboarding checklist, and `scripts/verify_multi_tenant.py` for the post-config smoke test.
+
 ---
 
 ## Quickstart

@@ -190,6 +190,40 @@ Rotation is needed when:
 
 ---
 
+## 8a. Per-tenant data export (Tier 2.1d / S2 audit fold-in, manual until Tier 3.5)
+
+Until Tier 3.5 (`scripts/backup_tenant.py`) ships, per-tenant export is operator-driven. Use case: GDPR Article 15 access / Article 17 erasure request for a specific tenant.
+
+**Export (manual procedure):**
+
+1. Stop the daemon (or pause writes for the target tenant — Tier 3.5 will add `--tenant` to backup.sh):
+   ```bash
+   docker compose stop scheduler
+   ```
+2. Dump tenant's rows ciphertext-and-all (payload still requires the tenant's DEK to decrypt — physical export does NOT leak plaintext):
+   ```bash
+   pg_dump --data-only \
+       --table=checkpoints --table=quarantine \
+       --where="tenant_id='${TENANT_ID}'" \
+       "${POSTGRES_DSN}" > "tenant_${TENANT_ID}_$(date -u +%Y%m%dT%H%M%SZ).sql"
+   ```
+3. Optionally decrypt payloads (only if the request includes plaintext export):
+   ```bash
+   python -m examples.production.durable_postgres.scripts.decrypt_dump \
+       --dump tenant_${TENANT_ID}_*.sql \
+       --tenant ${TENANT_ID}
+   ```
+   *(`decrypt_dump` is Tier 3.5 scope — manual decode via `EncryptedCheckpointStore.read` + `Checkpoint.last_request_json` until then.)*
+
+**Restore-to-different-tenant prevention:** the schema CHECK constraint enforces `tenant_id` charset; pg_restore on rows whose `tenant_id` mismatches the operator's intent would still land them under the original tenant. **Always inspect the dump's tenant_id distribution before restore.**
+
+**Erasure (Article 17):**
+
+1. Confirm legal authorization + retention exemption (HIPAA: 6 years; some clinical-trial contexts override the right to erasure).
+2. `DELETE FROM checkpoints WHERE tenant_id = '${TENANT_ID}';` (RLS — daemon role + GUC set to that tenant).
+3. `DELETE FROM quarantine WHERE tenant_id = '${TENANT_ID}';`
+4. **Crypto-shred the tenant's key** (KMS: schedule destruction; Fernet: drop from `DURABLE_TENANT_FERNET_KEYS_JSON`). Even if a future backup is restored, the tenant's payloads are unrecoverable.
+
 ## 9. Out of scope
 
 - Cross-region replication (operator choice — bucket-level config).
