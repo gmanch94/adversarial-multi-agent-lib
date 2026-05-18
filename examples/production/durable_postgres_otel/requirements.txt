@@ -1,0 +1,7 @@
+# TODO: generate via `pip-compile --generate-hashes requirements.in`
+# Operator checklist item; CI does not install OTel deps and the library has
+# no OTel dependency. See README.md "Setup" section.
+#
+# Until the operator generates this file, the Dockerfile install step will
+# fail loudly — by design. Hash-checked, wheel-only installs prevent supply-
+# chain attacks via stray wheel uploads.
