@@ -50,6 +50,7 @@ class Checkpoint:
     updated_at: str                       # ISO-8601 UTC
     wake_at: str | None = None            # ISO-8601 UTC; None = explicit only
     workflow_version_hash: str | None = None  # 16-char lowercase hex; None = pre-1.6
+    integrity_tag: str | None = None      # SEAL:v1: AEAD tag; None = pre-1.9 row
 
     def __post_init__(self) -> None:
         if self.status not in _STATUS_VALUES:
@@ -119,7 +120,7 @@ def _checkpoint_from_json(s: str) -> Checkpoint:
             f"CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION}"
         )
     known = {f.name for f in fields(Checkpoint)}
-    missing = known - data.keys() - {"wake_at", "workflow_version_hash"}
+    missing = known - data.keys() - {"wake_at", "workflow_version_hash", "integrity_tag"}
     if missing:
         raise CheckpointCorrupt(f"missing required field(s): {sorted(missing)}")
     extra = data.keys() - known

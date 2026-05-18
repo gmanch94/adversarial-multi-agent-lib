@@ -1,37 +1,121 @@
 """EncryptedCheckpointStore — decorator that encrypts Checkpoint.last_request_json
-at rest using a caller-supplied Cipher.
+at rest AND computes a full-Checkpoint integrity tag (SEAL:v1:) using a
+caller-supplied Cipher.
 
-Closes H-DUR-4: PHI bleed-through via plaintext request JSON in checkpoint files.
-Encryption is OPT-IN — callers handling PHI MUST wrap their CheckpointStore in
-EncryptedCheckpointStore + supply a Cipher; plain FileCheckpointStore is POC scope only.
+Closes H-DUR-4 (PHI bleed-through via plaintext request JSON in checkpoint
+files) and A10-H2 (insider tamper of workflow_version_hash / rounds_history /
+status undetected — full-Checkpoint integrity tag added in Tier 1.9 Slice A).
 
-Only last_request_json is encrypted. Other Checkpoint fields are:
-- audit-trail metadata (rounds_history, pause_reason, status, timestamps)
-- caller-supplied summary text (pause_context — caller's responsibility to avoid
-  putting PHI here; the field's purpose is non-sensitive descriptors like
-  "awaiting: labs", "clock: FDA_21_CFR_312_7d")
-- pinned model strings, budget snapshots — non-sensitive
-
-Sealing the entire checkpoint adds latency + key-rotation complexity; per-field
-encryption of just last_request_json is the proportional response.
+Field-level encryption (last_request_json) + full-row integrity tag:
+- Encryption is OPT-IN — callers handling PHI MUST wrap their CheckpointStore
+  in EncryptedCheckpointStore + supply a Cipher.
+- The integrity tag covers ALL Checkpoint fields except integrity_tag itself,
+  computed on the post-encryption form so the tag binds to the bytes actually
+  persisted. Reads verify the tag fail-closed via IntegrityViolation.
+- Pre-1.9 rows (integrity_tag is None) emit LegacyPartialAEADWarning on read
+  and reseal on the next write — operators should run reseal_all_checkpoints.py
+  (Slice B) to upgrade in bulk.
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import warnings
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
 from .checkpoint import Checkpoint
-from .protocols import Cipher
+from .protocols import Cipher, IntegrityViolation
 from .token import ResumeToken
 
 
+class LegacyPartialAEADWarning(UserWarning):
+    """Emitted when EncryptedCheckpointStore reads a pre-1.9 checkpoint
+    that has no integrity_tag (field-only AEAD, A10-H2 attack surface).
+    Operator should run reseal_all_checkpoints.py to upgrade."""
+
+
+def _canonical_checkpoint_bytes(cp: Checkpoint) -> bytes:
+    """Canonical JSON of all Checkpoint fields EXCEPT integrity_tag.
+    Deterministic across Python versions (sort_keys + compact separators)."""
+    d = asdict(cp)
+    d.pop("integrity_tag", None)
+    return json.dumps(
+        d, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+
+
+def _compute_integrity_payload(cp: Checkpoint) -> str:
+    """Build the SEAL:v1:<run_id>:<schema_version>:<hex_sha256> plaintext
+    that gets encrypted via Cipher.encrypt to form the integrity tag."""
+    h = hashlib.sha256(_canonical_checkpoint_bytes(cp)).hexdigest()
+    return f"SEAL:v1:{cp.run_id}:{cp.schema_version}:{h}"
+
+
+def _replace_integrity_tag(cp: Checkpoint, new_tag: str | None) -> Checkpoint:
+    """Return a NEW Checkpoint with integrity_tag swapped, all other fields preserved."""
+    return Checkpoint(
+        run_id=cp.run_id,
+        schema_version=cp.schema_version,
+        status=cp.status,
+        round=cp.round,
+        rounds_history=cp.rounds_history,
+        last_request_json=cp.last_request_json,
+        pause_reason=cp.pause_reason,
+        pause_context=cp.pause_context,
+        budget_used=cp.budget_used,
+        pinned_executor_model=cp.pinned_executor_model,
+        pinned_reviewer_model=cp.pinned_reviewer_model,
+        created_at=cp.created_at,
+        updated_at=cp.updated_at,
+        wake_at=cp.wake_at,
+        workflow_version_hash=cp.workflow_version_hash,
+        integrity_tag=new_tag,
+    )
+
+
+def _verify_integrity_payload(payload: str, cp: Checkpoint) -> None:
+    """Parse SEAL:v1:<run_id>:<schema_version>:<hex_sha256> and verify
+    each component against the freshly-read checkpoint. Raises
+    IntegrityViolation on any mismatch (fail-closed)."""
+    parts = payload.split(":", 4)
+    if len(parts) != 5 or parts[0] != "SEAL" or parts[1] != "v1":
+        raise IntegrityViolation(
+            run_id=cp.run_id,
+            expected_hash="<bad-payload>",
+            observed_hash=payload[:32],
+        )
+    _, _, payload_run_id, payload_schema, payload_hash = parts
+    if payload_run_id != cp.run_id:
+        raise IntegrityViolation(
+            run_id=cp.run_id,
+            expected_hash=f"run_id={payload_run_id}",
+            observed_hash=f"run_id={cp.run_id}",
+        )
+    if str(payload_schema) != str(cp.schema_version):
+        raise IntegrityViolation(
+            run_id=cp.run_id,
+            expected_hash=f"schema={payload_schema}",
+            observed_hash=f"schema={cp.schema_version}",
+        )
+    observed_hash = hashlib.sha256(_canonical_checkpoint_bytes(cp)).hexdigest()
+    if observed_hash != payload_hash:
+        raise IntegrityViolation(
+            run_id=cp.run_id,
+            expected_hash=payload_hash,
+            observed_hash=observed_hash,
+        )
+
+
 class EncryptedCheckpointStore:
-    """Decorator: wraps any CheckpointStore + Cipher; encrypts last_request_json.
+    """Decorator: wraps any CheckpointStore + Cipher; encrypts last_request_json
+    + computes full-Checkpoint integrity tag.
 
     Reads and writes are transparent to DurableWorkflow — the wrapped store
-    sees ciphertext in last_request_json; the EncryptedCheckpointStore
-    decrypts on the way out.
+    sees ciphertext in last_request_json + a SEAL:v1: integrity_tag; the
+    EncryptedCheckpointStore verifies + decrypts on the way out.
     """
 
     # Sentinel string prepended to encrypted payloads so decrypt-on-read can
@@ -79,13 +163,14 @@ class EncryptedCheckpointStore:
             created_at=cp.created_at,
             updated_at=cp.updated_at,
             wake_at=cp.wake_at,
+            workflow_version_hash=cp.workflow_version_hash,
+            integrity_tag=cp.integrity_tag,
         )
 
     def _decrypt_request_json(self, cp: Checkpoint) -> Checkpoint:
         if not cp.last_request_json.startswith(self._ENC_PREFIX):
             # Legacy un-encrypted checkpoint; pass through (emit a warning so
             # operator knows the store isn't fully encrypted yet)
-            import warnings
             warnings.warn(
                 f"EncryptedCheckpointStore.read: run {cp.run_id!r} stored "
                 f"WITHOUT encryption prefix; was the store wrapped after this "
@@ -125,14 +210,55 @@ class EncryptedCheckpointStore:
             created_at=cp.created_at,
             updated_at=cp.updated_at,
             wake_at=cp.wake_at,
+            workflow_version_hash=cp.workflow_version_hash,
+            integrity_tag=cp.integrity_tag,
         )
 
     async def write(self, checkpoint: Checkpoint) -> None:
+        # Encrypt field-level first, then seal the post-encryption form so the
+        # integrity tag binds to bytes actually persisted (A10-H2 closure).
         encrypted = await asyncio.to_thread(self._encrypt_request_json, checkpoint)
-        await self._inner.write(encrypted)
+        # Clear any inherited integrity_tag before computing the new one so the
+        # canonical bytes don't include a stale tag value.
+        unsealed = _replace_integrity_tag(encrypted, None)
+        payload = _compute_integrity_payload(unsealed)
+        tag = await asyncio.to_thread(self._cipher.encrypt, payload)
+        sealed = _replace_integrity_tag(unsealed, tag)
+        await self._inner.write(sealed)
 
     async def read(self, run_id: str) -> Checkpoint:
         cp = await self._inner.read(run_id)
+        # Verify integrity_tag BEFORE field-level decrypt so tampered ciphertext
+        # is detected by the integrity check, not by Cipher.decrypt's own AEAD
+        # failure (clearer error attribution).
+        if not cp.integrity_tag:
+            warnings.warn(
+                f"EncryptedCheckpointStore.read: run {cp.run_id!r} has no "
+                f"integrity_tag (pre-1.9 row, A10-H2). Run "
+                f"reseal_all_checkpoints.py to upgrade. Next write() on this "
+                f"run will reseal.",
+                LegacyPartialAEADWarning,
+                stacklevel=3,
+            )
+        else:
+            try:
+                payload = await asyncio.to_thread(
+                    self._cipher.decrypt, cp.integrity_tag
+                )
+            except IntegrityViolation:
+                raise
+            except Exception as exc:
+                # Same metrics path as field-level decrypt failure.
+                self._metrics.counter(
+                    "durable.cipher.decrypt_failed",
+                    tags={
+                        "workflow": self._workflow_class,
+                        "cipher_backend": type(self._cipher).__name__,
+                        "error_class": type(exc).__name__,
+                    },
+                )
+                raise
+            _verify_integrity_payload(payload, cp)
         return await asyncio.to_thread(self._decrypt_request_json, cp)
 
     async def list_paused(self, wake_before: datetime) -> list[ResumeToken]:

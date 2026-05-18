@@ -21,6 +21,23 @@ class BudgetExceeded(Exception):
     """
 
 
+class IntegrityViolation(Exception):
+    """Raised when EncryptedCheckpointStore.read detects a tampered checkpoint.
+
+    Fail-closed: DurableWorkflow does NOT swallow. Operator must investigate
+    (closes A10-H2 — full-Checkpoint integrity beyond last_request_json).
+    """
+
+    def __init__(self, *, run_id: str, expected_hash: str, observed_hash: str):
+        self.run_id = run_id
+        self.expected_hash = expected_hash
+        self.observed_hash = observed_hash
+        super().__init__(
+            f"Checkpoint integrity violation for run_id={run_id!r}: "
+            f"expected={expected_hash[:32]} observed={observed_hash[:32]}"
+        )
+
+
 class CheckpointStore(Protocol):
     """Pluggable durable store for Checkpoint objects.
 
