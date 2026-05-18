@@ -101,7 +101,7 @@ async def main() -> None:
 
     _WORKFLOW_ALLOWLIST = frozenset({_DEMO_WORKFLOW_CLASS})
 
-    def workflow_factory(workflow_class: str) -> DurableWorkflow:
+    def workflow_factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
         if workflow_class not in _WORKFLOW_ALLOWLIST:
             raise ValueError(
                 f"workflow_class not in allowlist: {workflow_class!r}. "

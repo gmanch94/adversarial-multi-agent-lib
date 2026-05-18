@@ -181,7 +181,7 @@ async def test_daemon_resumes_ready_runs_then_stops(
     sched = PollingScheduler(store)
     daemon = SchedulerDaemon(
         scheduler=sched,
-        workflow_factory=lambda wc: fake_wf,  # type: ignore[arg-type]
+        workflow_factory=lambda wc, tid: fake_wf,  # type: ignore[arg-type]
         poll_interval_seconds=0.05,
         batch_size=10,
     )
@@ -204,7 +204,7 @@ async def test_daemon_quarantines_after_max_retries(
     sched = PollingScheduler(store)
     daemon = SchedulerDaemon(
         scheduler=sched,
-        workflow_factory=lambda wc: fake_wf,  # type: ignore[arg-type]
+        workflow_factory=lambda wc, tid: fake_wf,  # type: ignore[arg-type]
         poll_interval_seconds=0.05,
         batch_size=10,
         max_retries=3,
@@ -244,7 +244,7 @@ async def test_daemon_clears_failure_counter_on_success(
     sched = PollingScheduler(store)
     daemon = SchedulerDaemon(
         scheduler=sched,
-        workflow_factory=lambda wc: flaky,  # type: ignore[arg-type]
+        workflow_factory=lambda wc, tid: flaky,  # type: ignore[arg-type]
         poll_interval_seconds=0.05,
         batch_size=10,
         max_retries=5,
@@ -274,7 +274,7 @@ async def test_daemon_token_resolver_hook_fires(
     sched = PollingScheduler(store)
     daemon = SchedulerDaemon(
         scheduler=sched,
-        workflow_factory=lambda wc: fake_wf,  # type: ignore[arg-type]
+        workflow_factory=lambda wc, tid: fake_wf,  # type: ignore[arg-type]
         token_resolver=_resolver,
         poll_interval_seconds=0.05,
         batch_size=10,
@@ -293,7 +293,7 @@ async def test_daemon_stop_returns_within_one_poll_interval(
     sched = PollingScheduler(_make_store(pg_pool))
     daemon = SchedulerDaemon(
         scheduler=sched,
-        workflow_factory=lambda wc: _FakeDurableWorkflow(),  # type: ignore[arg-type]
+        workflow_factory=lambda wc, tid: _FakeDurableWorkflow(),  # type: ignore[arg-type]
         poll_interval_seconds=2.0,
     )
     task = asyncio.create_task(daemon.run_forever())

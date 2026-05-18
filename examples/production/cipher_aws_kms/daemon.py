@@ -68,6 +68,56 @@ def redacted_log_record(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k in LOG_FIELD_ALLOWLIST}
 
 
+def _parse_budget_caps_map(raw: str, env_var_name: str) -> dict[str, Any]:
+    """D-TENANT-2.1c-2-sibling: parse per-tenant BudgetCaps env JSON."""
+    from adv_multi_agent.core.durable import BudgetCaps
+
+    parsed = _parse_json_map(raw, env_var_name)
+    caps: dict[str, BudgetCaps] = {}
+    allowed = {"max_tokens_in", "max_tokens_out", "max_usd"}
+    for tid, fields in parsed.items():
+        if not isinstance(fields, dict):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} value must be an object"
+            )
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} has unknown fields: "
+                f"{sorted(unknown)!r}"
+            )
+        if not any(fields.get(k) is not None for k in allowed):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} has no caps set"
+            )
+        # MEDIUM audit fold-in: validate types + non-negativity.
+        for axis in ("max_tokens_in", "max_tokens_out"):
+            v = fields.get(axis)
+            if v is not None and (
+                isinstance(v, bool) or not isinstance(v, int) or v < 0
+            ):
+                raise ValueError(
+                    f"{env_var_name} tenant {tid!r} {axis}={v!r}: "
+                    f"must be a non-negative int"
+                )
+        usd = fields.get("max_usd")
+        if usd is not None and (
+            isinstance(usd, bool)
+            or not isinstance(usd, (int, float))
+            or usd < 0
+        ):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} max_usd={usd!r}: "
+                f"must be a non-negative number"
+            )
+        caps[tid] = BudgetCaps(
+            max_tokens_in=fields.get("max_tokens_in"),
+            max_tokens_out=fields.get("max_tokens_out"),
+            max_usd=fields.get("max_usd"),
+        )
+    return caps
+
+
 def _make_resolver(
     per_tenant: dict[str, Any], env_var_name: str
 ) -> Callable[[str], Any]:
@@ -506,23 +556,42 @@ async def main() -> None:
 
     _WORKFLOW_ALLOWLIST = frozenset({_DEMO_WORKFLOW_CLASS})
 
-    def workflow_factory(workflow_class: str) -> DurableWorkflow:
+    # D-TENANT-2.1c-2-sibling: per-tenant BudgetCaps resolver.
+    tenant_caps_json = os.environ.get("DURABLE_TENANT_BUDGET_CAPS_JSON", "").strip()
+    if tenant_caps_json:
+        per_tenant_caps = _parse_budget_caps_map(
+            tenant_caps_json, "DURABLE_TENANT_BUDGET_CAPS_JSON"
+        )
+        caps_for_tenant: Any = _make_resolver(
+            per_tenant_caps, "DURABLE_TENANT_BUDGET_CAPS_JSON"
+        )
+        logging.info(
+            "budget.per_tenant=true tenant_count=%d", len(per_tenant_caps)
+        )
+    else:
+        caps_for_tenant = None
+
+    def workflow_factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
         if workflow_class not in _WORKFLOW_ALLOWLIST:
             raise ValueError(
                 f"workflow_class not in allowlist: {workflow_class!r}. "
                 f"Allowed: {sorted(_WORKFLOW_ALLOWLIST)!r}"
             )
         inner = ClinicalTrialEligibilityDurableWorkflow(config=agent_cfg)
+        if caps_for_tenant is not None:
+            tracker = BudgetTracker(caps=caps_for_tenant(tenant_id))
+        else:
+            tracker = BudgetTracker(
+                max_tokens_in=cfg.max_tokens_in,
+                max_tokens_out=cfg.max_tokens_out,
+                max_usd=cfg.max_usd,
+            )
         return DurableWorkflow(
             inner=inner,
             config=agent_cfg,
             checkpoint_store=store,
             run_lock=lock,
-            budget_tracker=BudgetTracker(
-                max_tokens_in=cfg.max_tokens_in,
-                max_tokens_out=cfg.max_tokens_out,
-                max_usd=cfg.max_usd,
-            ),
+            budget_tracker=tracker,
             reconciliation_hook=MergeFreshInputsHook(
                 request_cls=TrialEligibilityRequest,
             ),

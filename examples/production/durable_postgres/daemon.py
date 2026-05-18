@@ -81,6 +81,69 @@ def _parse_json_map(raw: str, env_var_name: str) -> dict[str, Any]:
     return parsed
 
 
+def _parse_budget_caps_map(raw: str, env_var_name: str) -> dict[str, Any]:
+    """D-TENANT-2.1c-2-sibling: parse per-tenant BudgetCaps env JSON.
+
+    Shape:
+        {"tenant_a": {"max_tokens_in": 1000000, "max_usd": 5.0},
+         "tenant_b": {"max_usd": 50.0}}
+
+    Each inner object: at least one of max_tokens_in / max_tokens_out /
+    max_usd. Fields are optional (None / missing = no cap on that axis).
+    Tenant_id charset validated by _parse_json_map.
+    """
+    from adv_multi_agent.core.durable import BudgetCaps
+
+    parsed = _parse_json_map(raw, env_var_name)
+    caps: dict[str, BudgetCaps] = {}
+    allowed = {"max_tokens_in", "max_tokens_out", "max_usd"}
+    for tid, fields in parsed.items():
+        if not isinstance(fields, dict):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} value must be an object, "
+                f"got {type(fields).__name__}"
+            )
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} has unknown fields: "
+                f"{sorted(unknown)!r}; allowed: {sorted(allowed)!r}"
+            )
+        if not any(fields.get(k) is not None for k in allowed):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} has no caps set; specify "
+                f"at least one of {sorted(allowed)!r}"
+            )
+        # MEDIUM audit fold-in: validate field types + non-negativity at boot.
+        # BudgetCaps is plain dataclass with no validation; without this
+        # check operator typos like {"max_usd": "10"} would TypeError at
+        # first record() call (fail-late). Negative caps would silently
+        # be unreachable (compare always false).
+        for axis in ("max_tokens_in", "max_tokens_out"):
+            v = fields.get(axis)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 0):
+                raise ValueError(
+                    f"{env_var_name} tenant {tid!r} {axis}={v!r}: "
+                    f"must be a non-negative int"
+                )
+        usd = fields.get("max_usd")
+        if usd is not None and (
+            isinstance(usd, bool)
+            or not isinstance(usd, (int, float))
+            or usd < 0
+        ):
+            raise ValueError(
+                f"{env_var_name} tenant {tid!r} max_usd={usd!r}: "
+                f"must be a non-negative number"
+            )
+        caps[tid] = BudgetCaps(
+            max_tokens_in=fields.get("max_tokens_in"),
+            max_tokens_out=fields.get("max_tokens_out"),
+            max_usd=fields.get("max_usd"),
+        )
+    return caps
+
+
 def _make_resolver(per_tenant: dict[str, Any], env_var_name: str) -> Any:
     """D-TENANT-7: fails-closed resolver — UnknownTenantError on miss.
 
@@ -369,6 +432,25 @@ async def main() -> None:
         cipher_for_tenant = None
         # F-M-02: log cipher_fingerprint at INFO so operator can verify rotation
         logging.info("cipher.fingerprint=%s", cipher.key_fingerprint())
+
+    # D-TENANT-2.1c-2-sibling: per-tenant BudgetCaps resolver.
+    # `DURABLE_TENANT_BUDGET_CAPS_JSON` shape:
+    #   {"tenant_a": {"max_tokens_in": 1000000, "max_usd": 5.0}, ...}
+    # When unset: legacy single-cap BudgetTracker(max_X=...) preserved.
+    tenant_caps_json = os.environ.get("DURABLE_TENANT_BUDGET_CAPS_JSON", "").strip()
+    if tenant_caps_json:
+        per_tenant_caps = _parse_budget_caps_map(
+            tenant_caps_json, "DURABLE_TENANT_BUDGET_CAPS_JSON"
+        )
+        caps_for_tenant: Any = _make_resolver(
+            per_tenant_caps, "DURABLE_TENANT_BUDGET_CAPS_JSON"
+        )
+        logging.info(
+            "budget.per_tenant=true tenant_count=%d", len(per_tenant_caps)
+        )
+    else:
+        caps_for_tenant = None
+
     # v4: reference deployment supports one workflow class. Multi-workflow
     # deploys construct separate stores per class OR use write_with_class.
     _DEMO_WORKFLOW_CLASS = (
@@ -395,23 +477,29 @@ async def main() -> None:
     # `python -O`; using it as a security gate is convention-level error.
     _WORKFLOW_ALLOWLIST = frozenset({_DEMO_WORKFLOW_CLASS})
 
-    def workflow_factory(workflow_class: str) -> DurableWorkflow:
+    def workflow_factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
         if workflow_class not in _WORKFLOW_ALLOWLIST:
             raise ValueError(
                 f"workflow_class not in allowlist: {workflow_class!r}. "
                 f"Allowed: {sorted(_WORKFLOW_ALLOWLIST)!r}"
             )
         inner = ClinicalTrialEligibilityDurableWorkflow(config=agent_cfg)
+        # D-TENANT-8 (Tier 2.1c-2): per-tenant caps via resolver. Legacy
+        # single-cap path preserved when caps_for_tenant is None.
+        if caps_for_tenant is not None:
+            tracker = BudgetTracker(caps=caps_for_tenant(tenant_id))
+        else:
+            tracker = BudgetTracker(
+                max_tokens_in=cfg.max_tokens_in,
+                max_tokens_out=cfg.max_tokens_out,
+                max_usd=cfg.max_usd,
+            )
         return DurableWorkflow(
             inner=inner,
             config=agent_cfg,
             checkpoint_store=store,
             run_lock=lock,
-            budget_tracker=BudgetTracker(
-                max_tokens_in=cfg.max_tokens_in,
-                max_tokens_out=cfg.max_tokens_out,
-                max_usd=cfg.max_usd,
-            ),
+            budget_tracker=tracker,
             reconciliation_hook=MergeFreshInputsHook(
                 request_cls=TrialEligibilityRequest,
             ),

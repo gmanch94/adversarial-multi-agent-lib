@@ -133,7 +133,7 @@ async def test_scheduler_quarantines_repeated_failures(tmp_path: Path) -> None:
 
     call_count = {"n": 0}
 
-    def factory(_workflow_class: str):
+    def factory(_workflow_class: str, _tenant_id: str):
         call_count["n"] += 1
         raise RuntimeError("simulated factory crash")
 

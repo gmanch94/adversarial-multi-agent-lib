@@ -74,7 +74,7 @@ async def test_daemon_invokes_factory_per_paused_run(tmp_path: Path) -> None:
 
     invoked: list[str] = []
 
-    def factory(workflow_class: str) -> DurableWorkflow:
+    def factory(workflow_class: str, tenant_id: str) -> DurableWorkflow:
         invoked.append(workflow_class)
         inner = ToyPausingWorkflow(config=config)
         return DurableWorkflow(inner=inner, config=config, checkpoint_store=store)

@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import pytest
 
-from adv_multi_agent.core.durable import UnknownTenantError
+from adv_multi_agent.core.durable import BudgetCaps, UnknownTenantError
 from examples.production.durable_postgres.daemon import (
     _make_resolver,
+    _parse_budget_caps_map,
     _parse_json_map,
 )
 
@@ -63,3 +64,59 @@ class TestMakeResolver:
         r = _make_resolver({"t1": "cipher-a"}, "X")
         with pytest.raises(KeyError):
             r("t2")
+
+
+class TestParseBudgetCapsMap:
+    def test_full_caps(self) -> None:
+        raw = (
+            '{"t1": {"max_tokens_in": 1000000, "max_tokens_out": 250000, '
+            '"max_usd": 5.0}}'
+        )
+        caps = _parse_budget_caps_map(raw, "X")
+        assert caps["t1"] == BudgetCaps(
+            max_tokens_in=1000000, max_tokens_out=250000, max_usd=5.0
+        )
+
+    def test_partial_caps_usd_only(self) -> None:
+        caps = _parse_budget_caps_map('{"t1": {"max_usd": 10.0}}', "X")
+        assert caps["t1"] == BudgetCaps(max_usd=10.0)
+        assert caps["t1"].max_tokens_in is None
+
+    def test_empty_caps_for_tenant_rejected(self) -> None:
+        with pytest.raises(ValueError, match="has no caps set"):
+            _parse_budget_caps_map('{"t1": {}}', "X")
+
+    def test_unknown_field_rejected(self) -> None:
+        with pytest.raises(ValueError, match="unknown fields"):
+            _parse_budget_caps_map(
+                '{"t1": {"max_usd": 1.0, "max_tokens": 100}}', "X"
+            )
+
+    def test_non_object_value_rejected(self) -> None:
+        with pytest.raises(ValueError, match="value must be an object"):
+            _parse_budget_caps_map('{"t1": "100"}', "X")
+
+    def test_tenant_id_charset_validated(self) -> None:
+        with pytest.raises(ValueError, match="violates charset"):
+            _parse_budget_caps_map('{"-bad": {"max_usd": 1.0}}', "X")
+
+    def test_negative_tokens_in_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative int"):
+            _parse_budget_caps_map('{"t1": {"max_tokens_in": -1}}', "X")
+
+    def test_negative_usd_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative number"):
+            _parse_budget_caps_map('{"t1": {"max_usd": -0.01}}', "X")
+
+    def test_string_usd_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative number"):
+            _parse_budget_caps_map('{"t1": {"max_usd": "10.0"}}', "X")
+
+    def test_bool_tokens_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative int"):
+            _parse_budget_caps_map('{"t1": {"max_tokens_in": true}}', "X")
+
+    def test_zero_caps_accepted(self) -> None:
+        # Zero is valid (immediate BudgetExceeded on first record — fail-loud).
+        caps = _parse_budget_caps_map('{"t1": {"max_usd": 0}}', "X")
+        assert caps["t1"].max_usd == 0

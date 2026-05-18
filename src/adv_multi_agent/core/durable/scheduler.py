@@ -41,12 +41,23 @@ class SchedulerDaemon:
     def __init__(
         self,
         scheduler: PollingScheduler,
-        workflow_factory: Callable[[str], DurableWorkflow],
+        workflow_factory: Callable[[str, str], DurableWorkflow],
         token_resolver: Callable[[ResumeToken], ResumeToken] | None = None,
         poll_interval_seconds: float = 60.0,
         batch_size: int = 10,
         max_retries: int = 3,
     ) -> None:
+        """D-TENANT-2.1c-2-sibling: factory signature is
+        `(workflow_class: str, tenant_id: str) -> DurableWorkflow`.
+
+        Tenant_id is threaded from the ResumeToken so callers building
+        per-tenant BudgetTracker / cipher / store instances can resolve
+        them at factory time without reaching into closure state.
+
+        Breaking change relative to the pre-2.1c (workflow_class-only)
+        signature; siblings under examples/production/ updated in the
+        same commit. Per CLAUDE.md: no external consumers, ship hard.
+        """
         self._scheduler = scheduler
         self._factory = workflow_factory
         self._token_resolver = token_resolver or (lambda t: t)
@@ -74,7 +85,7 @@ class SchedulerDaemon:
                 if resolved.run_id in self._quarantine:
                     continue  # L-DUR-4: skip poisoned tokens
                 try:
-                    dw = self._factory(resolved.workflow_class)
+                    dw = self._factory(resolved.workflow_class, resolved.tenant_id)
                     await dw.resume(resolved)
                     self._failures.pop(resolved.run_id, None)
                 except (RunNotFound, CheckpointCorrupt, SchemaVersionMismatch):
