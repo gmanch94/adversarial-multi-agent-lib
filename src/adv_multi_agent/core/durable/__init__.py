@@ -42,6 +42,7 @@ See:
 """
 from __future__ import annotations
 
+from .budget import BudgetCaps as BudgetCaps  # D-TENANT-8 (Tier 2.1c-2); not in __all__ — mirrors deferred BudgetTracker per D-API-3
 from .checkpoint import (
     Checkpoint,
     FileCheckpointStore,

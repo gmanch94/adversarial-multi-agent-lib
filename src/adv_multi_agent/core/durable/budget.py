@@ -56,23 +56,71 @@ class BudgetSnapshot:
         )
 
 
+@dataclass(frozen=True)
+class BudgetCaps:
+    """D-TENANT-8 (Tier 2.1c-2): per-tenant budget caps as a value object.
+
+    Bundles the three cap fields so resolvers can return them atomically:
+
+        def caps_for_tenant(tenant_id: str) -> BudgetCaps:
+            return _per_tenant_table[tenant_id]
+
+        tracker = BudgetTracker(caps=caps_for_tenant(cp.tenant_id))
+
+    Per spec D-TENANT-8: any field None means "no cap on this axis".
+    Tracker enforces `BudgetExceeded` on any cap breach.
+    """
+    max_tokens_in: int | None = None
+    max_tokens_out: int | None = None
+    max_usd: float | None = None
+
+
 class BudgetTracker:
     def __init__(
         self,
         max_tokens_in: int | None = None,
         max_tokens_out: int | None = None,
         max_usd: float | None = None,
+        *,
+        caps: BudgetCaps | None = None,
     ) -> None:
-        if max_tokens_in is None and max_tokens_out is None and max_usd is None:
+        """D-TENANT-8 (Tier 2.1c-2): `caps` is mutually exclusive with the
+        positional max_X kwargs — pass either form, never both.
+
+        Single-tenant deployments keep the legacy max_tokens_in/etc. kwargs.
+        Per-tenant deployments compute caps via their own resolver
+        (caller-owned) and pass `caps=caps_for_tenant(tenant_id)`.
+        """
+        # D-TENANT-8 mutual-exclusion: caps cannot mix with max_X kwargs.
+        if caps is not None and (
+            max_tokens_in is not None
+            or max_tokens_out is not None
+            or max_usd is not None
+        ):
+            raise ValueError(
+                "BudgetTracker: pass either `caps=BudgetCaps(...)` OR the "
+                "legacy max_tokens_in/max_tokens_out/max_usd kwargs, not both"
+            )
+        # Resolve effective caps from whichever form was supplied.
+        if caps is not None:
+            eff_in = caps.max_tokens_in
+            eff_out = caps.max_tokens_out
+            eff_usd = caps.max_usd
+        else:
+            eff_in = max_tokens_in
+            eff_out = max_tokens_out
+            eff_usd = max_usd
+        if eff_in is None and eff_out is None and eff_usd is None:
             warnings.warn(
                 "BudgetTracker constructed with no caps; long-running spend is unbounded. "
-                "Set max_tokens_in / max_tokens_out / max_usd for fail-loud-by-default.",
+                "Set max_tokens_in / max_tokens_out / max_usd OR caps=BudgetCaps(...) "
+                "for fail-loud-by-default.",
                 UserWarning,
                 stacklevel=2,
             )
-        self._max_tokens_in = max_tokens_in
-        self._max_tokens_out = max_tokens_out
-        self._max_usd = max_usd
+        self._max_tokens_in = eff_in
+        self._max_tokens_out = eff_out
+        self._max_usd = eff_usd
         self._tokens_in = 0
         self._tokens_out = 0
         self._usd_spent = 0.0
@@ -87,8 +135,16 @@ class BudgetTracker:
         max_tokens_in: int | None = None,
         max_tokens_out: int | None = None,
         max_usd: float | None = None,
+        caps: BudgetCaps | None = None,
     ) -> "BudgetTracker":
-        t = cls(max_tokens_in=max_tokens_in, max_tokens_out=max_tokens_out, max_usd=max_usd)
+        """D-TENANT-8: `caps` parity with __init__. Mutual exclusion enforced
+        by the delegated cls(...) call."""
+        t = cls(
+            max_tokens_in=max_tokens_in,
+            max_tokens_out=max_tokens_out,
+            max_usd=max_usd,
+            caps=caps,
+        )
         t._tokens_in = snap.tokens_in
         t._tokens_out = snap.tokens_out
         t._usd_spent = snap.usd_spent
