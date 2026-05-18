@@ -76,8 +76,11 @@ Last reviewed: **2026-05-16** (post-healthcare-sweep — 0 CRIT / 0 HIGH / 1 MED
 > 2. Wire `caps_for_tenant` resolver — set `DURABLE_TENANT_BUDGET_CAPS_JSON` per the shape `{"tenant_a": {"max_tokens_in": ..., "max_usd": ...}, ...}`. Fail-loud on unknown tenant via `UnknownTenantError`.
 > 3. Audit cardinality on OTel gauges before scaling above ~100 tenants (Tier 3.4 tenant-shard scheduling deferred until then).
 > 4. Provision per-tenant KMS keys via `examples/production/cipher_gcp_kms/scripts/provision_keyring.sh` once per tenant; mirror for AWS.
+> 5. Verify isolation: `python -m examples.production.durable_postgres.scripts.verify_multi_tenant --postgres-dsn <DSN> --tenant-a A --tenant-b B`. Three checks: RLS cross-tenant rejection (requires FORCE RLS — schema.sql + migration 0007 enforce), `UnknownTenantError` fail-closed, per-tenant `BudgetExceeded` isolation. Exit 0 required before onboarding tenant #2.
 >
-> Cross-references: design spec `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` §D-TENANT-0/7/8, runbook `docs/runbooks/durable-compliance.md` §5.6, gaps `docs/production-readiness-gaps.md` §2.1.
+> **2.1d audit hardening (2026-05-18 LATE NIGHT, D-TENANT-2.1d):** 5 BLOCKERs + 8 MEDIUMs closed by exhaustive 4-axis review. Notable: FORCE ROW LEVEL SECURITY on schema.sql + migration 0007 (RLS was decorative without it — common-deploy `psql -f schema.sql` made daemon = table owner, bypassing every WITH CHECK). Reserved-tenant rejection in `_parse_json_map` (operator can't claim `_default` / `_legacy` as per-tenant keys). `UnknownTenantError` quarantines immediately rather than retrying as "corrupt checkpoint". Every metric carries `tenant` label.
+>
+> Cross-references: design spec `docs/superpowers/specs/2026-05-18-tier-2-1-multi-tenant-design.md` §D-TENANT-0/7/8, runbook `docs/runbooks/durable-compliance.md` §5.5a + §5.6, gaps `docs/production-readiness-gaps.md` §2.1, decisions `docs/decisions.md` D-TENANT-2.1d.
 
 | Gap | Status |
 |---|---|

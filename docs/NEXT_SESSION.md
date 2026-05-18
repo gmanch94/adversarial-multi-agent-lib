@@ -62,7 +62,7 @@ Tier 2.1 is fully shipped. Multi-tenant deploys ready: operator wires `DURABLE_T
 ### State at end-of-session (commit `890d3b0`)
 
 - **Library:** 766 tests pass; mypy strict clean; ruff clean
-- **Sibling:** 176 sibling tests pass + 117 needs_postgres skipped; CI grep gate passes
+- **Sibling:** 185 sibling tests pass + 117 needs_postgres skipped; CI grep gate passes
 - **Decisions:** D-TENANT-0..10 + D-TENANT-2.1b-1..4 + D-TENANT-2.1c-1/2 + D-TENANT-2.1c-sibling-1/2 all appended
 - **Working tree:** clean
 
