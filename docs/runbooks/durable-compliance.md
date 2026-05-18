@@ -421,6 +421,8 @@ SELECT relowner::regrole FROM pg_class WHERE relname = 'checkpoints';
 -- skip phase 7.
 ```
 
+**Tenant_id naming hygiene (audit 2026-05-18 Q2 follow-up):** the charset `^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$` is **case-sensitive**. `_default`, `_DEFAULT`, `_Default`, and `_dEfAuLt` are all distinct tenant_id values from PostgreSQL's perspective — RLS `WITH CHECK` does byte-exact match against `current_setting('app.tenant_id')`. **Recommended operator convention: lowercase ASCII alphanumerics + hyphens for real tenant_ids; the leading-underscore namespace (`_default`, `_legacy`) is reserved for the library's pre-defined tenants and should NOT be combined with uppercase variants.** A `_DEFAULT` row is invisible to a daemon configured with `_default`, and vice versa — schema CHECK + RLS will silently accept the typo.
+
 ---
 
 > **⚠️ ONBOARDING GATE — Tier 2.1a transitional state (D-TENANT-0)**

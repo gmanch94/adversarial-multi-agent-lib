@@ -318,6 +318,47 @@ async def test_quarantine_sync_seen_retry_correctness_after_skip():
 
 
 @needs_postgres
+async def test_read_after_write_preserves_tenant_id(
+    pg_pool, fresh_checkpoints_table,
+):
+    """Audit 2026-05-18 Q8 follow-up: write→read roundtrip preserves
+    `Checkpoint.tenant_id`. This is the resume-path correctness invariant —
+    if tenant_id drifts across persistence, the next `store.write(cp)`
+    SET LOCAL would target the wrong tenant + RLS would reject."""
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
+    cp_written = _make_checkpoint("roundtrip-1", tenant_id="tenant-x")
+    await store.write(cp_written)
+
+    cp_read = await store.read("roundtrip-1")
+    assert cp_read.tenant_id == "tenant-x"
+    assert cp_read.tenant_id == cp_written.tenant_id
+
+
+@needs_postgres
+async def test_delete_with_wrong_tenant_raises_run_not_found(
+    pg_pool, fresh_checkpoints_table,
+):
+    """Audit 2026-05-18 Q6 follow-up: delete() with mismatched tenant_id
+    no longer silently affects 0 rows — it raises RunNotFound so operators
+    get a signal when their --tenant flag is wrong."""
+    from adv_multi_agent.core.durable.checkpoint import RunNotFound
+    from examples.production.durable_postgres.store import PostgresCheckpointStore
+
+    store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
+    cp = _make_checkpoint("delete-1", tenant_id="tenant-real")
+    await store.write(cp)
+
+    # Wrong tenant — RLS hides the row from DELETE. delete() now raises.
+    with pytest.raises(RunNotFound, match="tenant_id mismatch"):
+        await store.delete("delete-1", tenant_id="tenant-wrong")
+
+    # Right tenant — succeeds.
+    await store.delete("delete-1", tenant_id="tenant-real")
+
+
+@needs_postgres
 async def test_store_write_with_default_tenant_lands_under_default(
     pg_pool, fresh_checkpoints_table,
 ):

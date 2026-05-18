@@ -248,6 +248,11 @@ class PostgresCheckpointStore:
 
         tenant_id is a required kwarg — operator scripts call this without
         a Checkpoint in hand, so there is no `cp.tenant_id` to read from.
+
+        Audit 2026-05-18 Q6 follow-up: raises `RunNotFound` when zero rows
+        affected. RLS DELETE with mismatched tenant silently hides the row;
+        without this guard, operators got no signal when their `--tenant`
+        flag didn't match the row's actual tenant_id.
         """
         self._validate_run_id(run_id)
         resolved_tenant = _validate_tenant_id(tenant_id)
@@ -257,10 +262,26 @@ class PostgresCheckpointStore:
                     "SELECT set_config('app.tenant_id', $1, true)",
                     resolved_tenant,
                 )
-                await conn.execute(
+                result = await conn.execute(
                     "DELETE FROM checkpoints WHERE run_id = $1",
                     run_id,
                 )
+        # asyncpg returns "DELETE N" string; parse defensively per N-M-05 pattern.
+        if not result.startswith("DELETE "):
+            raise RuntimeError(
+                f"unexpected asyncpg status string for DELETE: {result!r}"
+            )
+        try:
+            rows_affected = int(result.split()[1])
+        except (IndexError, ValueError) as exc:
+            raise RuntimeError(
+                f"could not parse asyncpg status string {result!r}: {exc}"
+            ) from exc
+        if rows_affected == 0:
+            raise RunNotFound(
+                f"run_id={run_id!r} not deleted: row absent OR tenant_id mismatch "
+                f"(supplied tenant_id={tenant_id!r})"
+            )
 
     async def write_if_unchanged(
         self,
