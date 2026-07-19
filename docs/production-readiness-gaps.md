@@ -440,3 +440,16 @@ If I had a quarter: 3.1 (signed audit log) and 3.2 (Part 11) unlock the regulate
 - A "marketplace" of workflows / cipher backends / store backends. Premature. Three reference impls per Protocol is enough to demonstrate the abstraction; more is platform-team work that real users should drive.
 - A no-code workflow builder. Wrong audience. The current audience is engineers who can write a `BaseWorkflow` subclass.
 - A managed-service offering. Wrong company shape; the value is the open library, not the SaaS.
+
+---
+
+## Lifesciences domain (MVP-8) — advisory gaps + ship-audit (2026-07-19)
+
+**Ship-audit verdict:** SHIP-CLEAN. Independent reviewer audited all 8 workflows against the two healthcare skeletons on 7 invariants (shared-helper inheritance, input bounding, code-injected disclaimer/banner, flag-header hygiene H-IND-1, veto ordering, input-shape attack vectors, D-LIFESCI-3 no-brand). Zero CRITICAL/HIGH. One LOW — missing L-HEALTH-1 PHI-echo caveat on `device_reportability.py` `first_draft` — fixed pre-push in `777a72d`. No outstanding MEDIUM/LOW.
+
+**Universal PRODUCTION_GAPS (all 8 workflows — advisory decision-support only, never a regulatory submission):**
+
+- **No live source-system integrations.** Every input is caller-pasted free text today, not a live query. Named per-workflow in each module's `PRODUCTION_GAPS:` docstring: PLM (Windchill / Teamcenter) + requirements management (DOORS) + eQMS + ISO 14971 risk file (design-control); substantiation-dossier repository + nutrient DB + allergen-control plan (nutrition); 21 CFR 3 / OCP RFD-precedent DB (PMOA); LIMS + CLSI EP study data + clinical-study DB (assay); FDA 510(k) clearance DB + product-classification DB + eSTAR (substantial-equivalence); promotional-review DAM + approved-labeling repository (promo/MLR); complaint-handling QMS + FDA eMDR + EU EUDAMED (device-reportability); complaint/CAPA + FDA Recall Enterprise System + UDI/lot genealogy (field-action).
+- **Qualified RA/QA approver required.** `_DISCLAIMER` (code-injected) states output is decision-support requiring qualified sign-off (Design Assurance/QE, Nutrition Regulatory, Regulatory Strategy, Diagnostics Regulatory, RA lead, MLR committee, Vigilance officer, Recall committee/CQO). Output never auto-filed.
+- **D-LIFESCI-3 no-brand tripwire is a KNOWN-case guard, not a proof of absence.** `tests/unit/test_lifesciences_no_brand_names.py` (base64-seeded denylist) fails CI on any seeded brand string but cannot catch every possible brand; it pairs with — does not replace — the ship-audit review. New distinctive-brand seeds go in as base64 to keep plaintext clean.
+- **Illustrative FDA citations (21 CFR parts) are scenario context, not legal advice.** No workflow output is legal or medical advice.

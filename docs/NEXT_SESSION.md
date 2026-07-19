@@ -1,27 +1,33 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-19 — lifesciences plan committed (8c355a6); MVP-8 build SCHEDULED for 04:00 ET (autonomous).
+Last updated: 2026-07-19 — lifesciences MVP-8 domain SHIPPED (autonomous build); gate green; pushed to origin/main.
 
-## 2026-07-19 — Lifesciences MVP-8 build SCHEDULED (04:00 ET, autonomous)
+## 2026-07-19 — Lifesciences MVP-8 domain SHIPPED (autonomous build, complete)
 
-Plan written + committed **`8c355a6`**: [`docs/superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md`](superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md) (9 tasks). Spec (approved `3169346`): [`docs/superpowers/specs/2026-07-19-lifesciences-domain-design.md`](superpowers/specs/2026-07-19-lifesciences-domain-design.md).
+The scheduled `lifesciences-mvp8-build` ran and completed all 9 plan tasks. **7th domain shipped; do NOT re-run the build.**
 
-**A durable one-shot scheduled task `lifesciences-mvp8-build` will fire at 2026-07-19 04:00 ET** (fresh session; auto-disables after). It executes the plan task-by-task via subagent-driven-development and PUSHES to main only if the full gate is green + no CRIT/HIGH audit finding; otherwise it safe-stops with local commits and rewrites this file with the status.
+**Result: all 9 tasks done, full gate GREEN, ship-audit SHIP-CLEAN, PUSHED to origin/main.**
 
-**RESUME POINT depends on timing:**
-- **If the 04:00 run fired:** read this file's freshly-written status block (it records HEAD, tasks done, gate result, push y/n). Do NOT re-run the build.
-- **If it did NOT fire** (app was closed at 04:00 — it then runs on next app launch, not at 04:00; or a permission prompt stalled it): either let it run, or execute the plan manually via subagent-driven-development. Do NOT start it manually if the scheduled task is still pending/mid-run — collision risk. Check the "Scheduled" sidebar section / `list_scheduled_tasks` first.
+- **Tasks 0–8 (each its own commit) + one ship-audit fold-in + one docs commit.** Workflow-chain tip before docs = **`777a72d`** (the ship-audit LOW fold-in); the docs commit sits on top. Commit chain (newest code first):
+  - `777a72d` fix — L-HEALTH-1 PHI-echo caveat on device_reportability first_draft (ship-audit LOW)
+  - `c6fbde5` FieldActionClassification (veto; distinct from industrial)
+  - `9dc6b53` DeviceReportability (veto; distinct from healthcare)
+  - `1c18e59` PromotionalOffLabelReview (veto, MLR)
+  - `2eee918` SubstantialEquivalence510k (veto, predicate/NSE)
+  - `c6e49cb` AssayPerformanceClaim (veto, IVD)
+  - `ee79182` CombinationProductPMOA (no-veto)
+  - `dd9d583` NutritionHealthClaim (no-veto)
+  - `58fb025` DesignControlTraceability (no-veto)
+  - `4bca89d` scaffold + wiring + D-LIFESCI-3 brand tripwire
+- **Gate:** ruff clean · mypy strict clean (92 files) · **914 library tests pass** (tests/unit; was 771) · brand tripwire 61 pass · lifesciences skill templates discoverable = 32.
+- **Ship-audit (independent reviewer, 7 invariants):** SHIP-CLEAN, 0 CRIT/HIGH, 1 LOW (PHI-echo caveat) fixed pre-push in `777a72d`. No outstanding MEDIUM/LOW. Full write-up in `docs/production-readiness-gaps.md` §Lifesciences.
+- **Counts now:** 7 domains · 44 workflows · 914 lib + 185 sibling tests · 180 skill templates. CLAUDE.md + README refreshed.
 
-Brainstorming + planning complete + user-approved; do NOT re-brainstorm or re-plan.
+**Phase-2 (19 lifesciences workflows) remain DESIGNED-NOT-BUILT** (D-LIFESCI-1) — fill-in against the locked [design doc](superpowers/specs/2026-07-19-lifesciences-domain-design.md), not new design. Plan: [`docs/superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md`](superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md).
 
-- **8 MVP workflows (5 veto / 3 no-veto). Build order** (spec §Build sequence): 7 DesignControlTraceability → 8 NutritionHealthClaim → 6 CombinationProductPMOA → 2 AssayPerformanceClaim → 1 SubstantialEquivalence510k → 3 PromotionalOffLabelReview → 4 DeviceReportability → 5 FieldActionClassification.
-- Follow the locked recipe (D-IND-1 / D-HEALTH lineage): no base class; `*Request` + `_MAX_FIELD_CHARS=1500`; shared `extract_flags` / `truncate_flag_display` / `extract_veto_directive`; `_DISCLAIMER` in code; approver-first `_build_*_checklist`; `PRODUCTION_GAPS`.
-- **HARD CONSTRAINT (D-LIFESCI-3): NO brand/company names anywhere** — code, prompts, examples, tests. Generic product *categories* only (rapid antigen test, CGM, drug-eluting stent, adult nutritional shake). Integration tool names (Veeva, TrackWise, Windchill) are fine — industry systems, matches industrial/healthcare precedent.
-- All 24 flag headers are uppercase+hyphen → H-IND-1 safe; NO `core/_internal.py` change needed.
-- On build (not yet done): `pyproject.toml` package-data row for `lifesciences/skills/templates/*` · MCP `SKILLS_DOMAIN` register `"lifesciences"` · append D-LIFESCI-1..4 rows to `decisions.md` · domain-ship `security-audit` subagent after the sweep.
-- Boundary notes to preserve in module docstrings: #4 DeviceReportability vs healthcare `AdverseEventTriage`; #5 FieldAction vs industrial `RecallScopeManufacturing`.
+**Things NOT to do next:** do not re-run the MVP-8 build; do not re-brainstorm/re-plan lifesciences; do not add a lifesciences base class (D-LIFESCI-1 = no base class, D-IND-1 lineage).
 
-### Earlier this session (2026-07-18) — already shipped + pushed
+### Earlier (2026-07-18) — already shipped + pushed
 Holistic implementation review + F1/F2 fixes + parole migration — commits `87e2a51` + `97862ea`, pushed to `adversarial-multi-agent-lib.git`. Details below.
 
 ---
