@@ -22,8 +22,8 @@ repo root.
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
     1. Promotional-review DAM — materials and their review state should resolve
-       against the controlled promotional-review digital-asset-management system
-       (e.g. a PromoMats-class system), not caller-pasted material text.
+       against the controlled promotional-review digital-asset-management
+       system, not caller-pasted material text.
     2. Approved-labeling repository — the approved indication, warnings, and
        contraindications should reconcile against the controlled approved-labeling
        repository, not caller-supplied text.

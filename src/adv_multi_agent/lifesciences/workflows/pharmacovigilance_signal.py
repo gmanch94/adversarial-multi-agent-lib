@@ -26,8 +26,7 @@ repo root.
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
     1. Safety database — cases and their coding should resolve against the
-       controlled safety database (e.g. an Argus-class system), not
-       caller-pasted text.
+       controlled safety database, not caller-pasted text.
     2. Signal-detection engine — disproportionality metrics should be produced
        by the controlled signal-detection engine (EVDAS / FAERS mining), not
        asserted in free text.

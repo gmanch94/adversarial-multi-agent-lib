@@ -13,9 +13,9 @@ repo root.
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
     1. PLM integration — design inputs/outputs should be pulled live from the
-       PLM system (e.g. Windchill / Teamcenter), not caller-pasted text.
+       controlled PLM system, not caller-pasted text.
     2. Requirements management — the trace matrix should resolve against the
-       controlled requirements tool (e.g. DOORS), not a manual summary.
+       controlled requirements-management tool, not a manual summary.
     3. eQMS integration — verification/validation records should resolve to
        controlled eQMS records with effective dates, not draft excerpts.
     4. ISO 14971 risk-management file — hazard/risk-control linkage should be

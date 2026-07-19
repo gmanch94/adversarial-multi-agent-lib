@@ -15,8 +15,8 @@ repo root.
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
     1. Validation-lifecycle tool — requirements, risk assessments, and test
-       evidence should be pulled live from the validation-lifecycle system
-       (e.g. a ValGenesis-class tool), not caller-pasted text.
+       evidence should be pulled live from the controlled validation-lifecycle
+       management system, not caller-pasted text.
     2. Requirements/traceability tool — the trace matrix should resolve against
        the controlled requirements repository, not a manual summary.
     3. Test-management system — IQ/OQ/PQ execution evidence should resolve to

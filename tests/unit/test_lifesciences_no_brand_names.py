@@ -26,6 +26,18 @@ _ENCODED_DENYLIST: tuple[str, ...] = (
     "cGVkaWFzdXJl",      # <pediatric-nutrition brand>
     "YWxpbml0eQ==",      # <core-lab brand>
     "bWl0cmFjbGlw",      # <structural-heart brand>
+    # Third-party enterprise-tool brands. D-LIFESCI-3 also bars vendor product
+    # names (they appeared in PRODUCTION_GAPS docstrings); these slipped past the
+    # archetype seed and were caught by the ship-audit (2026-07-19). Distinctive
+    # tokens only — a common-word requirements tool (spelled like the plural of
+    # "door") is deliberately EXCLUDED to avoid substring false positives; the
+    # ship-audit remains the general catch for non-distinctive brands.
+    "dmFsZ2VuZXNpcw==",  # <validation-lifecycle vendor>
+    "YXJndXM=",          # <safety-database vendor>
+    "d2luZGNoaWxs",      # <PLM vendor>
+    "dGVhbWNlbnRlcg==",  # <PLM vendor>
+    "dHJhY2t3aXNl",      # <complaint-handling QMS vendor>
+    "cHJvbW9tYXRz",      # <promo-review DAM vendor>
 )
 
 _DENYLIST = tuple(base64.b64decode(s).decode("ascii").lower() for s in _ENCODED_DENYLIST)

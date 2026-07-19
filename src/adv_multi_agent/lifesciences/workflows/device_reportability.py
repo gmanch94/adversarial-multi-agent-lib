@@ -26,8 +26,8 @@ repo root.
 ⚠️  NOT FOR PRODUCTION DEPLOYMENT.
 PRODUCTION_GAPS:
     1. Complaint-handling system — complaints and their handling state should
-       resolve against the controlled complaint-handling QMS (e.g. a
-       TrackWise-class system), not caller-pasted narrative text.
+       resolve against the controlled complaint-handling QMS, not
+       caller-pasted narrative text.
     2. FDA eMDR — reportable events must be filed through the FDA electronic
        Medical Device Reporting (eMDR) gateway; this workflow does not file.
     3. EU EUDAMED vigilance — regional vigilance reporting should reconcile
