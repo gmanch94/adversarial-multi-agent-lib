@@ -1,6 +1,24 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-18 — holistic implementation review + F1/F2 fixes shipped.
+Last updated: 2026-07-19 — lifesciences domain (7th) spec approved + committed; next = writing-plans → build MVP-8.
+
+## 2026-07-19 — Lifesciences domain (7th) design APPROVED
+
+Brainstormed + spec'd a new `lifesciences/` domain. Archetype = diversified med-products company (diagnostics · devices · branded pharma · nutrition), manufacturer/regulatory-facing — distinct from `healthcare` (provider/payer) + `industrial` (general mfg). **Spec approved + committed `3169346`:** [`docs/superpowers/specs/2026-07-19-lifesciences-domain-design.md`](superpowers/specs/2026-07-19-lifesciences-domain-design.md).
+
+**RESUME POINT: write the implementation plan (writing-plans skill) → then build MVP-8.** Brainstorming is complete + user-approved; do NOT re-brainstorm.
+
+- **8 MVP workflows (5 veto / 3 no-veto). Build order** (spec §Build sequence): 7 DesignControlTraceability → 8 NutritionHealthClaim → 6 CombinationProductPMOA → 2 AssayPerformanceClaim → 1 SubstantialEquivalence510k → 3 PromotionalOffLabelReview → 4 DeviceReportability → 5 FieldActionClassification.
+- Follow the locked recipe (D-IND-1 / D-HEALTH lineage): no base class; `*Request` + `_MAX_FIELD_CHARS=1500`; shared `extract_flags` / `truncate_flag_display` / `extract_veto_directive`; `_DISCLAIMER` in code; approver-first `_build_*_checklist`; `PRODUCTION_GAPS`.
+- **HARD CONSTRAINT (D-LIFESCI-3): NO brand/company names anywhere** — code, prompts, examples, tests. Generic product *categories* only (rapid antigen test, CGM, drug-eluting stent, adult nutritional shake). Integration tool names (Veeva, TrackWise, Windchill) are fine — industry systems, matches industrial/healthcare precedent.
+- All 24 flag headers are uppercase+hyphen → H-IND-1 safe; NO `core/_internal.py` change needed.
+- On build (not yet done): `pyproject.toml` package-data row for `lifesciences/skills/templates/*` · MCP `SKILLS_DOMAIN` register `"lifesciences"` · append D-LIFESCI-1..4 rows to `decisions.md` · domain-ship `security-audit` subagent after the sweep.
+- Boundary notes to preserve in module docstrings: #4 DeviceReportability vs healthcare `AdverseEventTriage`; #5 FieldAction vs industrial `RecallScopeManufacturing`.
+
+### Earlier this session (2026-07-18) — already shipped + pushed
+Holistic implementation review + F1/F2 fixes + parole migration — commits `87e2a51` + `97862ea`, pushed to `adversarial-multi-agent-lib.git`. Details below.
+
+---
 
 ## 2026-07-18 — Holistic implementation review + F1/F2 fixes
 
