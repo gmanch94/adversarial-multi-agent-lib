@@ -1,12 +1,18 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-19 — lifesciences domain (7th) spec approved + committed; next = writing-plans → build MVP-8.
+Last updated: 2026-07-19 — lifesciences plan committed (8c355a6); MVP-8 build SCHEDULED for 04:00 ET (autonomous).
 
-## 2026-07-19 — Lifesciences domain (7th) design APPROVED
+## 2026-07-19 — Lifesciences MVP-8 build SCHEDULED (04:00 ET, autonomous)
 
-Brainstormed + spec'd a new `lifesciences/` domain. Archetype = diversified med-products company (diagnostics · devices · branded pharma · nutrition), manufacturer/regulatory-facing — distinct from `healthcare` (provider/payer) + `industrial` (general mfg). **Spec approved + committed `3169346`:** [`docs/superpowers/specs/2026-07-19-lifesciences-domain-design.md`](superpowers/specs/2026-07-19-lifesciences-domain-design.md).
+Plan written + committed **`8c355a6`**: [`docs/superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md`](superpowers/plans/2026-07-19-lifesciences-domain-mvp8.md) (9 tasks). Spec (approved `3169346`): [`docs/superpowers/specs/2026-07-19-lifesciences-domain-design.md`](superpowers/specs/2026-07-19-lifesciences-domain-design.md).
 
-**RESUME POINT: write the implementation plan (writing-plans skill) → then build MVP-8.** Brainstorming is complete + user-approved; do NOT re-brainstorm.
+**A durable one-shot scheduled task `lifesciences-mvp8-build` will fire at 2026-07-19 04:00 ET** (fresh session; auto-disables after). It executes the plan task-by-task via subagent-driven-development and PUSHES to main only if the full gate is green + no CRIT/HIGH audit finding; otherwise it safe-stops with local commits and rewrites this file with the status.
+
+**RESUME POINT depends on timing:**
+- **If the 04:00 run fired:** read this file's freshly-written status block (it records HEAD, tasks done, gate result, push y/n). Do NOT re-run the build.
+- **If it did NOT fire** (app was closed at 04:00 — it then runs on next app launch, not at 04:00; or a permission prompt stalled it): either let it run, or execute the plan manually via subagent-driven-development. Do NOT start it manually if the scheduled task is still pending/mid-run — collision risk. Check the "Scheduled" sidebar section / `list_scheduled_tasks` first.
+
+Brainstorming + planning complete + user-approved; do NOT re-brainstorm or re-plan.
 
 - **8 MVP workflows (5 veto / 3 no-veto). Build order** (spec §Build sequence): 7 DesignControlTraceability → 8 NutritionHealthClaim → 6 CombinationProductPMOA → 2 AssayPerformanceClaim → 1 SubstantialEquivalence510k → 3 PromotionalOffLabelReview → 4 DeviceReportability → 5 FieldActionClassification.
 - Follow the locked recipe (D-IND-1 / D-HEALTH lineage): no base class; `*Request` + `_MAX_FIELD_CHARS=1500`; shared `extract_flags` / `truncate_flag_display` / `extract_veto_directive`; `_DISCLAIMER` in code; approver-first `_build_*_checklist`; `PRODUCTION_GAPS`.
