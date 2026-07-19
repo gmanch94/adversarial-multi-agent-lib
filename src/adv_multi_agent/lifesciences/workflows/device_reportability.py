@@ -372,6 +372,9 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
             # L-IND-2: surface the clean executor draft from the vetoed round so
             # the Vigilance officer sees what the AI produced before the REVIEWER
             # VETO banner was prepended.
+            # L-HEALTH-1: this field may echo sanitized caller data
+            # (complaint_narrative, patient_impact) that can carry patient PHI.
+            # Callers must apply downstream PHI handling before logging or sharing.
             metadata["first_draft"] = output
 
         return WorkflowResult(
