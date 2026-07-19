@@ -334,7 +334,7 @@ class SkillRegistry:
     # L-IND-4: allowlist prevents confusing importlib errors on typos and
     # blocks path-traversal attempts (e.g. domain="research..").
     _KNOWN_DOMAINS: frozenset[str] = frozenset(
-        {"research", "parole", "retail", "pc", "industrial", "healthcare"}
+        {"research", "parole", "retail", "pc", "industrial", "healthcare", "lifesciences"}
     )
 
     @staticmethod
@@ -343,8 +343,8 @@ class SkillRegistry:
 
         Args:
             domain: Use-case domain — one of ``"research"``, ``"parole"``,
-                    ``"retail"``, ``"pc"``, ``"industrial"``, or ``"healthcare"``
-                    (default: ``"research"``). Maps to
+                    ``"retail"``, ``"pc"``, ``"industrial"``, ``"healthcare"``,
+                    or ``"lifesciences"`` (default: ``"research"``). Maps to
                     ``adv_multi_agent.<domain>.skills.templates``.
 
         Raises:

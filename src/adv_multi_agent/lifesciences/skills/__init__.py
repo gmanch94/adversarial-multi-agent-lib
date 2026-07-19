@@ -1,0 +1,1 @@
+"""Lifesciences bundled skill templates."""

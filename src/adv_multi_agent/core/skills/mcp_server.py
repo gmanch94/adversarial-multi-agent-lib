@@ -53,7 +53,7 @@ _registry: SkillRegistry | None = None
 # L5: explicit allowlist of bundled-skill domains. An arbitrary SKILLS_DOMAIN
 # string is fed to importlib.resources; bounding to known domains avoids
 # surprises if a future caller types an unexpected value.
-_ALLOWED_DOMAINS = frozenset({"research", "parole", "retail", "pc", "industrial", "healthcare"})
+_ALLOWED_DOMAINS = frozenset({"research", "parole", "retail", "pc", "industrial", "healthcare", "lifesciences"})
 
 
 def _get_registry() -> SkillRegistry:
