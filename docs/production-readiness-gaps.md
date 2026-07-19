@@ -455,3 +455,31 @@ If I had a quarter: 3.1 (signed audit log) and 3.2 (Part 11) unlock the regulate
 - **Qualified RA/QA approver required.** `_DISCLAIMER` (code-injected) states output is decision-support requiring qualified sign-off (Design Assurance/QE, Nutrition Regulatory, Regulatory Strategy, Diagnostics Regulatory, RA lead, MLR committee, Vigilance officer, Recall committee/CQO). Output never auto-filed.
 - **D-LIFESCI-3 no-brand tripwire is a KNOWN-case guard, not a proof of absence.** `tests/unit/test_lifesciences_no_brand_names.py` (base64-seeded denylist) fails CI on any seeded brand string but cannot catch every possible brand; it pairs with — does not replace — the ship-audit review. New distinctive-brand seeds go in as base64 to keep plaintext clean.
 - **Illustrative FDA citations (21 CFR parts) are scenario context, not legal advice.** No workflow output is legal or medical advice.
+
+### Phase-2 batch B backlog (#17–27) — designed-not-built, buildable now
+
+Fill-in against the locked [design-doc Phase-2 catalog](superpowers/specs/2026-07-19-lifesciences-domain-design.md) (rows #17–27), NOT new design (D-LIFESCI-1 = no base class). Mechanical recipe = the [batch-A plan](superpowers/plans/2026-07-19-lifesciences-phase2-batch-a.md); clone the two on-disk idiom skeletons — no-veto from `design_control_traceability.py` / `gxp_data_integrity.py`; veto from `device_reportability.py` / `batch_release_deviation.py`.
+
+11 workflows — 6 veto (17, 19, 23, 25, 26, 27) + 5 no-veto (18, 20, 21, 22, 24):
+
+| # | Workflow | Segment | Idiom | Flag headers |
+|---|----------|---------|-------|--------------|
+| 17 | `BiosimilarComparabilityWorkflow` | Pharma | veto | `ANALYTICAL-SIMILARITY`, `RESIDUAL-UNCERTAINTY`, `BRIDGING` |
+| 18 | `REMSDesignWorkflow` | Pharma | no-veto | `RISK-MITIGATION`, `BURDEN`, `ASSESSMENT-PLAN` |
+| 19 | `SterilityAssuranceWorkflow` | Devices | veto | `SAL`, `BIOBURDEN`, `VALIDATION-GAP` |
+| 20 | `PremarketCybersecurityWorkflow` | Devices | no-veto | `THREAT-MODEL`, `SBOM-GAP`, `PATCHABILITY` |
+| 21 | `PostMarketClinicalFollowupWorkflow` | Devices | no-veto | `EVIDENCE-GAP`, `RESIDUAL-RISK`, `PMCF-ADEQUACY` |
+| 22 | `HEORDossierWorkflow` | Cross | no-veto | `COMPARATOR`, `ENDPOINT-RELEVANCE`, `EXTRAPOLATION` |
+| 23 | `ColdChainExcursionWorkflow` | Pharma/Diagnostics | veto | `STABILITY-IMPACT`, `DISPOSITION`, `EXCURSION-SCOPE` |
+| 24 | `SerializationDSCSAWorkflow` | Pharma | no-veto | `AGGREGATION`, `TRACEABILITY`, `SALEABLE-RETURN` |
+| 25 | `BioequivalenceWorkflow` | Pharma | veto | `PK-BOUNDARY`, `STUDY-DESIGN`, `WAIVER-JUSTIFICATION` |
+| 26 | `MedicalInformationResponseWorkflow` | Pharma | veto | `OFF-LABEL`, `BALANCE`, `EVIDENCE-LEVEL` |
+| 27 | `CCDSLabelChangeWorkflow` | Pharma | veto | `SAFETY-SIGNAL`, `REGIONAL-DIVERGENCE`, `IMPLEMENTATION-CLOCK` |
+
+**Per workflow:** module + test + example + 4 skill templates + own commit. Tests use exact `== [...]` flag assertions + a `stops_at_sibling_header` case (F2 lesson). Veto workflows keep `metadata["first_draft"]`; add its PHI-echo caveat only where aggregate case/subject data is echoed (L-HEALTH-1) — plausibly #21, #23, #26.
+
+**Inherits automatically (verify, do not re-solve):** M-PC-1 veto-marker anchor · H-IND-1 sibling-stop — all 33 batch-B flag headers are uppercase-letters + hyphens only, so NO `core/_internal.py` change is needed · L-PC-5 `truncate_flag_display` · `_MAX_FIELD_CHARS=1500` + `sanitize_for_prompt` bounding. Block-form `inputs:` in skill frontmatter is SUPPORTED (registry fix `c1a7414`) — author templates in block form, do NOT inline.
+
+**Before build:** add the 11 new `test_*.py` filenames to `test_lifesciences_no_brand_names.py::lifesci_modules` (Task-0 pattern); seed any new distinctive brand string as base64 if a scenario introduces one. **After the sweep:** domain-ship security-audit on the new surface; refresh counts (workflows 52 to 63, catalog 16/27 to 27/27, templates 212 to 256) in CLAUDE.md + README + design-doc status + this doc.
+
+**Effort:** ~batch-A scale plus 3 workflows. No blockers; batch B completes the 27-workflow lifesciences catalog.

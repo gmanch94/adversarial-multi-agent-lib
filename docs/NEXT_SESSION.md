@@ -16,7 +16,7 @@ Last updated: 2026-07-19 (PM) — lifesciences Phase-2 batch A (#9–16) SHIPPED
 
 **Things NOT to do next:** don't re-run batch A; block-form `inputs:` in templates is now SUPPORTED — do NOT "fix" templates to inline; don't re-add vendor brand names to PRODUCTION_GAPS; don't add a lifesciences base class (D-LIFESCI-1).
 
-**Next options:** Phase-2 **batch B** — the 11 remaining lifesciences designs #17–27 (same fill-in recipe); or an 8th domain (needs brainstorm→spec→plan first).
+**Next options:** Phase-2 **batch B** — the 11 remaining lifesciences designs #17–27 (tracked backlog: [`production-readiness-gaps.md` §Phase-2 batch B](production-readiness-gaps.md); same fill-in recipe, per-workflow list + inherited-guards checklist there); or an 8th domain (needs brainstorm→spec→plan first).
 
 ### Earlier (2026-07-19 AM) — MVP-8 shipped
 
