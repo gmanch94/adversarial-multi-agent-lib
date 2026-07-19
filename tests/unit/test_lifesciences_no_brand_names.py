@@ -53,6 +53,16 @@ def _lifesciences_files() -> list[Path]:
         "test_promotional_off_label_review.py",
         "test_device_reportability.py",
         "test_field_action_classification.py",
+        # Phase-2 batch A (#9-16) — guarded by .exists() below, so listing them
+        # before the files exist is harmless (the case is skipped).
+        "test_gxp_data_integrity.py",
+        "test_computer_system_validation.py",
+        "test_stability_shelf_life.py",
+        "test_batch_release_deviation.py",
+        "test_cmo_qualification.py",
+        "test_udi_labeling.py",
+        "test_clinical_protocol_design.py",
+        "test_pharmacovigilance_signal.py",
     }
     files.extend(tests_dir / name for name in lifesci_modules if (tests_dir / name).exists())
     return files
