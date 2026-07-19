@@ -395,7 +395,7 @@ Wired metric emissions (8 distinct names):
 - `pip install adv-multi-agent[durable]` extra
 - Better local error messages from the `DURABLE_INSIDE_CONTAINER` fence (currently bare SystemExit)
 - Type stubs for the cipher protocols on PyPI
-- **Migrate parole `_extract_bias_flags` to the shared `extract_flags` helper** (holistic-review 2026-07-18 F1 follow-up). Same private single-class-parser convention debt that was closed for retail `demand_forecasting` + `labor_scheduling` in **D-RETAIL-8**; parole was out of that finding's retail scope and predates the recipe. Fails-safe today but won't inherit future spine fixes (M1 line-anchor, H-IND-1 sibling-stop). Touches convergence logic → surface before folding per CLAUDE.md fold-in policy. Ref: [`docs/reviews/2026-07-18-holistic-implementation-review.md`](reviews/2026-07-18-holistic-implementation-review.md).
+- ~~Migrate parole `_extract_bias_flags` to the shared `extract_flags` helper~~ — **DONE 2026-07-18 (D-PAROLE-1).** Migrated behaviour-neutral (single flag class, template places it last, all prior test cases identical under the shared helper); now inherits M1 line-anchor + H-IND-1 sibling-stop + display cap; test redirected to exact assertions. Closes the D-RETAIL-8 deferral.
 
 ### 4.2 CI / supply chain
 

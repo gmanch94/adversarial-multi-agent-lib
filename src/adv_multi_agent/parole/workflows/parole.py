@@ -44,7 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ class ParoleAssessmentWorkflow(BaseWorkflow):
                 bias_section = ""
                 if current_bias_flags:
                     flags_text = "\n".join(
-                        f"  - {f}" for f in current_bias_flags
+                        f"  - {f}" for f in truncate_flag_display(current_bias_flags)
                     )
                     bias_section = (
                         f"\n⚠️  BIAS FLAGS (must be removed, not rephrased):\n"
@@ -380,7 +380,7 @@ class ParoleAssessmentWorkflow(BaseWorkflow):
             )
             score = review.score
 
-            current_bias_flags = self._extract_bias_flags(review.critique)
+            current_bias_flags = extract_flags(review.critique, "BIAS FLAGS:")
             all_bias_flags.extend(current_bias_flags)
 
             self.wiki.add_feedback(
@@ -421,31 +421,6 @@ class ParoleAssessmentWorkflow(BaseWorkflow):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_bias_flags(critique: str) -> list[str]:
-        """
-        Extract bias flags from reviewer critique.
-
-        The reviewer is instructed to list bias flags under a 'BIAS FLAGS:'
-        heading. This method extracts those lines. Returns empty list if the
-        reviewer reports 'None detected' or the section is absent.
-        """
-        if "BIAS FLAGS:" not in critique:
-            return []
-        section = critique.split("BIAS FLAGS:", 1)[1]
-        flags: list[str] = []
-        for line in section.splitlines():
-            stripped = line.strip().lstrip("-•*").strip()
-            if not stripped:
-                continue
-            # Stop at the next heading or summary line
-            if stripped.lower().startswith(("overall", "key issues", "#")):
-                break
-            if stripped.lower() in ("none detected", "none", "n/a"):
-                return []
-            flags.append(stripped)
-        return flags
 
     @staticmethod
     def _extract_recommendation(output: str) -> str:
