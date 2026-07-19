@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from adv_multi_agent.core._internal import extract_flags
 from adv_multi_agent.core.agents import ReviewResult
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
@@ -210,24 +211,31 @@ class TestDemandOutputStructure:
         )
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
-        assert any("Holiday lift" in f for f in result.metadata["assumption_flags"])
+        assert result.metadata["assumption_flags"] == ["Holiday lift unsubstantiated"]
 
 
 class TestExtractAssumptionFlags:
+    """Flag extraction delegates to the shared ``extract_flags`` helper (F1
+    migration off the private parser). Assertions are exact so a slurp or
+    wiring regression fails instead of passing on membership."""
+
     def test_extracts_flags(self) -> None:
         critique = "Good.\n\nASSUMPTION FLAGS:\n- Holiday lift unsubstantiated\n- Weather factor unexplained\n\nOverall score: 6/10"
-        flags = DemandForecastWorkflow._extract_assumption_flags(critique)
-        assert len(flags) == 2
-        assert "Holiday lift unsubstantiated" in flags
+        flags = extract_flags(critique, "ASSUMPTION FLAGS:")
+        assert flags == ["Holiday lift unsubstantiated", "Weather factor unexplained"]
+
+    def test_stops_at_sibling_header(self) -> None:
+        # Inherited H-IND-1 protection the private parser lacked: a sibling
+        # uppercase header terminates the section instead of being slurped.
+        critique = "ASSUMPTION FLAGS:\n- promo lift unsupported\nEVIDENCE FLAGS:\n- no source"
+        assert extract_flags(critique, "ASSUMPTION FLAGS:") == ["promo lift unsupported"]
 
     def test_returns_empty_when_none_detected(self) -> None:
         critique = "ASSUMPTION FLAGS: None detected\nOverall score: 8/10"
-        flags = DemandForecastWorkflow._extract_assumption_flags(critique)
-        assert flags == []
+        assert extract_flags(critique, "ASSUMPTION FLAGS:") == []
 
     def test_returns_empty_when_section_absent(self) -> None:
-        flags = DemandForecastWorkflow._extract_assumption_flags("No issues.")
-        assert flags == []
+        assert extract_flags("No issues.", "ASSUMPTION FLAGS:") == []
 
 
 class TestForecastRequestToPromptText:

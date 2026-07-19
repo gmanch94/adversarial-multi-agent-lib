@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from adv_multi_agent.core._internal import extract_flags
 from adv_multi_agent.core.agents import ReviewResult
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
@@ -222,24 +223,34 @@ class TestLaborOutputStructure:
         )
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
-        assert any("break" in f.lower() for f in result.metadata["compliance_flags"])
+        assert result.metadata["compliance_flags"] == ["Missing break for 8h shift"]
 
 
 class TestExtractComplianceFlags:
+    """Flag extraction delegates to the shared ``extract_flags`` helper (F1
+    migration off the private parser). Assertions are exact so a slurp or
+    wiring regression fails instead of passing on membership."""
+
     def test_extracts_flags(self) -> None:
         critique = "Good coverage.\n\nCOMPLIANCE FLAGS:\n- Alice at 42h exceeds OT threshold\n- No break noted for 8h shift\n\nOverall score: 6/10"
-        flags = LaborSchedulingWorkflow._extract_compliance_flags(critique)
-        assert len(flags) == 2
-        assert "Alice at 42h exceeds OT threshold" in flags
+        flags = extract_flags(critique, "COMPLIANCE FLAGS:")
+        assert flags == [
+            "Alice at 42h exceeds OT threshold",
+            "No break noted for 8h shift",
+        ]
+
+    def test_stops_at_sibling_header(self) -> None:
+        # Inherited H-IND-1 protection the private parser lacked: a sibling
+        # uppercase header terminates the section instead of being slurped.
+        critique = "COMPLIANCE FLAGS:\n- missing break\nFAIRNESS FLAGS:\n- uneven load"
+        assert extract_flags(critique, "COMPLIANCE FLAGS:") == ["missing break"]
 
     def test_returns_empty_when_none_detected(self) -> None:
         critique = "COMPLIANCE FLAGS: None detected\nOverall score: 9/10"
-        flags = LaborSchedulingWorkflow._extract_compliance_flags(critique)
-        assert flags == []
+        assert extract_flags(critique, "COMPLIANCE FLAGS:") == []
 
     def test_returns_empty_when_section_absent(self) -> None:
-        flags = LaborSchedulingWorkflow._extract_compliance_flags("Looks good.")
-        assert flags == []
+        assert extract_flags("Looks good.", "COMPLIANCE FLAGS:") == []
 
 
 class TestSchedulingRequestToPromptText:

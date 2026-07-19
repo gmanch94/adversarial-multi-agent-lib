@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # L-PC-3: per-field cap on Request.to_prompt_text. Bounds any single
@@ -234,7 +234,9 @@ class DemandForecastWorkflow(BaseWorkflow):
                 assert review is not None
                 flag_section = ""
                 if current_flags:
-                    flags_text = "\n".join(f"  - {f}" for f in current_flags)
+                    flags_text = "\n".join(
+                        f"  - {f}" for f in truncate_flag_display(current_flags)
+                    )
                     flag_section = (
                         f"\n⚠️  ASSUMPTION FLAGS (remove or ground in input data):\n"
                         f"{flags_text}\n"
@@ -259,7 +261,7 @@ class DemandForecastWorkflow(BaseWorkflow):
                 criteria=_FORECAST_REVIEW_CRITERIA,
             )
             score = review.score
-            current_flags = self._extract_assumption_flags(review.critique)
+            current_flags = extract_flags(review.critique, "ASSUMPTION FLAGS:")
             all_flags.extend(current_flags)
 
             self.wiki.add_feedback(
@@ -288,24 +290,6 @@ class DemandForecastWorkflow(BaseWorkflow):
                 "ledger_summary": self.ledger.summary(),
             },
         )
-
-    @staticmethod
-    def _extract_assumption_flags(critique: str) -> list[str]:
-        """Extract assumption flags from reviewer critique."""
-        if "ASSUMPTION FLAGS:" not in critique:
-            return []
-        section = critique.split("ASSUMPTION FLAGS:", 1)[1]
-        flags: list[str] = []
-        for line in section.splitlines():
-            stripped = line.strip().lstrip("-•*").strip()
-            if not stripped:
-                continue
-            if stripped.lower().startswith(("overall", "key issues", "#")):
-                break
-            if stripped.lower() in ("none detected", "none", "n/a"):
-                return []
-            flags.append(stripped)
-        return flags
 
     @staticmethod
     def _build_buyer_checklist(

@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import sanitize_for_prompt
+from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # L-PC-3: per-field cap — prevents a single oversized field crowding out
@@ -231,7 +231,9 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 assert review is not None
                 flag_section = ""
                 if current_flags:
-                    flags_text = "\n".join(f"  - {f}" for f in current_flags)
+                    flags_text = "\n".join(
+                        f"  - {f}" for f in truncate_flag_display(current_flags)
+                    )
                     flag_section = (
                         f"\n⚠️  COMPLIANCE FLAGS (must be fixed, not noted):\n"
                         f"{flags_text}\n"
@@ -256,7 +258,7 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 criteria=_SCHEDULE_REVIEW_CRITERIA,
             )
             score = review.score
-            current_flags = self._extract_compliance_flags(review.critique)
+            current_flags = extract_flags(review.critique, "COMPLIANCE FLAGS:")
             all_flags.extend(current_flags)
 
             self.wiki.add_feedback(
@@ -285,24 +287,6 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 "ledger_summary": self.ledger.summary(),
             },
         )
-
-    @staticmethod
-    def _extract_compliance_flags(critique: str) -> list[str]:
-        """Extract compliance flags from reviewer critique."""
-        if "COMPLIANCE FLAGS:" not in critique:
-            return []
-        section = critique.split("COMPLIANCE FLAGS:", 1)[1]
-        flags: list[str] = []
-        for line in section.splitlines():
-            stripped = line.strip().lstrip("-•*").strip()
-            if not stripped:
-                continue
-            if stripped.lower().startswith(("overall", "key issues", "#")):
-                break
-            if stripped.lower() in ("none detected", "none", "n/a"):
-                return []
-            flags.append(stripped)
-        return flags
 
     @staticmethod
     def _build_manager_checklist(

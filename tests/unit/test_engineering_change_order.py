@@ -121,7 +121,11 @@ class TestECOConvergence:
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
         assert result.converged is False
-        assert any("Function" in f for f in result.metadata["supersession_flags"])
+        # Exact: proves the sibling FMEA-DELTA/REGRESSION headers that follow are
+        # not slurped into this list (H-IND-1 class).
+        assert result.metadata["supersession_flags"] == [
+            "Function bidirectional claimed without gate-drive evidence"
+        ]
 
     @pytest.mark.asyncio
     async def test_does_not_converge_when_fmea_delta_flags_present(self, tmp_path: Path) -> None:
@@ -137,7 +141,9 @@ class TestECOConvergence:
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
         assert result.converged is False
-        assert any("thermal" in f for f in result.metadata["fmea_delta_flags"])
+        assert result.metadata["fmea_delta_flags"] == [
+            "No PFMEA update for thermal-pad footprint change"
+        ]
 
     @pytest.mark.asyncio
     async def test_does_not_converge_when_regression_flags_present(self, tmp_path: Path) -> None:
@@ -152,7 +158,9 @@ class TestECOConvergence:
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
         assert result.converged is False
-        assert any("FW-2.4" in f for f in result.metadata["regression_flags"])
+        assert result.metadata["regression_flags"] == [
+            "FW-2.4 cross-compatibility not in regression matrix"
+        ]
 
 
 class TestECOOutputStructure:

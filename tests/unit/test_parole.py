@@ -309,8 +309,9 @@ class TestBiasFlags:
 
         result = await workflow.run(case=make_case())
 
-        # The flag from round 1 should appear in accumulated bias_flags
-        assert any("ZIP" in f for f in result.metadata["bias_flags"])
+        # Exact accumulated list — a slurp or wiring regression in the private
+        # parser fails here instead of passing on membership (F2).
+        assert result.metadata["bias_flags"] == ["ZIP code used as proxy"]
 
     @pytest.mark.asyncio
     async def test_no_bias_flags_when_clean(self, tmp_path: Path) -> None:

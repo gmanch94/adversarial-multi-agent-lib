@@ -148,7 +148,11 @@ class TestCoverageConvergence:
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
         assert result.converged is False
-        assert any("microorganism" in f for f in result.metadata["wording_flags"])
+        # Exact: proves the sibling CASE-LAW / REVIEWER VETO lines that follow are
+        # not slurped into this list (H-IND-1 class).
+        assert result.metadata["wording_flags"] == [
+            "CP 01 40 quoted incorrectly; missing 'microorganism' clause"
+        ]
 
     @pytest.mark.asyncio
     async def test_does_not_converge_when_case_law_flags_present(
@@ -166,7 +170,9 @@ class TestCoverageConvergence:
         workflow = make_workflow(config, tmp_path, executor, reviewer)
         result = await workflow.run(request=make_request())
         assert result.converged is False
-        assert any("Santo" in f for f in result.metadata["case_law_flags"])
+        assert result.metadata["case_law_flags"] == [
+            "Santo's is 6th Cir applying Iowa law, not Ohio"
+        ]
 
 
 class TestCoverageVeto:

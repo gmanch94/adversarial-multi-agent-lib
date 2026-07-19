@@ -273,11 +273,12 @@ def extract_flags(critique: str, header: str) -> list[str]:
     of the conventional empty markers: `None detected`, `None`, `n/a`
     (case-insensitive).
 
-    Used by retail workflows (`recall_scope`, `loyalty_offer`,
-    `promo_markdown`) that share a multi-flag review-output structure.
-    `demand_forecasting` and `labor_scheduling` use simpler inline parsers
-    by design — their critique structure only has one flag class so the
-    inline-header stop is not needed.
+    Used by every retail workflow (`recall_scope`, `loyalty_offer`,
+    `promo_markdown`, `demand_forecasting`, `labor_scheduling`) plus the pc /
+    industrial / healthcare domains. `demand_forecasting` and
+    `labor_scheduling` were migrated off private single-class parsers to this
+    shared helper (2026-07-18) so they inherit the M1 line-anchor and H-IND-1
+    sibling-stop fixes; single-flag-class callers simply pass their one header.
     """
     # Anchor the header at line-start (allowing leading whitespace) to
     # avoid mis-anchoring on a commentary mention of the header name earlier

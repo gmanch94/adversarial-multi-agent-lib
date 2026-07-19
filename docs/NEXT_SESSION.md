@@ -1,6 +1,21 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-05-18 LATE NIGHT (final) — Tier 2.1 + 2.1d shipped, doc sweep + slides/brief refresh + LinkedIn post + GitHub repo description all aligned to current state.
+Last updated: 2026-07-18 — holistic implementation review + F1/F2 fixes shipped.
+
+## 2026-07-18 — Holistic implementation review + F1/F2 fixes
+
+Whole-implementation standing-back review (convention coherence + test-quality + spine integrity) → report at [`docs/reviews/2026-07-18-holistic-implementation-review.md`](reviews/2026-07-18-holistic-implementation-review.md). Verdict: healthy, no CRIT/HIGH after 16 audit cycles. 2 findings, both fixed same-commit (**D-RETAIL-8**):
+
+- **F1** — `demand_forecasting` + `labor_scheduling` migrated off private single-class flag parsers to shared `extract_flags` + `truncate_flag_display`; private `_extract_*_flags` deleted; both now inherit M1 line-anchor + H-IND-1 sibling-stop + display-cap. Stale "by design" note in `_internal.py` docstring corrected.
+- **F2** — per-workflow flag assertions tightened `any(substr in f)` → exact `== [...]` (retail demand/labor + explicit sibling-stop tests, pc `coverage_decision`, industrial `engineering_change_order`, parole). Healthcare + research already tight. One-exact-per-domain scope; ~20 shared-parser `any()` files left (parser covered centrally by `test_extract_flags.py`).
+
+**Gate:** ruff + mypy (81 files) + **770 library tests** (was 768; +2). Sibling tests untouched (library/domain-only change).
+
+**Open follow-up (in gaps §4.1):** migrate parole `_extract_bias_flags` — same private-parser debt, out of F1's retail scope; touches convergence logic so surface-before-fold. NOT done here.
+
+### Resume point: no in-flight work; backlog open
+
+---
 
 ## 2026-05-18 LATE NIGHT (final) — Doc + comms alignment after Tier 2.1d
 
