@@ -304,6 +304,33 @@ class SkillRegistry:
                     if v.strip()
                 ]
                 result[key] = items
+            elif value == "":
+                # Block sequence: `key:` on its own line followed by
+                # deeper-indented `- item` lines. The minimal parser previously
+                # stored a bare `key:` as an empty string, silently dropping
+                # list-valued frontmatter written in block form (e.g. an
+                # `inputs:` list) so the whole skill was rejected. Gather the
+                # `- ` items; fall back to "" when none follow.
+                seq: list[str] = []
+                j = i + 1
+                while j < len(raw_lines):
+                    cont = raw_lines[j]
+                    cont_body = cont.strip()
+                    if not cont_body:
+                        j += 1
+                        continue
+                    cont_indent = len(cont) - len(cont.lstrip(" "))
+                    if cont_indent <= key_indent or not cont_body.startswith("- "):
+                        break
+                    seq.append(
+                        SkillRegistry._strip_balanced_quotes(cont_body[2:].strip())
+                    )
+                    j += 1
+                if seq:
+                    result[key] = seq
+                    i = j
+                    continue
+                result[key] = ""
             else:
                 result[key] = SkillRegistry._strip_balanced_quotes(value)
             i += 1

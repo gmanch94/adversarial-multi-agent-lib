@@ -374,3 +374,131 @@ class TestSkillVersion:
         with pytest.warns(UserWarning, match="invalid skill version"):
             registry = SkillRegistry(str(tmp_path))
         assert registry.list() == []
+
+
+# ---------------------------------------------------------------------------
+# Block-sequence frontmatter (`inputs:` written as `- item` lines)
+# ---------------------------------------------------------------------------
+
+
+class TestBlockSequenceFrontmatter:
+    """Regression guard: the minimal YAML parser must accept a list written in
+    block-sequence form (`key:` then indented `- item` lines), not only the
+    inline `[a, b]` form. Before this was fixed, block-form `inputs:` parsed to
+    an empty string, producing `['']`, and the whole skill was silently skipped
+    — which had left every block-form bundled template undiscoverable.
+    """
+
+    def test_block_sequence_inputs_parse(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: blockseq\n"
+            "description: uses block-form inputs\n"
+            "inputs:\n"
+            "  - previous\n"
+            "  - score\n"
+            "  - wiki_context\n"
+            "---\n"
+            "P={previous} S={score} W={wiki_context}"
+        )
+        (tmp_path / "blockseq.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("blockseq")
+        assert skill.inputs == ["previous", "score", "wiki_context"]
+
+    def test_single_item_block_sequence_parse(self, tmp_path: Path) -> None:
+        content = (
+            "---\n"
+            "name: oneitem\n"
+            "description: single block-form input\n"
+            "inputs:\n"
+            "  - output\n"
+            "---\n"
+            "Review {output}"
+        )
+        (tmp_path / "oneitem.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("oneitem")
+        assert skill.inputs == ["output"]
+
+    def test_block_sequence_terminates_before_body(self, tmp_path: Path) -> None:
+        """A block scalar sibling after the sequence still parses correctly."""
+        content = (
+            "---\n"
+            "name: mixed\n"
+            "inputs:\n"
+            "  - a\n"
+            "  - b\n"
+            "description: |\n"
+            "  line one\n"
+            "  line two\n"
+            "---\n"
+            "body {a} {b}"
+        )
+        (tmp_path / "mixed.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("mixed")
+        assert skill.inputs == ["a", "b"]
+        assert skill.description == "line one\nline two"
+
+    def test_bare_key_still_empty_string(self, tmp_path: Path) -> None:
+        """A `key:` with nothing following it stays an empty string (no
+        spurious list) — back-compat for bare keys."""
+        content = (
+            "---\n"
+            "name: barekey\n"
+            "description:\n"
+            "inputs: [topic]\n"
+            "---\n"
+            "About {topic}"
+        )
+        (tmp_path / "barekey.md").write_text(content, encoding="utf-8")
+        skill = SkillRegistry(str(tmp_path)).get("barekey")
+        assert skill.description == ""
+        assert skill.inputs == ["topic"]
+
+
+# ---------------------------------------------------------------------------
+# Bundled-template discovery — no template silently dropped (convention guard)
+# ---------------------------------------------------------------------------
+
+_BUNDLED_DOMAINS = (
+    "research",
+    "parole",
+    "retail",
+    "pc",
+    "industrial",
+    "healthcare",
+    "lifesciences",
+)
+
+
+class TestBundledTemplatesDiscoverable:
+    """Every bundled `.md` under each domain must actually load. This is the
+    guard that would have caught the block-sequence parse bug: 5 domains had
+    shipped templates that were silently skipped (parsed to `['']`) so their
+    discoverable count was far below their file count, with no red CI. Asserting
+    files-on-disk == skills-discovered (rather than a hardcoded number) also
+    survives future template additions.
+    """
+
+    @pytest.mark.parametrize("domain", _BUNDLED_DOMAINS)
+    def test_all_bundled_templates_load(self, domain: str) -> None:
+        path = SkillRegistry.bundled_skills_path(domain)
+        md_files = sorted(path.glob("*.md"))
+        assert md_files, f"no bundled templates found for domain {domain!r}"
+        registry = SkillRegistry(str(path))  # raises on duplicate names
+        discovered = registry.list()
+        assert len(discovered) == len(md_files), (
+            f"{domain}: {len(md_files)} template files on disk but only "
+            f"{len(discovered)} discoverable — a template is being silently "
+            f"skipped (malformed frontmatter or unsupported YAML form)."
+        )
+
+    def test_total_bundled_templates(self) -> None:
+        total = sum(
+            len(SkillRegistry(str(SkillRegistry.bundled_skills_path(d))).list())
+            for d in _BUNDLED_DOMAINS
+        )
+        on_disk = sum(
+            len(list(SkillRegistry.bundled_skills_path(d).glob("*.md")))
+            for d in _BUNDLED_DOMAINS
+        )
+        assert total == on_disk
