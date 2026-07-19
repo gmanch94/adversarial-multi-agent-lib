@@ -1,6 +1,20 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-19 (PM) — lifesciences Phase-2 batch A (#9–16) SHIPPED + core skill-registry parser bugfix; gate green; pushed to origin/main.
+Last updated: 2026-07-19 (EVE) — GitHub repo description refreshed + architecture-docs stale-check fixed; HEAD `3dffbd7`, pushed to origin/main; tree clean. Two doc-refresh items left open.
+
+## 2026-07-19 (EVE) — Repo description + architecture-docs stale-check (docs-only)
+
+**Docs maintenance. HEAD `3dffbd7`, pushed to main, tree clean. No code touched.**
+
+- **GitHub repo description** updated via `gh repo edit` (was ~2 months stale: 36 wf · 953 tests · no lifesciences) → 52 wf · 7 domains · 212 templates · 1068 lib tests · 5 production siblings.
+- **Stale-check of the two living architecture docs** ([`architecture.md`](architecture.md) + [`deployment-architecture.md`](deployment-architecture.md)) — both frozen at the 2026-05-16 healthcare ship. ~20 drift points fixed in `3dffbd7`: 148→212 templates, 768/766→1068 lib tests, 6→7 domains, 4→5 siblings; lifesciences added to BOTH mermaid diagrams (subgraph + component row + Agents/Stores + Caller edges — healthcare edges were also missing), SKILLS_DOMAIN enum, triple-flag + veto workflow paths; architecture "Phases 1–8"→"1–6" reconciled (build-plan documents 6). Folded CLAUDE.md "4→5 production siblings" (its own parenthetical already listed 5).
+- **Ground truth verified from the tree, not just CLAUDE.md:** 53 workflow files = 52 distinct (healthcare `clinical_trial_eligibility_durable.py` is a durable variant, not a 9th workflow); lifesciences = 8 veto / 16 wf / 64 templates; `_KNOWN_DOMAINS` (registry.py) + `_ALLOWED_DOMAINS` (mcp_server.py) both include lifesciences.
+
+**Two doc-refresh items LEFT OPEN (surfaced, user did not take):**
+1. **Durable node NOT in the system-context diagram** (architecture.md §1) — deliberate. Durable was omitted before AND after 2026-05-16 → scope choice, not drift; already covered by §2 table row + deployment "Optional durable scheduler". Do NOT treat as staleness; only add if the user asks.
+2. **build-plan.md is itself stale** — frozen at Phase 6; doesn't cover durable / 5 siblings / multi-tenant / the domains past research. Needs real phase content, not a count-bump — left for a deliberate refresh.
+
+**Things NOT to do next:** don't re-apply the arch-doc count fixes (done); don't add durable to the system-context diagram unless asked (intentional omission); mermaid render-verify was NOT run before push (low risk — new nodes are double-quoted rectangles mirroring existing ones) — eyeball on GitHub if a diagram looks off.
 
 ## 2026-07-19 (PM) — Lifesciences Phase-2 batch A (#9–16) SHIPPED + registry parser fix
 
