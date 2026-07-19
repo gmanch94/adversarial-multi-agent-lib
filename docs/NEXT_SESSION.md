@@ -1,6 +1,24 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-19 — lifesciences MVP-8 domain SHIPPED (autonomous build); gate green; pushed to origin/main.
+Last updated: 2026-07-19 (PM) — lifesciences Phase-2 batch A (#9–16) SHIPPED + core skill-registry parser bugfix; gate green; pushed to origin/main.
+
+## 2026-07-19 (PM) — Lifesciences Phase-2 batch A (#9–16) SHIPPED + registry parser fix
+
+**8 Phase-2 workflows built (fill-in against the locked catalog) + a core-registry bugfix caught mid-build + a ship-audit brand fix. Full gate GREEN. Pushed.**
+
+- **Batch A = catalog #9–16** (plan [`2026-07-19-lifesciences-phase2-batch-a.md`](superpowers/plans/2026-07-19-lifesciences-phase2-batch-a.md)): GxPDataIntegrity, ComputerSystemValidation, StabilityShelfLife, CMOQualification, UDILabeling (no-veto ×5) + BatchReleaseDeviation, ClinicalProtocolDesign, PharmacovigilanceSignal (veto ×3). Each = module + test + example + 4 skill templates, own commit. Lifesciences now **16 of 27** (batch B = #17–27, 11 left).
+- **Core bugfix `c1a7414`** — the minimal skill-frontmatter YAML parser only handled inline `inputs: [a, b]`, NOT block-sequence `inputs:` + `- a` lines. Block-form templates parsed to `['']` and were SILENTLY skipped, so ~60 shipped templates were undiscoverable across **5 domains** (parole, pc, industrial, healthcare, lifesciences-MVP8) — the MVP-8 "discoverable = 32" claim was false. One parser fix + a `test_registry.py` guard asserting **files-on-disk == skills-discovered per domain** (the test that would have caught it). All 7 domains now discover fully → **212 discoverable** (verified).
+- **Brand fix `953f5ca`** (ship-audit MEDIUM) — D-LIFESCI-3 bars ALL brand/company names; 6 commercial-tool names sat in PRODUCTION_GAPS (2 batch-A: ValGenesis, Argus; 4 pre-existing MVP-8: Windchill/Teamcenter/DOORS, TrackWise, PromoMats). Genericized; tripwire denylist extended (base64, distinctive tokens only; the common-word requirements tool deliberately omitted).
+- **Gate:** ruff + mypy strict (100 files) + **1068 library tests** + tripwire 117 (brand-free) + 212 templates discoverable. **Ship-audit (independent reviewer, checks a–j):** all functional checks PASS; the 1 MEDIUM (brands) fixed pre-push.
+- **Counts now:** 7 domains · 52 workflows · 1068 lib + 185 sibling tests · 212 skill templates (all discoverable). CLAUDE.md + README + decisions (D-LIFESCI-5) + design-doc Phase-2 table refreshed.
+
+**Commit chain (newest code first):** `953f5ca` brand fix · `c1a7414` registry parser fix + guard · then the 8 workflow commits + `b1f53ff` tripwire-set + `7c5b873` plan. Docs commit on top.
+
+**Things NOT to do next:** don't re-run batch A; block-form `inputs:` in templates is now SUPPORTED — do NOT "fix" templates to inline; don't re-add vendor brand names to PRODUCTION_GAPS; don't add a lifesciences base class (D-LIFESCI-1).
+
+**Next options:** Phase-2 **batch B** — the 11 remaining lifesciences designs #17–27 (same fill-in recipe); or an 8th domain (needs brainstorm→spec→plan first).
+
+### Earlier (2026-07-19 AM) — MVP-8 shipped
 
 ## 2026-07-19 — Lifesciences MVP-8 domain SHIPPED (autonomous build, complete)
 

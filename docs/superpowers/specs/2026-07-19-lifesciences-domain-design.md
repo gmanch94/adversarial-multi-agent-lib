@@ -197,9 +197,15 @@ Review a nutrition product's label claims for substantiation and regulatory adeq
 
 ---
 
-## Phase-2 catalog (19 locked designs, not built)
+## Phase-2 catalog (19 locked designs)
 
 Recorded so a later build is fill-in, not re-design. Flag hints illustrative.
+
+**Status:** #9–16 BUILT as **Phase-2 batch A** (2026-07-19; plan
+[`2026-07-19-lifesciences-phase2-batch-a.md`](../plans/2026-07-19-lifesciences-phase2-batch-a.md)).
+#17–27 (rows below) remain designed-not-built (batch B). The batch-A flag hints
+became the real flag headers; the 4th quality dimension + veto trigger were
+authored in the plan.
 
 | # | Workflow | Segment | Flag hint | Veto |
 |---|----------|---------|-----------|------|
