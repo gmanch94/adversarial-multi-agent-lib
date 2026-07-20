@@ -377,7 +377,7 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
             # L-IND-2: surface the clean executor draft from the vetoed round so
             # the approver sees what the AI produced before the REVIEWER VETO
             # banner was prepended. (Input is aggregate signal + label text, not
-            # case-level narratives, so no L-HEALTH-1 PHI caveat applies here.)
+            # case-level narratives, so no patient-PHI caveat applies here.)
             metadata["first_draft"] = output
 
         return WorkflowResult(

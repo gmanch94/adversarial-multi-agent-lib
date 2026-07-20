@@ -111,7 +111,7 @@ class TestRequestToPromptText:
         oversized = "x" * (_MAX_FIELD_CHARS + 500)
         text = make_request(pk_parameters=oversized).to_prompt_text()
         section = text.split("PK parameters:")[1].split("\n")[0]
-        assert len(section.strip()) <= _MAX_FIELD_CHARS
+        assert len(section.strip()) == _MAX_FIELD_CHARS
 
 
 @pytest.mark.asyncio

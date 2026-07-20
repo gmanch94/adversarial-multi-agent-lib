@@ -44,8 +44,8 @@ def make_review(score: float, *, approved: bool, critique: str = "") -> ReviewRe
 
 def make_request(**kwargs: Any) -> SterilityAssuranceRequest:
     defaults: dict[str, Any] = dict(
-        product_description="A single-use surgical device in a Tyvek/film "
-                           "sterile-barrier pouch.",
+        product_description="A single-use surgical device in a porous nonwoven / "
+                           "film sterile-barrier pouch.",
         sterilization_method="Ethylene oxide (EO); chosen for material "
                             "compatibility with the polymer housing.",
         sal_target="10^-6.",
@@ -113,7 +113,7 @@ class TestRequestToPromptText:
         oversized = "x" * (_MAX_FIELD_CHARS + 500)
         text = make_request(bioburden_summary=oversized).to_prompt_text()
         section = text.split("Bioburden summary:")[1].split("\n")[0]
-        assert len(section.strip()) <= _MAX_FIELD_CHARS
+        assert len(section.strip()) == _MAX_FIELD_CHARS
 
 
 @pytest.mark.asyncio

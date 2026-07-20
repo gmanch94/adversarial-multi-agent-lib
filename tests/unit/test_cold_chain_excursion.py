@@ -112,7 +112,7 @@ class TestRequestToPromptText:
         oversized = "x" * (_MAX_FIELD_CHARS + 500)
         text = make_request(excursion_description=oversized).to_prompt_text()
         section = text.split("Excursion description:")[1].split("\n")[0]
-        assert len(section.strip()) <= _MAX_FIELD_CHARS
+        assert len(section.strip()) == _MAX_FIELD_CHARS
 
 
 @pytest.mark.asyncio

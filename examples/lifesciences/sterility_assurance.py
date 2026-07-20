@@ -43,7 +43,7 @@ async def main() -> None:
     request = SterilityAssuranceRequest(
         product_description=(
             "A single-use arthroscopy shaver handpiece with a polymer housing, "
-            "terminally sterilized in a Tyvek/film sterile-barrier pouch."
+            "terminally sterilized in a porous nonwoven / film sterile-barrier pouch."
         ),
         sterilization_method=(
             "Ethylene oxide (EO), selected for compatibility with the "
