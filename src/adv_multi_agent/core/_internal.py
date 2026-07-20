@@ -366,9 +366,9 @@ def extract_veto_directive(
       still captured).
     - All continuation lines are empty or are sibling section headers.
 
-    Sibling-header detection uses the L5-hardened rule
-    (`lhs.replace(" ", "").isalpha() and lhs.isupper()`) — rejects mixed-
-    case AND digit/punctuation-only colon lines.
+    Sibling-header detection uses the shared `_is_sibling_header_lhs` helper
+    (H-IND-1: uppercase letters + spaces + hyphens, e.g. `RELEASE-RISK`) —
+    rejects mixed-case AND digit/other-punctuation-containing colon lines.
 
     The returned directive is truncated to `max_chars`.
     """

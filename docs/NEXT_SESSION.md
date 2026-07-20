@@ -1,6 +1,6 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-20 — Lifesciences Phase-2 **batch B (#17–27) SHIPPED**; lifesciences catalog **COMPLETE (27/27)**; full gate green; ship-audit fixed pre-push; pushed to origin/main; tree clean.
+Last updated: 2026-07-20 — Lifesciences Phase-2 **batch B (#17–27) SHIPPED**; lifesciences catalog **COMPLETE (27/27)**; full gate green; ship-audit fixed pre-push; deferred core-docstring LOW fixed on confirmation; pushed to origin/main; tree clean.
 
 ## 2026-07-20 — Lifesciences Phase-2 batch B (#17–27) SHIPPED — CATALOG COMPLETE
 
@@ -17,9 +17,9 @@ Last updated: 2026-07-20 — Lifesciences Phase-2 **batch B (#17–27) SHIPPED**
 
 **Things NOT to do next:** don't re-run batch B; block-form `inputs:` in templates is SUPPORTED (do not "fix" to inline); don't re-add vendor brands (no "Tyvek"/"ValGenesis"/etc.); don't add a lifesciences base class (D-LIFESCI-1); **lifesciences is COMPLETE — no more lifesciences workflows to build.**
 
-**One deferred LOW (surfaced, not folded — needs a confirm):** `core/_internal.py` `extract_veto_directive` **docstring** still describes the pre-H-IND-1 `isalpha()/isupper()` rule while the code calls `_is_sibling_header_lhs` (doc drift only, behavior correct). It touches the shared veto-parser (convergence-logic area), so per the fold-in policy it was left for confirmation rather than folded into this batch. A one-line docstring fix when someone next touches that helper.
+**Deferred LOW — FIXED (user confirmed):** `core/_internal.py` `extract_veto_directive` **docstring** described the pre-H-IND-1 `isalpha()/isupper()` rule while the code calls `_is_sibling_header_lhs`; corrected to reference the helper (H-IND-1: uppercase + spaces + hyphens). Docstring-only, behavior unchanged; ruff + mypy + 46 parser tests green. Shipped after the batch-B push.
 
-**Next options:** industrial Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-14-industrial-domain-design.md)) or healthcare Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-16-healthcare-domain-design.md)) — same fill-in recipe; an 8th domain (needs brainstorm→spec→plan first); or the deferred core-docstring fix above.
+**Next options:** industrial Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-14-industrial-domain-design.md)) or healthcare Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-16-healthcare-domain-design.md)) — same fill-in recipe; or an 8th domain (needs brainstorm→spec→plan first).
 
 ## 2026-07-19 (EVE) — Repo description + architecture-docs stale-check (docs-only)
 
