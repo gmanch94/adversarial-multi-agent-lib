@@ -201,11 +201,16 @@ Review a nutrition product's label claims for substantiation and regulatory adeq
 
 Recorded so a later build is fill-in, not re-design. Flag hints illustrative.
 
-**Status:** #9–16 BUILT as **Phase-2 batch A** (2026-07-19; plan
-[`2026-07-19-lifesciences-phase2-batch-a.md`](../plans/2026-07-19-lifesciences-phase2-batch-a.md)).
-#17–27 (rows below) remain designed-not-built (batch B). The batch-A flag hints
-became the real flag headers; the 4th quality dimension + veto trigger were
-authored in the plan.
+**Status: CATALOG COMPLETE (27/27 BUILT).** #9–16 shipped as **Phase-2 batch A**
+(2026-07-19; plan
+[`2026-07-19-lifesciences-phase2-batch-a.md`](../plans/2026-07-19-lifesciences-phase2-batch-a.md));
+#17–27 shipped as **Phase-2 batch B** (2026-07-20; plan
+[`2026-07-20-lifesciences-phase2-batch-b.md`](../plans/2026-07-20-lifesciences-phase2-batch-b.md)).
+For every row, the flag hints became the real flag headers; the 4th quality
+dimension + veto trigger were authored in the batch plans. #26 carries a
+D-LIFESCI-2 boundary vs `PromotionalOffLabelReviewWorkflow`; #27 vs
+`PharmacovigilanceSignalWorkflow`; the L-HEALTH-1 first_draft PHI caveat is kept
+only where case-level patient data is echoed (#16, #26).
 
 | # | Workflow | Segment | Flag hint | Veto |
 |---|----------|---------|-----------|------|

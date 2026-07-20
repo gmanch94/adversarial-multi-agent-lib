@@ -2,7 +2,7 @@
 
 Single-page picture of where every byte of the library runs, in caller deployments and in local dev. Companion to [`architecture.md`](architecture.md) (which owns components + flows) and the example at [`../examples/research/basic_review_loop.py`](../examples/research/basic_review_loop.py) (which owns the canonical caller-side wiring).
 
-Updated through the 2026-07-19 lifesciences-domain ship (MVP-8 + Phase-2 batch A). Prior cycles: durable POC + 5 production siblings (durable_postgres · _k8s · _otel · cipher_gcp_kms · cipher_aws_kms) + Tier-2.1 multi-tenant; 2026-05-16 healthcare ([`security-audits/2026-05-16-healthcare-sweep.md`](security-audits/2026-05-16-healthcare-sweep.md)); 2026-05-14 industrial + PC; 2026-05-12 initial.
+Updated through the 2026-07-20 lifesciences Phase-2 batch B ship (catalog COMPLETE at 27/27). Prior cycles: durable POC + 5 production siblings (durable_postgres · _k8s · _otel · cipher_gcp_kms · cipher_aws_kms) + Tier-2.1 multi-tenant; 2026-05-16 healthcare ([`security-audits/2026-05-16-healthcare-sweep.md`](security-audits/2026-05-16-healthcare-sweep.md)); 2026-05-14 industrial + PC; 2026-05-12 initial.
 
 ---
 
@@ -48,7 +48,7 @@ flowchart TB
             subgraph HealthDom["healthcare/ (8 MVP · 27 catalog)"]
                 HD["diagnosis_code_audit · discharge_planning_risk<br/>prior_authorization_review · claims_appeal_review<br/>drug_interaction_flagging (veto) · adverse_event_triage (veto)<br/>treatment_plan_review (veto) · clinical_trial_eligibility (veto+bias)"]:::lib
             end
-            subgraph LifeSciDom["lifesciences/ (16 of 27 catalog · MVP-8 + Phase-2 batch A)"]
+            subgraph LifeSciDom["lifesciences/ (27 of 27 catalog · COMPLETE)"]
                 LSD["substantial_equivalence_510k (veto) · assay_performance_claim (veto)<br/>combination_product_pmoa · device_reportability (veto)<br/>field_action_classification (veto) · promotional_off_label_review (veto)<br/>design_control_traceability · nutrition_health_claim<br/>gxp_data_integrity · computer_system_validation · stability_shelf_life<br/>batch_release_deviation (veto) · cmo_qualification · udi_labeling<br/>clinical_protocol_design (veto) · pharmacovigilance_signal (veto)"]:::lib
             end
             subgraph CorePkg["core/"]
@@ -149,7 +149,7 @@ flowchart TB
     classDef user fill:#f3f4f6,stroke:#374151,color:#000
 
     Dev(["Maintainer terminal"]):::user
-    Pyt(["pytest + pytest-asyncio<br/>1068 lib + 185 sibling tests · mypy strict · ruff clean"]):::user
+    Pyt(["pytest + pytest-asyncio<br/>1257 lib + 185 sibling tests · mypy strict · ruff clean"]):::user
 
     subgraph Host["Host machine — Windows / macOS / Linux"]
         direction TB
@@ -186,9 +186,9 @@ flowchart TB
 | Install | `pip install -e .` against this repo | `pip install adv-multi-agent` (PyPI publish pending credentials) |
 | API keys | Real keys in `.env` (gitignored) | Caller's secret manager / CI variable |
 | Workspace | Repo root (`./ledger.json`, `./wiki.json` auto-created and sandboxed there) | Caller-controlled (`Config(workspace_dir="/var/lib/research")`) |
-| Skill files | Bundled in wheel (212 templates across 7 domains); local override via `Config(skills_dir=...)` | Same |
+| Skill files | Bundled in wheel (256 templates across 7 domains); local override via `Config(skills_dir=...)` | Same |
 | Network | Live API calls — costs real money per run | Same — there is no mock mode |
-| Tests | **1068 library tests + 185 sibling tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 7 domains + durable subpackage + 5 production sibling deployments | Caller writes their own tests against their workflows |
+| Tests | **1257 library tests + 185 sibling tests**: `pytest -k unit` (pure logic, no API) + `pytest -k integration` (fake agents via DI) covering all 7 domains + durable subpackage + 5 production sibling deployments | Caller writes their own tests against their workflows |
 
 ### How to run the canonical example
 

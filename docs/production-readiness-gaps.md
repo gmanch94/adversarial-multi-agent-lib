@@ -443,7 +443,7 @@ If I had a quarter: 3.1 (signed audit log) and 3.2 (Part 11) unlock the regulate
 
 ---
 
-## Lifesciences domain (MVP-8 + Phase-2 batch A) — advisory gaps + ship-audit (2026-07-19)
+## Lifesciences domain (MVP-8 + Phase-2 batch A + batch B · CATALOG COMPLETE 27/27) — advisory gaps + ship-audit (2026-07-19 / -20)
 
 **MVP-8 ship-audit verdict:** SHIP-CLEAN. Independent reviewer audited all 8 MVP workflows against the two healthcare skeletons on 7 invariants (shared-helper inheritance, input bounding, code-injected disclaimer/banner, flag-header hygiene H-IND-1, veto ordering, input-shape attack vectors, D-LIFESCI-3 no-brand). Zero CRITICAL/HIGH. One LOW — missing L-HEALTH-1 PHI-echo caveat on `device_reportability.py` `first_draft` — fixed pre-push in `777a72d`. No outstanding MEDIUM/LOW.
 
@@ -456,30 +456,12 @@ If I had a quarter: 3.1 (signed audit log) and 3.2 (Part 11) unlock the regulate
 - **D-LIFESCI-3 no-brand tripwire is a KNOWN-case guard, not a proof of absence.** `tests/unit/test_lifesciences_no_brand_names.py` (base64-seeded denylist) fails CI on any seeded brand string but cannot catch every possible brand; it pairs with — does not replace — the ship-audit review. New distinctive-brand seeds go in as base64 to keep plaintext clean.
 - **Illustrative FDA citations (21 CFR parts) are scenario context, not legal advice.** No workflow output is legal or medical advice.
 
-### Phase-2 batch B backlog (#17–27) — designed-not-built, buildable now
+### Phase-2 batch B (#17–27) — SHIPPED 2026-07-20 (catalog complete)
 
-Fill-in against the locked [design-doc Phase-2 catalog](superpowers/specs/2026-07-19-lifesciences-domain-design.md) (rows #17–27), NOT new design (D-LIFESCI-1 = no base class). Mechanical recipe = the [batch-A plan](superpowers/plans/2026-07-19-lifesciences-phase2-batch-a.md); clone the two on-disk idiom skeletons — no-veto from `design_control_traceability.py` / `gxp_data_integrity.py`; veto from `device_reportability.py` / `batch_release_deviation.py`.
+Built as additive siblings against the locked design-doc catalog + the [batch-B plan](superpowers/plans/2026-07-20-lifesciences-phase2-batch-b.md), commit-per-workflow (`16db41c` biosimilar · `2d766b5` REMS · `6adc0cc` sterility · `363f5df` premarket-cyber · `55c23a9` PMCF · `e60cfe6` HEOR · `f190443` cold-chain · `2ea1599` serialization · `81800fd` bioequivalence · `f862697` medinfo · `3aeef02` CCDS; plan `eeb36cc`, tripwire `8c7844c`). 6 veto (#17/#19/#23/#25/#26/#27) + 5 no-veto (#18/#20/#21/#22/#24). **Lifesciences catalog now 27/27 — COMPLETE.**
 
-11 workflows — 6 veto (17, 19, 23, 25, 26, 27) + 5 no-veto (18, 20, 21, 22, 24):
-
-| # | Workflow | Segment | Idiom | Flag headers |
-|---|----------|---------|-------|--------------|
-| 17 | `BiosimilarComparabilityWorkflow` | Pharma | veto | `ANALYTICAL-SIMILARITY`, `RESIDUAL-UNCERTAINTY`, `BRIDGING` |
-| 18 | `REMSDesignWorkflow` | Pharma | no-veto | `RISK-MITIGATION`, `BURDEN`, `ASSESSMENT-PLAN` |
-| 19 | `SterilityAssuranceWorkflow` | Devices | veto | `SAL`, `BIOBURDEN`, `VALIDATION-GAP` |
-| 20 | `PremarketCybersecurityWorkflow` | Devices | no-veto | `THREAT-MODEL`, `SBOM-GAP`, `PATCHABILITY` |
-| 21 | `PostMarketClinicalFollowupWorkflow` | Devices | no-veto | `EVIDENCE-GAP`, `RESIDUAL-RISK`, `PMCF-ADEQUACY` |
-| 22 | `HEORDossierWorkflow` | Cross | no-veto | `COMPARATOR`, `ENDPOINT-RELEVANCE`, `EXTRAPOLATION` |
-| 23 | `ColdChainExcursionWorkflow` | Pharma/Diagnostics | veto | `STABILITY-IMPACT`, `DISPOSITION`, `EXCURSION-SCOPE` |
-| 24 | `SerializationDSCSAWorkflow` | Pharma | no-veto | `AGGREGATION`, `TRACEABILITY`, `SALEABLE-RETURN` |
-| 25 | `BioequivalenceWorkflow` | Pharma | veto | `PK-BOUNDARY`, `STUDY-DESIGN`, `WAIVER-JUSTIFICATION` |
-| 26 | `MedicalInformationResponseWorkflow` | Pharma | veto | `OFF-LABEL`, `BALANCE`, `EVIDENCE-LEVEL` |
-| 27 | `CCDSLabelChangeWorkflow` | Pharma | veto | `SAFETY-SIGNAL`, `REGIONAL-DIVERGENCE`, `IMPLEMENTATION-CLOCK` |
-
-**Per workflow:** module + test + example + 4 skill templates + own commit. Tests use exact `== [...]` flag assertions + a `stops_at_sibling_header` case (F2 lesson). Veto workflows keep `metadata["first_draft"]`; add its PHI-echo caveat only where aggregate case/subject data is echoed (L-HEALTH-1) — plausibly #21, #23, #26.
-
-**Inherits automatically (verify, do not re-solve):** M-PC-1 veto-marker anchor · H-IND-1 sibling-stop — all 33 batch-B flag headers are uppercase-letters + hyphens only, so NO `core/_internal.py` change is needed · L-PC-5 `truncate_flag_display` · `_MAX_FIELD_CHARS=1500` + `sanitize_for_prompt` bounding. Block-form `inputs:` in skill frontmatter is SUPPORTED (registry fix `c1a7414`) — author templates in block form, do NOT inline.
-
-**Before build:** add the 11 new `test_*.py` filenames to `test_lifesciences_no_brand_names.py::lifesci_modules` (Task-0 pattern); seed any new distinctive brand string as base64 if a scenario introduces one. **After the sweep:** domain-ship security-audit on the new surface; refresh counts (workflows 52 to 63, catalog 16/27 to 27/27, templates 212 to 256) in CLAUDE.md + README + design-doc status + this doc.
-
-**Effort:** ~batch-A scale plus 3 workflows. No blockers; batch B completes the 27-workflow lifesciences catalog.
+- **Gate:** ruff clean · mypy strict clean (111 files) · **1257 library tests** · tripwire 194 (brand-free, 11 new modules registered) · registry 43 (files-on-disk == discovered per domain → **256 templates** all discoverable).
+- **Boundary docstrings:** #26 `MedicalInformationResponseWorkflow` vs `PromotionalOffLabelReviewWorkflow` (reactive scientific exchange vs proactive promotion); #27 `CCDSLabelChangeWorkflow` vs `PharmacovigilanceSignalWorkflow` (downstream label-change implementation vs signal detection). Each carries a `test_module_docstring_states_*_boundary`.
+- **L-HEALTH-1 PHI caveat:** kept only on #26 (inquiry can echo a patient case); dropped on the other 5 veto workflows (#17/#19/#23/#25/#27 — analytical / sterility / product-lot / aggregate-PK / aggregate-signal data, no individual PHI). #27's Request is designed around the *summarized* signal + label text, not raw case narratives.
+- **Inherited (verified, not re-solved):** M-PC-1 veto-marker anchor · H-IND-1 sibling-stop (all 33 batch-B headers uppercase-letters + hyphens only → no `core/_internal.py` change) · L-PC-5 display cap · `_MAX_FIELD_CHARS=1500` bounding. Block-form template frontmatter authored per the `c1a7414` registry fix.
+- **Ship-audit verdict (independent reviewer, checks a–i):** 0 CRITICAL / 0 HIGH / 1 MEDIUM / 3 LOW. All functional checks PASS on all 11 modules (dim↔flag-header mapping, threshold parity in criteria+test, veto audit-before-check ordering, shared-helper inheritance, PHI-caveat matrix, boundary docstrings, header hygiene, input bounding, exact `== [...]` assertions). The **MEDIUM** — a **D-LIFESCI-3 brand leak** ("Tyvek", a registered trademark, in the sterility example+test) — and two batch-B **LOW**s (ccds `first_draft` comment reworded to drop the `L-HEALTH-1` token so a `grep L-HEALTH-1` audit no longer false-hits; 6 veto per-field-cap asserts tightened `<=` → `==` for parity with the no-veto tests) were all fixed pre-push in `afb6be1`. One **LOW deferred (not folded)** — `core/_internal.py` `extract_veto_directive` docstring still describes the pre-H-IND-1 `isalpha()/isupper()` rule while the code calls `_is_sibling_header_lhs` (doc drift only; behavior correct). It touches the shared veto-parser (convergence-logic area), so per the fold-in policy it is surfaced here for confirmation rather than folded into the lifesciences batch.

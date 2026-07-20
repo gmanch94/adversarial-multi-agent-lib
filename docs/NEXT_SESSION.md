@@ -1,6 +1,25 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-19 (EVE) — GitHub repo description refreshed + architecture-docs stale-check fixed; HEAD `3dffbd7`, pushed to origin/main; tree clean. Two doc-refresh items left open.
+Last updated: 2026-07-20 — Lifesciences Phase-2 **batch B (#17–27) SHIPPED**; lifesciences catalog **COMPLETE (27/27)**; full gate green; ship-audit fixed pre-push; pushed to origin/main; tree clean.
+
+## 2026-07-20 — Lifesciences Phase-2 batch B (#17–27) SHIPPED — CATALOG COMPLETE
+
+**11 workflows built (fill-in against the locked catalog), commit-per-workflow. Full gate GREEN. Ship-audit clean after fixes. Pushed.**
+
+- **Batch B = catalog #17–27** (plan [`2026-07-20-lifesciences-phase2-batch-b.md`](superpowers/plans/2026-07-20-lifesciences-phase2-batch-b.md)): REMSDesign, PremarketCybersecurity, PostMarketClinicalFollowup, HEORDossier, SerializationDSCSA (no-veto ×5) + BiosimilarComparability, SterilityAssurance, ColdChainExcursion, Bioequivalence, MedicalInformationResponse, CCDSLabelChange (veto ×6). Each = module + test + example + 4 skill templates, own commit. **Lifesciences is now 27/27 — the 27-workflow catalog is COMPLETE.**
+- **Boundary docstrings (D-LIFESCI-2):** #26 MedicalInformationResponse vs `PromotionalOffLabelReviewWorkflow` (reactive scientific exchange vs proactive promotion); #27 CCDSLabelChange vs `PharmacovigilanceSignalWorkflow` (downstream label-change implementation vs signal detection). Each has a `test_module_docstring_states_*_boundary`.
+- **L-HEALTH-1 PHI caveat:** kept only on #26; dropped on the other 5 veto workflows (no individual PHI). #27's Request is designed around the *summarized* signal + label text, not case narratives.
+- **Gate:** ruff + mypy strict (111 files) + **1257 library tests** + tripwire 194 (brand-free) + registry 43 (files == discovered → **256 templates** all discoverable).
+- **Ship-audit (independent reviewer, checks a–i):** 0 CRIT / 0 HIGH / 1 MEDIUM / 3 LOW. MEDIUM (Tyvek brand leak, D-LIFESCI-3) + 2 batch-B LOWs (ccds comment token, veto-test `==` parity) fixed pre-push in `afb6be1`. Details in [`production-readiness-gaps.md` §Lifesciences](production-readiness-gaps.md).
+- **Counts refreshed** (CLAUDE.md + README + architecture + deployment-architecture + design-doc + gaps): 52→**63 workflows**, 212→**256 templates**, lifesciences 16/27→**27/27**, 1068→**1257 library tests**. D-LIFESCI-6 appended.
+
+**Commit chain (code, newest first):** `afb6be1` ship-audit fixes · `3aeef02` CCDS[#27] · `f862697` medinfo[#26] · `2ea1599` serialization[#24] · `e60cfe6` HEOR[#22] · `81800fd` bioequivalence[#25] · `f190443` cold-chain[#23] · `6adc0cc` sterility[#19] · `363f5df` premarket-cyber[#20] · `55c23a9` PMCF[#21] · `16db41c` biosimilar[#17] · `2d766b5` REMS[#18] · `8c7844c` tripwire · `eeb36cc` plan. Docs commit on top.
+
+**Things NOT to do next:** don't re-run batch B; block-form `inputs:` in templates is SUPPORTED (do not "fix" to inline); don't re-add vendor brands (no "Tyvek"/"ValGenesis"/etc.); don't add a lifesciences base class (D-LIFESCI-1); **lifesciences is COMPLETE — no more lifesciences workflows to build.**
+
+**One deferred LOW (surfaced, not folded — needs a confirm):** `core/_internal.py` `extract_veto_directive` **docstring** still describes the pre-H-IND-1 `isalpha()/isupper()` rule while the code calls `_is_sibling_header_lhs` (doc drift only, behavior correct). It touches the shared veto-parser (convergence-logic area), so per the fold-in policy it was left for confirmation rather than folded into this batch. A one-line docstring fix when someone next touches that helper.
+
+**Next options:** industrial Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-14-industrial-domain-design.md)) or healthcare Phase-2 batch (19 designs, [design doc](superpowers/specs/2026-05-16-healthcare-domain-design.md)) — same fill-in recipe; an 8th domain (needs brainstorm→spec→plan first); or the deferred core-docstring fix above.
 
 ## 2026-07-19 (EVE) — Repo description + architecture-docs stale-check (docs-only)
 
