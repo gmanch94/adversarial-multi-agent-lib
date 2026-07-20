@@ -75,6 +75,18 @@ def _lifesciences_files() -> list[Path]:
         "test_udi_labeling.py",
         "test_clinical_protocol_design.py",
         "test_pharmacovigilance_signal.py",
+        # Phase-2 batch B (#17-27) — same .exists() guard.
+        "test_rems_design.py",
+        "test_premarket_cybersecurity.py",
+        "test_post_market_clinical_followup.py",
+        "test_heor_dossier.py",
+        "test_serialization_dscsa.py",
+        "test_biosimilar_comparability.py",
+        "test_sterility_assurance.py",
+        "test_cold_chain_excursion.py",
+        "test_bioequivalence.py",
+        "test_medical_information_response.py",
+        "test_ccds_label_change.py",
     }
     files.extend(tests_dir / name for name in lifesci_modules if (tests_dir / name).exists())
     return files
