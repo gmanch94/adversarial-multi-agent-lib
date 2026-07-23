@@ -249,6 +249,9 @@ class CoverageDecisionRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = ("WORDING FLAGS:", "CASE-LAW FLAGS:")
+
+
 class CoverageDecisionWorkflow(BaseWorkflow):
     """
     Adversarial coverage / bad-faith decision review: executor drafts
@@ -331,7 +334,11 @@ class CoverageDecisionWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if review.approved and not current_wording_flags and not current_case_law_flags:
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique,
+                _FLAG_HEADERS,
+                (current_wording_flags, current_case_law_flags),
+            ):
                 converged = True
                 break
 
@@ -354,6 +361,10 @@ class CoverageDecisionWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2 / A11-L1: surface the clean executor draft from the
+            # vetoed round so coverage counsel sees what the AI produced
+            # before the REVIEWER VETO banner was prepended.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

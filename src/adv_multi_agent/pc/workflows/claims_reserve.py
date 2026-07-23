@@ -301,6 +301,13 @@ class ClaimsReserveRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = (
+    "RESERVE FLAGS:",
+    "PRECEDENT FLAGS:",
+    "LITIGATION FLAGS:",
+)
+
+
 class ClaimsReserveWorkflow(BaseWorkflow):
     """
     Adversarial claims-reserve estimation: executor drafts a reserve
@@ -397,11 +404,14 @@ class ClaimsReserveWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_reserve_flags
-                and not current_precedent_flags
-                and not current_litigation_flags
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique,
+                _FLAG_HEADERS,
+                (
+                    current_reserve_flags,
+                    current_precedent_flags,
+                    current_litigation_flags,
+                ),
             ):
                 converged = True
                 break
@@ -428,6 +438,10 @@ class ClaimsReserveWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2 / A11-L1: surface the clean executor draft from the
+            # vetoed round so the reviewing actuary sees what the AI produced
+            # before the REVIEWER VETO banner was prepended.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

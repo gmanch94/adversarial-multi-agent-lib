@@ -324,7 +324,9 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if review.approved and not any(current.values()):
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, current.values()
+            ):
                 converged = True
                 break
 

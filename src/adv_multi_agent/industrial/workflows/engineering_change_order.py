@@ -303,7 +303,9 @@ class EngineeringChangeOrderWorkflow(BaseWorkflow):
                 score=score,
             )
 
-            if review.approved and not any(current.values()):
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, current.values()
+            ):
                 converged = True
                 break
 

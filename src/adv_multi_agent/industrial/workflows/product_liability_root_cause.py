@@ -275,6 +275,13 @@ class ProductLiabilityRootCauseRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = (
+    "DESIGN-DEFECT FLAGS:",
+    "OPERATOR-ERROR FLAGS:",
+    "WARNING-ADEQUACY FLAGS:",
+)
+
+
 class ProductLiabilityRootCauseWorkflow(BaseWorkflow):
     """
     Adversarial product-liability root-cause attribution: executor drafts
@@ -371,11 +378,10 @@ class ProductLiabilityRootCauseWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_design_flags
-                and not current_operator_flags
-                and not current_warning_flags
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique,
+                _FLAG_HEADERS,
+                (current_design_flags, current_operator_flags, current_warning_flags),
             ):
                 converged = True
                 break

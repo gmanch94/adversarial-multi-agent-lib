@@ -8,6 +8,7 @@ Internal utilities shared across core, workflows, and assurance.
 - safe_resolve_path:   resolve a user-supplied path, optionally constrained to a base
 - sanitize_for_prompt: strip control chars and cap length before embedding in prompts
 - extract_flags:       parse a named FLAGS section out of a reviewer critique
+- missing_flag_headers: which flag sections the reviewer never emitted (A11-M1)
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import re
 import sys
 import tempfile
 import unicodedata
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -190,18 +192,32 @@ def is_safe_id(value: Any) -> bool:
     return isinstance(value, str) and bool(_SAFE_ID_RE.match(value))
 
 
+_TRUNCATION_MARKER = "...[truncated]"
+
+
 def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:
     """
     Strip control characters, NFC-normalize, and truncate to `max_chars`.
     Used before embedding model-derived or user-supplied content in prompts
     to limit obvious prompt-injection vectors and bound prompt size.
+
+    The return value NEVER exceeds `max_chars` (A11-M3). The marker is written
+    INSIDE the budget, not appended after a full-width slice: the previous form
+    returned `max_chars + 14`, and every one of the 60 `wiki.add_feedback`
+    call sites feeds this straight into `ResearchWiki._bound(max_chars)`, which
+    RAISES rather than truncates. Any reviewer critique longer than
+    `Config.max_wiki_body_chars` therefore aborted `run()` with a ValueError
+    and lost that round's audit trail.
     """
     if not isinstance(text, str):
         text = str(text)
     text = unicodedata.normalize("NFC", text)
     text = _CONTROL_CHARS_RE.sub("", text)
     if len(text) > max_chars:
-        text = text[:max_chars] + "...[truncated]"
+        if max_chars <= len(_TRUNCATION_MARKER):
+            text = text[:max_chars]
+        else:
+            text = text[: max_chars - len(_TRUNCATION_MARKER)] + _TRUNCATION_MARKER
     return text
 
 
@@ -229,6 +245,99 @@ def _is_sibling_header_lhs(lhs: str) -> bool:
     return bool(_SIBLING_HEADER_LHS_RE.match(lhs))
 
 
+# A11-M1 / A11-M5: reviewer models do not reliably emit a bare `HEADER:` at
+# line start. Every deviation below used to produce NO match, hence an empty
+# flag list, which the convergence gate reads as "no flags" — FAIL-OPEN, the
+# safety class is silently unenforced:
+#     **SCOPE FLAGS:**   - SCOPE FLAGS:   1. SCOPE FLAGS:
+#     SCOPE FLAGS :      Scope flags:
+# The anchor now tolerates leading bullets/numbering, markdown emphasis,
+# flexible internal and pre-colon whitespace, and case. It remains anchored to
+# line start (M1 / M-PC-1) so a mid-line commentary mention cannot mis-anchor.
+_HEADER_PREFIX = r"[ \t]*(?:[-*•+]\s*)?(?:\d+[.)]\s*)?(?:\*\*|__)?[ \t]*"
+_HEADER_SUFFIX = r"[ \t]*(?:\*\*|__)?[ \t]*:[ \t]*(?:\*\*|__)?"
+
+_EMPTY_MARKERS = ("none detected", "none", "n/a")
+_BULLET_CHARS = "-•*+"
+# A11-M7: bound a single flag's length on the METADATA path. `truncate_flag_display`
+# bounds the re-injection path only, so an unbounded flag string reached
+# `metadata['*_flags']` and `accumulated` at full critique length.
+_MAX_FLAG_CHARS = 500
+
+_DECORATION_LEAD_RE = re.compile(r"^(?:[-•*+]\s*)?(?:\d+[.)]\s*)?")
+_EMPHASIS_LEAD_RE = re.compile(r"^(?:\*\*|__)+")
+_EMPHASIS_TAIL_RE = re.compile(r"(?:\*\*|__)+$")
+
+
+def _header_anchor_re(header: str) -> re.Pattern[str]:
+    """Compile a line-anchored, formatting-tolerant matcher for `header`."""
+    core = header.strip().rstrip(":").strip()
+    body = r"[ \t]+".join(re.escape(word) for word in core.split())
+    return re.compile(rf"(?mi)^{_HEADER_PREFIX}{body}{_HEADER_SUFFIX}")
+
+
+def _strip_decoration(text: str) -> str:
+    """Strip a leading bullet/number and surrounding markdown emphasis."""
+    out = _DECORATION_LEAD_RE.sub("", text.strip())
+    out = _EMPHASIS_LEAD_RE.sub("", out)
+    out = _EMPHASIS_TAIL_RE.sub("", out)
+    return out.strip()
+
+
+def _is_prose_terminator(lower: str) -> bool:
+    """True for the two prose lines the templates emit after the flag blocks.
+
+    A11-L4: the previous rule stopped on ANY line beginning `overall`, so a
+    genuine flag reading "Overall recall breadth is understated" terminated
+    the section and emptied the class (fail-OPEN). All 58 criteria templates
+    emit exactly `Overall score:` and `Key issues:`, so the prefix can be
+    exact. Callers must only apply this to UN-bulleted lines.
+    """
+    return lower.startswith(("overall score", "key issues", "#"))
+
+
+def _is_section_header(lhs: str, rhs: str, seen_bullet: bool) -> bool:
+    """True iff `lhs: rhs` is a sibling section header that ends the section.
+
+    A11-L5. An uppercase LHS alone is not sufficient: both of these are
+    `UPPERCASE: content` and they mean opposite things —
+
+        RECOMMENDATION: align the local label      <- sibling section
+        LOT RANGE: too narrow, extend to 2024-08   <- a flag, written flat
+
+    Treating the second as a header empties the class (fail-OPEN); treating
+    the first as a flag merely over-collects (fail-safe). The discriminator is
+    `seen_bullet`: every criteria template asks for `[bullet list]`, so once a
+    bulleted flag has been seen, the section's idiom is established and a
+    following un-bulleted `UPPERCASE:` line is a sibling. Before any bullet
+    appears, the reviewer may be writing flat `LABEL: value` flags, so only an
+    unambiguous header — one this parser names (`… FLAGS`, `… VETO`) or one
+    with no content of its own — terminates.
+    """
+    if not lhs or not _is_sibling_header_lhs(lhs):
+        return False
+    if lhs.endswith(("FLAGS", "VETO")):
+        return True
+    if not rhs or rhs.lower().rstrip(".") in _EMPTY_MARKERS:
+        return True
+    return seen_bullet
+
+
+def missing_flag_headers(critique: str, headers: Iterable[str]) -> list[str]:
+    """Return the headers that have NO section anywhere in `critique`.
+
+    A11-M1. `extract_flags` returns `[]` both when the reviewer wrote
+    `SCOPE FLAGS: None detected` and when it never emitted the header at all.
+    The convergence gate `not any(current.values())` cannot tell those apart,
+    so a reviewer that silently drops a section satisfies that safety class
+    forever — FAIL-OPEN.
+
+    A workflow must treat a missing header as "this class was not assessed"
+    and refuse to converge, NOT as "this class is clean".
+    """
+    return [h for h in headers if _header_anchor_re(h).search(critique) is None]
+
+
 def extract_flags(critique: str, header: str) -> list[str]:
     """
     Parse a named FLAGS section out of a reviewer critique.
@@ -236,46 +345,58 @@ def extract_flags(critique: str, header: str) -> list[str]:
     Returns the list of bullet items under `header`, stopping at the next
     section header. A section header is any of:
 
-    • a line starting with `Overall`, `Key issues`, or a markdown `#`
-    • a bare uppercase-with-colon header (e.g. `SCOPE FLAGS:`)
-    • an inline uppercase header on the same line
-      (e.g. `EVIDENCE FLAGS: None detected`, `REVIEWER VETO: ...`) —
-      recognised by the LHS of the first `:` being uppercase + spaces only.
+    • an un-bulleted line starting `Overall score`, `Key issues`, or `#`
+    • a sibling `… FLAGS:` / `… VETO:` line
+    • an uppercase `HEADER:` line with no content or an empty marker after it
 
-    Returns `[]` if the header is absent, or if the section content is one
-    of the conventional empty markers: `None detected`, `None`, `n/a`
-    (case-insensitive).
+    Returns `[]` if the header is absent, or if the section's FIRST content
+    line is one of the conventional empty markers: `None detected`, `None`,
+    `n/a` (case-insensitive, optional trailing period).
 
-    Used by every retail workflow (`recall_scope`, `loyalty_offer`,
-    `promo_markdown`, `demand_forecasting`, `labor_scheduling`) plus the pc /
-    industrial / healthcare domains. `demand_forecasting` and
-    `labor_scheduling` were migrated off private single-class parsers to this
-    shared helper (2026-07-18) so they inherit the M1 line-anchor and H-IND-1
-    sibling-stop fixes; single-flag-class callers simply pass their one header.
+    **`[]` is ambiguous** — it means "clean" OR "the reviewer never emitted
+    this section". Callers whose convergence gate depends on emptiness MUST
+    additionally consult `missing_flag_headers` (A11-M1).
+
+    When the header occurs more than once at line start, the LAST occurrence
+    wins (A11-M4): every criteria template says *"End your review with exactly
+    these lines"*, so the final block is authoritative. Taking the first match
+    let an earlier quoted `SCOPE FLAGS: None detected` — e.g. the reviewer
+    echoing caller-supplied text — shadow the real section.
+
+    Used by every flag-gated workflow across all 7 domains; single-flag-class
+    callers simply pass their one header.
     """
-    # Anchor the header at line-start (allowing leading whitespace) to
-    # avoid mis-anchoring on a commentary mention of the header name earlier
-    # in the critique (M1 — substring containment regression).
-    match = re.search(rf"(?m)^\s*{re.escape(header)}", critique)
-    if match is None:
+    matches = list(_header_anchor_re(header).finditer(critique))
+    if not matches:
         return []
-    section = critique[match.end():]
+    section = critique[matches[-1].end():]
     flags: list[str] = []
+    seen_bullet = False
     for raw_line in section.splitlines():
         stripped_raw = raw_line.strip()
-        stripped = stripped_raw.lstrip("-•*").strip()
+        if not stripped_raw:
+            continue
+        is_bullet = stripped_raw[:1] in _BULLET_CHARS
+        stripped = _strip_decoration(stripped_raw)
         if not stripped:
             continue
         lower = stripped.lower()
-        if lower.startswith(("overall", "key issues", "#")):
+        if not is_bullet and _is_prose_terminator(lower):
             break
-        if ":" in stripped_raw:
-            lhs = stripped_raw.split(":", 1)[0].strip()
-            if lhs and _is_sibling_header_lhs(lhs):
+        if ":" in stripped:
+            lhs, rhs = stripped.split(":", 1)
+            if not is_bullet and _is_section_header(lhs.strip(), rhs.strip(), seen_bullet):
                 break
-        if lower in ("none detected", "none", "n/a"):
-            return []
-        flags.append(stripped)
+        if lower.rstrip(".") in _EMPTY_MARKERS:
+            # A11-L3: an empty marker only means "class is empty" when it is
+            # the section's FIRST content line. Appearing after real flags it
+            # terminates the section rather than discarding what was already
+            # collected (the previous `return []` was fail-OPEN).
+            if not flags:
+                return []
+            break
+        flags.append(stripped[:_MAX_FLAG_CHARS])
+        seen_bullet = seen_bullet or is_bullet
         if len(flags) >= _MAX_FLAGS_PER_HEADER:
             break
     return flags
@@ -339,47 +460,65 @@ def extract_veto_directive(
       still captured).
     - All continuation lines are empty or are sibling section headers.
 
-    Sibling-header detection uses the shared `_is_sibling_header_lhs` helper
-    (H-IND-1: uppercase letters + spaces + hyphens, e.g. `RELEASE-RISK`) —
-    rejects mixed-case AND digit/other-punctuation-containing colon lines.
+    Sibling-header detection uses the shared `_is_section_header` helper
+    (H-IND-1 charset via `_is_sibling_header_lhs`, plus the A11-L5 refinement).
 
-    The returned directive is truncated to `max_chars`.
+    The marker anchor is formatting-tolerant (A11-M5): `**REVIEWER VETO:**`,
+    `- REVIEWER VETO:`, `1. REVIEWER VETO:` and `REVIEWER VETO :` all used to
+    yield None against a genuine veto — a silently dropped halt directive.
+
+    When the marker occurs more than once at line start the LAST occurrence
+    wins (A11-M4). Taking the first let an earlier `REVIEWER VETO: None` —
+    e.g. the reviewer quoting the criteria block or echoing caller text —
+    suppress a real veto emitted later.
+
+    The returned directive is control-char-stripped and bounded via
+    `sanitize_for_prompt` (A11-M8): it is rendered verbatim into the
+    operator-facing `WorkflowResult.output` by every veto workflow, so raw
+    model text must not carry terminal escapes into that surface.
     """
-    # NOTE: trailing whitespace eater is `[ \t]*` (horizontal whitespace
-    # only) — `\s*` would greedily consume the newline and pull the first
-    # continuation line into match.group(1), then trigger a premature break
-    # on the now-empty post-match line.
-    match = re.search(rf"(?m)^[ \t]*{re.escape(marker)}[ \t]*(.*)$", critique)
-    if match is None:
+    matches = list(_header_anchor_re(marker).finditer(critique))
+    if not matches:
         return None
 
-    first_line = match.group(1).strip()
-    rest = critique[match.end():]
+    rest = critique[matches[-1].end():]
+    # A11-L2: split the marker line off explicitly. The previous form captured
+    # it with `(.*)$` and left `rest` starting with "\n", so `splitlines()[0]`
+    # was "" and the blank-line rule broke immediately — every continuation
+    # line was dropped whenever the marker line carried text, contradicting
+    # both the docstring and the inline NOTE.
+    newline = rest.find("\n")
+    if newline == -1:
+        first_line, continuation = rest, ""
+    else:
+        first_line, continuation = rest[:newline], rest[newline + 1:]
 
     collected: list[str] = []
-    if first_line and first_line.lower() not in ("none", "none detected", "n/a"):
+    seen_bullet = False
+    first_line = _strip_decoration(first_line)
+    if first_line and first_line.lower().rstrip(".") not in _EMPTY_MARKERS:
         collected.append(first_line)
 
-    for raw in rest.splitlines():
+    for raw in continuation.splitlines():
         line = raw.strip()
         if not line:
             if collected:
                 break
             continue
+        is_bullet = line[:1] in _BULLET_CHARS
+        line = _strip_decoration(line)
+        if not line:
+            continue
         lower = line.lower()
-        sibling_header = False
-        if line.endswith(":"):
-            lhs = line[:-1]
-            # H-IND-1: also recognises hyphen-containing sibling headers.
-            if lhs and _is_sibling_header_lhs(lhs):
-                sibling_header = True
-        if lower.startswith(("overall", "key issues", "#")) or sibling_header:
+        if not is_bullet and _is_prose_terminator(lower):
             break
-        collected.append(line.lstrip("-•*").strip())
+        if ":" in line:
+            lhs, rhs = line.split(":", 1)
+            if not is_bullet and _is_section_header(lhs.strip(), rhs.strip(), seen_bullet):
+                break
+        collected.append(line)
+        seen_bullet = seen_bullet or is_bullet
 
     if not collected:
         return None
-    veto = " ".join(collected)
-    if len(veto) > max_chars:
-        veto = veto[:max_chars]
-    return veto
+    return sanitize_for_prompt(" ".join(collected), max_chars=max_chars)

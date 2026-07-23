@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from ._internal import missing_flag_headers
 from .agents import ExecutorAgent, ReviewerAgent
 from .config import Config
 from .ledger import ClaimLedger
@@ -41,10 +43,41 @@ class BaseWorkflow(ABC):
         self.executor = executor or ExecutorAgent(config)
         self.reviewer = reviewer or ReviewerAgent(config)
         self.ledger = ledger or ClaimLedger(config.ledger_path)
-        self.wiki = wiki or ResearchWiki(config.wiki_path)
+        # A11-L7: pass the configured bound through. Previously the wiki always
+        # used its own 8000 default, so lowering `max_wiki_body_chars` had no
+        # effect and raising it made every `add_feedback` exceed the wiki's
+        # unchanged hard bound.
+        self.wiki = wiki or ResearchWiki(
+            config.wiki_path, max_body_chars=config.max_wiki_body_chars
+        )
 
     @abstractmethod
     async def run(self, **kwargs: Any) -> WorkflowResult: ...
+
+    def _flag_classes_unresolved(
+        self,
+        critique: str,
+        headers: Sequence[str],
+        current_flags: Iterable[Sequence[str]],
+    ) -> bool:
+        """True if any flag class has findings OR was never assessed.
+
+        A11-M1. `extract_flags` returns `[]` both when the reviewer wrote
+        `SCOPE FLAGS: None detected` and when it never emitted the section at
+        all. A convergence gate written `not any(current.values())` cannot
+        tell those apart, so a reviewer that silently drops a section
+        satisfies that safety class forever — FAIL-OPEN, and no
+        `any(substr in f)`-shaped test can see it.
+
+        Every flag-gated workflow routes its gate through here so "the
+        reviewer did not assess this class" blocks convergence instead of
+        reading as "this class is clean". A run that ends this way returns
+        `converged=False`, which is the honest outcome: the adversarial
+        review did not actually complete.
+        """
+        if any(current_flags):
+            return True
+        return bool(missing_flag_headers(critique, headers))
 
     def _register_claims(self, output: str, round_num: int) -> None:
         """

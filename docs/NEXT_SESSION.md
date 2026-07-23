@@ -1,6 +1,23 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-23 — **Architecture depth review + D1/D2/D3/D4 applied.** Flag-header convention unified across 18 workflows; all 25 veto outputs standardized; 28 metadata scalars sanitized; dead `cap_field` deleted (forced a false-closure fix in SECURITY_MODEL). 4 mutation-tested AST guards added. Full gate green — **1449 library tests** (was 1257). NOT yet committed.
+Last updated: 2026-07-23 — **Depth review shipped (`b8857f1`), then a security audit on that same diff found 20 findings — ALL FIXED.** Convergence gate no longer fail-open on a dropped flag section; parser tolerant of reviewer formatting variance; the one live crash (`sanitize_for_prompt` overshoot) closed. Guards now G1–G6, all mutation-tested. **1649 library tests, 0 skipped** (was 1449 + 26 skipped).
+
+## 2026-07-23 (PM) — Security audit A11 on `b8857f1` — 20 findings, all closed
+
+Report: [`docs/security-audits/2026-07-23.md`](security-audits/2026-07-23.md) (findings + full RESOLUTION table). Decisions **D-A11-1..4**. Independent reviewer, cold context, fail-open/fail-closed lens. **0 CRITICAL / 0 HIGH / 8 MEDIUM / 12 LOW.** The depth-review refactor itself verified mechanically clean — 18/18 flag-class sets preserved, every commit claim TRUE.
+
+**The three that mattered:**
+- **M1 (fail-OPEN root)** — `extract_flags` returned `[]` both for "None detected" and "reviewer never emitted the section", so any dropped class permanently satisfied `and not <flags>`. Plus 8 formatting deviations (`**SCOPE FLAGS:**`, `SCOPE FLAGS :`, `1. `, `- `, lowercase, no-newlines) each yielded `[]` against a critique containing real flags. Fixed by a tolerant anchor **and** `missing_flag_headers()` + `BaseWorkflow._flag_classes_unresolved()` wired into all 59 flag-gated workflows. Verified end-to-end: dropping one class flips `converged` True→False.
+- **M3 (only live crash)** — `sanitize_for_prompt` returned `max_chars + 14`; all 60 `wiki.add_feedback` sites feed it into `ResearchWiki._bound`, which raises. Any critique >8000 chars aborted `run()` and lost the round's audit trail. 100% of workflows, entirely untested.
+- **M2** — `claims_appeal_review.py` was the only module of 68 that never told the reviewer to emit its flag headers; all three classes would parse empty forever.
+
+**Guards now G1–G6, 346 tests, 0 skips.** New **G5** (tuple ⊆ reviewer emission block — the tuple↔prompt half that code-to-code guards are blind to, and what would have caught M2) and **G6** (lookup-key drift). `pytest.skip` removed: the 8 previously-skipped modules (5 veto) now carry tuples and are fully guarded. New [`tests/unit/test_parser_hardening.py`](../tests/unit/test_parser_hardening.py) — 46 regressions, one class per finding.
+
+**All 7 guards mutation-tested.** This caught a real defect in my own G5: it anchored on the loose prefix `"End your review with"`, which also matches the veto instruction earlier in the same template, so deleting the actual emission block still passed. Tightened to a colon-requiring regex taking the last match.
+
+**Things NOT to do next:** don't loosen `_is_section_header` back to "any uppercase LHS" (reintroduces A11-L5 fail-open); don't restore bare `not any(current.values())` gates (that IS A11-M1); don't re-add `cap_field`; the `seen_bullet` discriminator in the parser is load-bearing, not a heuristic to simplify away.
+
+### Earlier (2026-07-23 AM) — depth review, committed as `b8857f1`
 
 ## 2026-07-23 — Architecture depth review (D-DEPTH-1/2/3)
 

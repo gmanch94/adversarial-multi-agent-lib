@@ -79,6 +79,13 @@ Evaluate this claims appeal review on five dimensions. Score each 0–10.
 Overall score = weighted average.
 Score >= 7.5 AND zero EVIDENCE FLAGS AND zero COVERAGE FLAGS AND zero \
 PROCEDURE FLAGS required for convergence.
+
+End your review with exactly these lines:
+  Overall score: X/10
+  Key issues: [bullet list]
+  EVIDENCE FLAGS: [bullet list, or "None detected"]
+  COVERAGE FLAGS: [bullet list, or "None detected"]
+  PROCEDURE FLAGS: [bullet list, or "None detected"]
 """
 
 _INITIAL_PROMPT = """\
@@ -256,7 +263,9 @@ class ClaimsAppealReviewWorkflow(BaseWorkflow):
                 score=score,
             )
 
-            if review.approved and not any(current.values()):
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, current.values()
+            ):
                 converged = True
                 break
 

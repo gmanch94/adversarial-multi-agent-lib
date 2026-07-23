@@ -235,7 +235,7 @@ Deserializes `checkpoint.last_request_json` back to the workflow's `*Request` ty
 
 - Hook raises → checkpoint stays `"paused"`, error logged into `rounds_history`, `RunOutcome.status="failed"` with `error` populated.
 - Hook returns wrong type → `TypeError` raised at boundary before any agent call.
-- Hook returns request with `_MAX_FIELD_CHARS` violations → `cap_field` warning fires; execution continues with truncated fields.
+- Hook returns request with `_MAX_FIELD_CHARS` violations → fields are silently truncated by the per-field `[:cap]` slice in `to_prompt_text`; execution continues. (A `cap_field` warning helper was added 2026-05-16 to make this observable and deleted 2026-07-23 with zero callers — the truncation is still silent. See D-DEPTH-3 and the L-IND-5 row in `SECURITY_MODEL.md`.)
 
 ### Security note
 

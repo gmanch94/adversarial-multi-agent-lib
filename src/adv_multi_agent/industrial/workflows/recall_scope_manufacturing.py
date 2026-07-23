@@ -87,8 +87,8 @@ Evaluate this recall scope on four dimensions. Score each 0–10.
    customer complaints, telematics anomalies, regulator inquiry) credible
    and quantified? Does it support a substantial-product-hazard finding
    under CPSC § 15(b)? Penalise trigger evidence that is anecdotal,
-   single-source, or under-quantified. Flag every gap under TRIGGER-
-   EVIDENCE FLAGS:.
+   single-source, or under-quantified.
+   Flag every gap under TRIGGER-EVIDENCE FLAGS:.
 
 2. FLEET-SCOPE COMPLETENESS (30%) — CRITICAL
    Does the scope cover all serial numbers / lots / build dates / option
@@ -274,6 +274,13 @@ class RecallScopeManufacturingRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = (
+    "TRIGGER-EVIDENCE FLAGS:",
+    "FLEET-SCOPE FLAGS:",
+    "REGULATORY-NOTIFY FLAGS:",
+)
+
+
 class RecallScopeManufacturingWorkflow(BaseWorkflow):
     """
     Adversarial recall-scope determination: executor drafts a scope →
@@ -371,11 +378,10 @@ class RecallScopeManufacturingWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_trigger_flags
-                and not current_fleet_flags
-                and not current_regulatory_flags
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique,
+                _FLAG_HEADERS,
+                (current_trigger_flags, current_fleet_flags, current_regulatory_flags),
             ):
                 converged = True
                 break

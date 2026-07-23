@@ -34,7 +34,7 @@
 
 Every healthcare workflow MUST follow the domain-add convention (D-IND-1):
 
-1. `*Request` dataclass with `to_prompt_text()` — all `str` fields, `_MAX_FIELD_CHARS = 1500` module constant, per-field `[:cap]` slice (or `cap_field()` for new-pattern warning).
+1. `*Request` dataclass with `to_prompt_text()` — all `str` fields, `_MAX_FIELD_CHARS = 1500` module constant, per-field `[:cap]` slice. (A `cap_field()` warning helper existed 2026-05-16 → 2026-07-23; it was deleted with zero callers — see D-DEPTH-3 and the L-IND-5 row in `SECURITY_MODEL.md`.)
 2. `sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)` at the workflow boundary.
 3. Loop up to `config.max_review_rounds`; convergence = `review.approved AND not current_flags AND not veto` (veto only for the 4 veto-using workflows).
 4. `BaseWorkflow._register_claims` for every `## Claims` line.

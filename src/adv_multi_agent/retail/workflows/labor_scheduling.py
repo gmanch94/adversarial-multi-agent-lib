@@ -195,6 +195,9 @@ class SchedulingRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = ("COMPLIANCE FLAGS:",)
+
+
 class LaborSchedulingWorkflow(BaseWorkflow):
     """
     Adversarial labor scheduling: executor drafts schedule → reviewer
@@ -267,7 +270,9 @@ class LaborSchedulingWorkflow(BaseWorkflow):
                 score=score,
             )
 
-            if review.approved and not current_flags:
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, (current_flags,)
+            ):
                 converged = True
                 break
 

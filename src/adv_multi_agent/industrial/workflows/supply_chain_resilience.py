@@ -85,8 +85,8 @@ Score each 0–10.
    substitution, port-of-entry diversity)? Is buffer-inventory adequate
    given lead-time variability? Are critical-spare and surge-capacity
    strategies stated? Penalise narrow "lead-time = N weeks" claims that
-   ignore variance and route risk. Flag every gap under LEAD-TIME-
-   FRAGILITY FLAGS:.
+   ignore variance and route risk.
+   Flag every gap under LEAD-TIME-FRAGILITY FLAGS:.
 
 4. ACTIONABILITY (15%)
    Are the resilience actions (dual-sourcing plan, sub-tier audit, route
@@ -304,7 +304,9 @@ class SupplyChainResilienceWorkflow(BaseWorkflow):
                 score=score,
             )
 
-            if review.approved and not any(current.values()):
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, current.values()
+            ):
                 converged = True
                 break
 

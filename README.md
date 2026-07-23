@@ -10,7 +10,7 @@ Pair an **executor** (Claude Opus 4.7 or Gemini 2.5 Pro) with a **reviewer from 
 
 **5 production sibling deployments** under `examples/production/`: `durable_postgres` (compose + Fernet + advisory lock + Postgres store + RLS + scheduler + quarantine), `durable_postgres_k8s` (kustomize + RBAC + network policies), `durable_postgres_otel` (OTel collector + Prometheus + Grafana + 8 alerts — 4 fleet + 4 tenant-aware), `cipher_gcp_kms` and `cipher_aws_kms` (envelope encryption with per-tenant DEK isolation, DEK cache, IMDSv2 / IRSA hardening on AWS). Operator smoke gate `verify_multi_tenant.py` validates RLS isolation + `UnknownTenantError` fail-closed + per-tenant `BudgetExceeded`.
 
-**1449 library tests + 185 sibling tests** passing (1634 total; +192 cross-domain convention guards from the 2026-07-23 depth review); ruff + mypy strict clean. **8 audit cycles** on the durable surface (7 single-axis + 1 four-axis code/security/perf/ops review) — `CRITICAL / HIGH / MEDIUM / LOW = 0 / 0 / 0 / 0` after each cycle.
+**1649 library tests + 185 sibling tests** passing (1834 total; +346 cross-domain convention guards + 46 parser-hardening regressions from the 2026-07-23 depth review and security audit); ruff + mypy strict clean. **8 audit cycles** on the durable surface (7 single-axis + 1 four-axis code/security/perf/ops review) — `CRITICAL / HIGH / MEDIUM / LOW = 0 / 0 / 0 / 0` after each cycle.
 
 ```
 Task → Executor generates → Reviewer scores + critiques
@@ -381,7 +381,7 @@ class MyWorkflow(BaseWorkflow):
 ## Tests
 
 ```bash
-python -m pytest tests/          # 1449 library tests
+python -m pytest tests/          # 1649 library tests
 python -m mypy src/ tests/ --strict
 python -m ruff check src/ tests/
 ```

@@ -178,6 +178,30 @@ class Config:
             raise ValueError(
                 f"score_threshold={self.score_threshold} out of range [0.0, 10.0]"
             )
+        # A11-L7: the remaining size knobs were unbounded. `max_wiki_body_chars`
+        # in particular is passed to `sanitize_for_prompt` and then to
+        # `ResearchWiki._bound`, so an out-of-range value used to turn every
+        # round's audit-trail write into a hard failure.
+        if not (1 <= self.max_wiki_body_chars <= 1_000_000):
+            raise ValueError(
+                f"max_wiki_body_chars={self.max_wiki_body_chars} "
+                "out of range [1, 1000000]"
+            )
+        if not (1 <= self.max_claim_text_chars <= 1_000_000):
+            raise ValueError(
+                f"max_claim_text_chars={self.max_claim_text_chars} "
+                "out of range [1, 1000000]"
+            )
+        if not (1 <= self.audit_context_chars <= 1_000_000):
+            raise ValueError(
+                f"audit_context_chars={self.audit_context_chars} "
+                "out of range [1, 1000000]"
+            )
+        if not (1.0 <= self.request_timeout_seconds <= 3600.0):
+            raise ValueError(
+                f"request_timeout_seconds={self.request_timeout_seconds} "
+                "out of range [1.0, 3600.0]"
+            )
 
         # M6: warn if workspace_dir contains ~ expansions — common footgun when
         # callers accept paths from untrusted config. safe_resolve_path will

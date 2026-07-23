@@ -253,6 +253,9 @@ class RecallRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = ("SCOPE FLAGS:", "EVIDENCE FLAGS:")
+
+
 class RecallScopeWorkflow(BaseWorkflow):
     """
     Adversarial food-recall scoping: executor drafts plan → reviewer
@@ -340,7 +343,11 @@ class RecallScopeWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if review.approved and not current_scope_flags and not current_evidence_flags:
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique,
+                _FLAG_HEADERS,
+                (current_scope_flags, current_evidence_flags),
+            ):
                 converged = True
                 break
 
@@ -361,6 +368,10 @@ class RecallScopeWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2 / A11-L1: surface the clean executor draft from the
+            # vetoed round so the safety officer sees what the AI produced
+            # before the REVIEWER VETO banner was prepended.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

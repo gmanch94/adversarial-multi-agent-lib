@@ -198,6 +198,9 @@ class ForecastRequest:
         ])
 
 
+_FLAG_HEADERS: tuple[str, ...] = ("ASSUMPTION FLAGS:",)
+
+
 class DemandForecastWorkflow(BaseWorkflow):
     """
     Adversarial demand forecasting: executor drafts forecast → reviewer
@@ -270,7 +273,9 @@ class DemandForecastWorkflow(BaseWorkflow):
                 score=score,
             )
 
-            if review.approved and not current_flags:
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, (current_flags,)
+            ):
                 converged = True
                 break
 

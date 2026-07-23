@@ -360,7 +360,9 @@ class EnvironmentalImpairmentWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if review.approved and not any(current.values()):
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, current.values()
+            ):
                 converged = True
                 break
 
@@ -382,6 +384,10 @@ class EnvironmentalImpairmentWorkflow(BaseWorkflow):
         if veto_reason is not None:
             metadata["veto_reason"] = veto_reason
             metadata["vetoed"] = True
+            # L-IND-2 / A11-L1: surface the clean executor draft from the
+            # vetoed round so the environmental underwriter sees what the AI
+            # produced before the REVIEWER VETO banner was prepended.
+            metadata["first_draft"] = output
 
         return WorkflowResult(
             output=output_with_banners,

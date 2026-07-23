@@ -62,6 +62,8 @@ _DISCLAIMER = (
 # Input dataclass
 # ---------------------------------------------------------------------------
 
+_MAX_FIELD_CHARS = 1500
+
 
 @dataclass
 class ParoleCase:
@@ -127,21 +129,31 @@ class ParoleCase:
     """
 
     def to_prompt_text(self) -> str:
-        """Format case fields as structured text for prompt injection."""
+        """Format case fields as structured text for prompt injection.
+
+        A11-L6: the per-field cap is load-bearing here, not cosmetic. Without
+        it this was the only `to_prompt_text` of 59 relying solely on the
+        post-concat `sanitize_for_prompt(max_chars=...)` cap, so one oversized
+        field (an offense narrative pasted whole) silently evicted every later
+        field — `psychological_assessment`, `reentry_plan`, `victim_statement`
+        — and the executor produced a parole-risk brief on partial data with
+        no signal to the caller.
+        """
+        cap = _MAX_FIELD_CHARS
         parts = [
-            f"Case ID: {self.case_id}",
-            f"Offense: {self.offense_description}",
-            f"Sentence imposed: {self.sentence_imposed}",
-            f"Time served: {self.time_served}",
-            f"In-custody conduct: {self.in_custody_conduct}",
-            f"Programs completed: {self.programs_completed}",
-            f"Psychological assessment: {self.psychological_assessment}",
-            f"Reentry plan: {self.reentry_plan}",
+            f"Case ID: {self.case_id[:cap]}",
+            f"Offense: {self.offense_description[:cap]}",
+            f"Sentence imposed: {self.sentence_imposed[:cap]}",
+            f"Time served: {self.time_served[:cap]}",
+            f"In-custody conduct: {self.in_custody_conduct[:cap]}",
+            f"Programs completed: {self.programs_completed[:cap]}",
+            f"Psychological assessment: {self.psychological_assessment[:cap]}",
+            f"Reentry plan: {self.reentry_plan[:cap]}",
         ]
         if self.victim_statement:
-            parts.append(f"Victim statement: {self.victim_statement}")
+            parts.append(f"Victim statement: {self.victim_statement[:cap]}")
         if self.external_risk_score:
-            parts.append(f"External risk score: {self.external_risk_score}")
+            parts.append(f"External risk score: {self.external_risk_score[:cap]}")
         return "\n".join(parts)
 
 
@@ -274,6 +286,9 @@ reasoning — remove it.
 # ---------------------------------------------------------------------------
 
 
+_FLAG_HEADERS: tuple[str, ...] = ("BIAS FLAGS:",)
+
+
 class ParoleAssessmentWorkflow(BaseWorkflow):
     """
     Adversarial parole assessment: executor drafts → reviewer challenges → iterate.
@@ -394,7 +409,9 @@ class ParoleAssessmentWorkflow(BaseWorkflow):
 
             # Converge only when score threshold met AND no remaining bias flags.
             # A polished-but-biased brief must continue iterating.
-            if review.approved and not current_bias_flags:
+            if review.approved and not self._flag_classes_unresolved(
+                review.critique, _FLAG_HEADERS, (current_bias_flags,)
+            ):
                 converged = True
                 break
 
