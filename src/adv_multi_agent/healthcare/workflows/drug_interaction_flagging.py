@@ -269,12 +269,8 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_severity_flags: list[str] = []
-        current_evidence_flags: list[str] = []
-        current_contraindication_flags: list[str] = []
-        all_severity_flags: list[str] = []
-        all_evidence_flags: list[str] = []
-        all_contraindication_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -288,11 +284,7 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_severity_flags,
-                    current_evidence_flags,
-                    current_contraindication_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -313,14 +305,9 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
                 criteria=_DRUG_INTERACTION_REVIEW_CRITERIA,
             )
             score = review.score
-            current_severity_flags = extract_flags(review.critique, "SEVERITY FLAGS:")
-            current_evidence_flags = extract_flags(review.critique, "EVIDENCE FLAGS:")
-            current_contraindication_flags = extract_flags(
-                review.critique, "CONTRAINDICATION FLAGS:"
-            )
-            all_severity_flags.extend(current_severity_flags)
-            all_evidence_flags.extend(current_evidence_flags)
-            all_contraindication_flags.extend(current_contraindication_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-HEALTH-2).
@@ -334,23 +321,12 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_severity_flags
-                and not current_evidence_flags
-                and not current_contraindication_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         interaction_checklist = self._build_interaction_checklist(
-            request,
-            {
-                "SEVERITY FLAGS:": all_severity_flags,
-                "EVIDENCE FLAGS:": all_evidence_flags,
-                "CONTRAINDICATION FLAGS:": all_contraindication_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -359,9 +335,11 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
             "new_medication": sanitize_for_prompt(
                 request.new_medication, max_chars=200
             ),
-            "severity_flags": list(dict.fromkeys(all_severity_flags)),
-            "evidence_flags": list(dict.fromkeys(all_evidence_flags)),
-            "contraindication_flags": list(dict.fromkeys(all_contraindication_flags)),
+            "severity_flags": list(dict.fromkeys(accumulated["SEVERITY FLAGS:"])),
+            "evidence_flags": list(dict.fromkeys(accumulated["EVIDENCE FLAGS:"])),
+            "contraindication_flags": list(
+                dict.fromkeys(accumulated["CONTRAINDICATION FLAGS:"])
+            ),
             "interaction_checklist": interaction_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -392,44 +370,33 @@ class DrugInteractionFlaggingWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        severity_flags: list[str],
-        evidence_flags: list[str],
-        contraindication_flags: list[str],
-    ) -> str:
-        if not severity_flags and not evidence_flags and not contraindication_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if severity_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(severity_flags)
-            )
-            parts.append(
+        banner = {
+            "SEVERITY FLAGS:": (
                 "⚠️  SEVERITY FLAGS (narrow severity to formulary reference; "
-                "do not import training-data severity assumptions):\n"
-                f"{flags_text}"
-            )
-        if evidence_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(evidence_flags)
-            )
-            parts.append(
+                "do not import training-data severity assumptions):"
+            ),
+            "EVIDENCE FLAGS:": (
                 "⚠️  EVIDENCE FLAGS (cite the specific monograph or guideline "
-                "entry; do not paraphrase severity):\n"
-                f"{flags_text}"
-            )
-        if contraindication_flags:
+                "entry; do not paraphrase severity):"
+            ),
+            "CONTRAINDICATION FLAGS:": (
+                "⚠️  CONTRAINDICATION FLAGS (name the contraindicating drug pair "
+                "or allergy mechanism explicitly):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(contraindication_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  CONTRAINDICATION FLAGS (name the contraindicating drug pair "
-                "or allergy mechanism explicitly):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

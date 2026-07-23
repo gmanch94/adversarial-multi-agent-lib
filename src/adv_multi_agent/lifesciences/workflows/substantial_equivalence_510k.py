@@ -267,12 +267,8 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_predicate_flags: list[str] = []
-        current_indication_flags: list[str] = []
-        current_technology_flags: list[str] = []
-        all_predicate_flags: list[str] = []
-        all_indication_flags: list[str] = []
-        all_technology_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -286,11 +282,7 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_predicate_flags,
-                    current_indication_flags,
-                    current_technology_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -311,12 +303,9 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
                 criteria=_SE_REVIEW_CRITERIA,
             )
             score = review.score
-            current_predicate_flags = extract_flags(review.critique, "PREDICATE-MISMATCH FLAGS:")
-            current_indication_flags = extract_flags(review.critique, "INDICATION-CREEP FLAGS:")
-            current_technology_flags = extract_flags(review.critique, "TECHNOLOGY-DELTA FLAGS:")
-            all_predicate_flags.extend(current_predicate_flags)
-            all_indication_flags.extend(current_indication_flags)
-            all_technology_flags.extend(current_technology_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-2).
@@ -330,24 +319,11 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_predicate_flags
-                and not current_indication_flags
-                and not current_technology_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
-        se_checklist = self._build_se_checklist(
-            request,
-            {
-                "PREDICATE-MISMATCH FLAGS:": all_predicate_flags,
-                "INDICATION-CREEP FLAGS:": all_indication_flags,
-                "TECHNOLOGY-DELTA FLAGS:": all_technology_flags,
-            },
-            veto_reason,
-        )
+        se_checklist = self._build_se_checklist(request, accumulated, veto_reason)
 
         output_with_banner = self._compose_output(output, veto_reason)
 
@@ -355,9 +331,15 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
             "subject_device_description": sanitize_for_prompt(
                 request.subject_device_description, max_chars=200
             ),
-            "predicate_mismatch_flags": list(dict.fromkeys(all_predicate_flags)),
-            "indication_creep_flags": list(dict.fromkeys(all_indication_flags)),
-            "technology_delta_flags": list(dict.fromkeys(all_technology_flags)),
+            "predicate_mismatch_flags": list(
+                dict.fromkeys(accumulated["PREDICATE-MISMATCH FLAGS:"])
+            ),
+            "indication_creep_flags": list(
+                dict.fromkeys(accumulated["INDICATION-CREEP FLAGS:"])
+            ),
+            "technology_delta_flags": list(
+                dict.fromkeys(accumulated["TECHNOLOGY-DELTA FLAGS:"])
+            ),
             "se_checklist": se_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -385,44 +367,33 @@ class SubstantialEquivalence510kWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        predicate_flags: list[str],
-        indication_flags: list[str],
-        technology_flags: list[str],
-    ) -> str:
-        if not predicate_flags and not indication_flags and not technology_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if predicate_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(predicate_flags)
-            )
-            parts.append(
+        banner = {
+            "PREDICATE-MISMATCH FLAGS:": (
                 "⚠️  PREDICATE-MISMATCH FLAGS (select a predicate with matching "
-                "intended use and device type, or acknowledge NSE):\n"
-                f"{flags_text}"
-            )
-        if indication_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(indication_flags)
-            )
-            parts.append(
+                "intended use and device type, or acknowledge NSE):"
+            ),
+            "INDICATION-CREEP FLAGS:": (
                 "⚠️  INDICATION-CREEP FLAGS (narrow the subject indications to the "
-                "predicate's cleared scope):\n"
-                f"{flags_text}"
-            )
-        if technology_flags:
+                "predicate's cleared scope):"
+            ),
+            "TECHNOLOGY-DELTA FLAGS:": (
+                "⚠️  TECHNOLOGY-DELTA FLAGS (cite performance data that resolves the "
+                "new question, or acknowledge it is unresolved):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(technology_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  TECHNOLOGY-DELTA FLAGS (cite performance data that resolves the "
-                "new question, or acknowledge it is unresolved):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

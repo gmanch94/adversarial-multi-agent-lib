@@ -326,7 +326,7 @@ class InventoryReplenishmentWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "dc_id": request.dc_id,
+                "dc_id": sanitize_for_prompt(request.dc_id, max_chars=200),
                 "lead_time_flags": list(dict.fromkeys(accumulated["LEAD-TIME FLAGS:"])),
                 "stockout_flags": list(dict.fromkeys(accumulated["STOCKOUT FLAGS:"])),
                 "capacity_flags": list(dict.fromkeys(accumulated["CAPACITY FLAGS:"])),

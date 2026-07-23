@@ -18,7 +18,6 @@ import re
 import sys
 import tempfile
 import unicodedata
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -189,32 +188,6 @@ def is_safe_id(value: Any) -> bool:
     reviewer prompts (e.g. via `[{c.id}]` formatting in verifier).
     """
     return isinstance(value, str) and bool(_SAFE_ID_RE.match(value))
-
-
-def cap_field(value: str, max_chars: int, field_name: str = "") -> str:
-    """Cap a single Request field to *max_chars* and emit a UserWarning if
-    truncation occurs (L-IND-5).
-
-    Use this in ``to_prompt_text`` instead of bare ``value[:max_chars]`` so
-    callers who pass oversized inputs see a runtime diagnostic rather than
-    silent data loss.  The truncated string does NOT append an ellipsis — the
-    raw slice is returned so downstream ``sanitize_for_prompt`` can optionally
-    append its own marker.
-
-    Existing workflows that use ``value[:_MAX_FIELD_CHARS]`` directly remain
-    correct but silent.  New workflows should use this helper.
-    """
-    if len(value) > max_chars:
-        label = f" ({field_name!r})" if field_name else ""
-        warnings.warn(
-            f"Request field{label} truncated from {len(value)} to {max_chars} chars "
-            f"before prompt injection. Input beyond char {max_chars} will not be "
-            f"seen by the model. Verify upstream data quality.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return value[:max_chars]
-    return value
 
 
 def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:

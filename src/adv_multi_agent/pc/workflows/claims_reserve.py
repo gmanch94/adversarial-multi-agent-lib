@@ -417,7 +417,7 @@ class ClaimsReserveWorkflow(BaseWorkflow):
         output_with_banners = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "loss_event": request.loss_event,
+            "loss_event": sanitize_for_prompt(request.loss_event, max_chars=200),
             "reserve_flags": list(dict.fromkeys(all_reserve_flags)),
             "precedent_flags": list(dict.fromkeys(all_precedent_flags)),
             "litigation_flags": list(dict.fromkeys(all_litigation_flags)),
@@ -485,7 +485,10 @@ class ClaimsReserveWorkflow(BaseWorkflow):
     def _compose_output(draft: str, veto_reason: str | None) -> str:
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
-        return f"{draft}\n\n---\n\n{_VETO_BANNER}\n\n{_DISCLAIMER}"
+        return (
+            f"{_VETO_BANNER}\n\nVETO DIRECTIVE: {veto_reason}\n\n"
+            f"--- Vetoed draft below ---\n\n{draft}\n\n---\n\n{_DISCLAIMER}"
+        )
 
     @staticmethod
     def _build_actuary_checklist(

@@ -371,7 +371,7 @@ class EnvironmentalImpairmentWorkflow(BaseWorkflow):
         output_with_banners = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "site_summary": request.site_summary,
+            "site_summary": sanitize_for_prompt(request.site_summary, max_chars=200),
             "known_condition_flags": list(dict.fromkeys(accumulated["KNOWN-CONDITION FLAGS:"])),
             "tail_flags": list(dict.fromkeys(accumulated["TAIL FLAGS:"])),
             "regulatory_overlap_flags": list(dict.fromkeys(accumulated["REGULATORY-OVERLAP FLAGS:"])),
@@ -431,7 +431,10 @@ class EnvironmentalImpairmentWorkflow(BaseWorkflow):
     def _compose_output(draft: str, veto_reason: str | None) -> str:
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
-        return f"{draft}\n\n---\n\n{_VETO_BANNER}\n\n{_DISCLAIMER}"
+        return (
+            f"{_VETO_BANNER}\n\nVETO DIRECTIVE: {veto_reason}\n\n"
+            f"--- Vetoed draft below ---\n\n{draft}\n\n---\n\n{_DISCLAIMER}"
+        )
 
     @staticmethod
     def _build_counsel_checklist(

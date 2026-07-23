@@ -325,8 +325,8 @@ class PromoMarkdownWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "sku": request.sku,
-                "category": request.category,
+                "sku": sanitize_for_prompt(request.sku, max_chars=200),
+                "category": sanitize_for_prompt(request.category, max_chars=200),
                 "elasticity_flags": list(dict.fromkeys(accumulated["ELASTICITY FLAGS:"])),
                 "margin_flags": list(dict.fromkeys(accumulated["MARGIN FLAGS:"])),
                 "timing_flags": list(dict.fromkeys(accumulated["TIMING FLAGS:"])),

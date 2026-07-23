@@ -246,12 +246,8 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_sal_flags: list[str] = []
-        current_bioburden_flags: list[str] = []
-        current_validation_flags: list[str] = []
-        all_sal_flags: list[str] = []
-        all_bioburden_flags: list[str] = []
-        all_validation_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -265,11 +261,7 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_sal_flags,
-                    current_bioburden_flags,
-                    current_validation_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -290,14 +282,9 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
                 criteria=_STERILITY_REVIEW_CRITERIA,
             )
             score = review.score
-            current_sal_flags = extract_flags(review.critique, "SAL FLAGS:")
-            current_bioburden_flags = extract_flags(review.critique, "BIOBURDEN FLAGS:")
-            current_validation_flags = extract_flags(
-                review.critique, "VALIDATION-GAP FLAGS:"
-            )
-            all_sal_flags.extend(current_sal_flags)
-            all_bioburden_flags.extend(current_bioburden_flags)
-            all_validation_flags.extend(current_validation_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -310,23 +297,12 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_sal_flags
-                and not current_bioburden_flags
-                and not current_validation_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         sterility_checklist = self._build_sterility_checklist(
-            request,
-            {
-                "SAL FLAGS:": all_sal_flags,
-                "BIOBURDEN FLAGS:": all_bioburden_flags,
-                "VALIDATION-GAP FLAGS:": all_validation_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -335,9 +311,11 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "sal_flags": list(dict.fromkeys(all_sal_flags)),
-            "bioburden_flags": list(dict.fromkeys(all_bioburden_flags)),
-            "validation_gap_flags": list(dict.fromkeys(all_validation_flags)),
+            "sal_flags": list(dict.fromkeys(accumulated["SAL FLAGS:"])),
+            "bioburden_flags": list(dict.fromkeys(accumulated["BIOBURDEN FLAGS:"])),
+            "validation_gap_flags": list(
+                dict.fromkeys(accumulated["VALIDATION-GAP FLAGS:"])
+            ),
             "sterility_checklist": sterility_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -365,43 +343,32 @@ class SterilityAssuranceWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        sal_flags: list[str],
-        bioburden_flags: list[str],
-        validation_flags: list[str],
-    ) -> str:
-        if not sal_flags and not bioburden_flags and not validation_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if sal_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(sal_flags)
-            )
-            parts.append(
+        banner = {
+            "SAL FLAGS:": (
                 "⚠️  SAL FLAGS (do not assert a SAL the validation/routine data do "
-                "not support):\n"
-                f"{flags_text}"
-            )
-        if bioburden_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(bioburden_flags)
-            )
-            parts.append(
-                "⚠️  BIOBURDEN FLAGS (state the bioburden vs the validated limit):\n"
-                f"{flags_text}"
-            )
-        if validation_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(validation_flags)
-            )
-            parts.append(
+                "not support):"
+            ),
+            "BIOBURDEN FLAGS:": (
+                "⚠️  BIOBURDEN FLAGS (state the bioburden vs the validated limit):"
+            ),
+            "VALIDATION-GAP FLAGS:": (
                 "⚠️  VALIDATION-GAP FLAGS (name the missing/expired validation "
-                "element):\n"
-                f"{flags_text}"
+                "element):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

@@ -297,13 +297,8 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
         round_num = 0
         review = None
 
-        current_bias_flags: list[str] = []
-        current_eligibility_flags: list[str] = []
-        current_evidence_flags: list[str] = []
-
-        all_bias_flags: list[str] = []
-        all_eligibility_flags: list[str] = []
-        all_evidence_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
 
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
@@ -318,11 +313,7 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_bias_flags,
-                    current_eligibility_flags,
-                    current_evidence_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -344,15 +335,9 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
             )
             score = review.score
 
-            current_bias_flags = extract_flags(review.critique, "BIAS FLAGS:")
-            current_eligibility_flags = extract_flags(
-                review.critique, "ELIGIBILITY FLAGS:"
-            )
-            current_evidence_flags = extract_flags(review.critique, "EVIDENCE FLAGS:")
-
-            all_bias_flags.extend(current_bias_flags)
-            all_eligibility_flags.extend(current_eligibility_flags)
-            all_evidence_flags.extend(current_evidence_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             self.wiki.add_feedback(
                 sanitize_for_prompt(review.critique, max_chars=max_wiki_chars),
@@ -364,31 +349,19 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_bias_flags
-                and not current_eligibility_flags
-                and not current_evidence_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
-        trial_checklist = self._build_trial_checklist(
-            {
-                "BIAS FLAGS:": all_bias_flags,
-                "ELIGIBILITY FLAGS:": all_eligibility_flags,
-                "EVIDENCE FLAGS:": all_evidence_flags,
-            },
-            veto_reason,
-        )
+        trial_checklist = self._build_trial_checklist(accumulated, veto_reason)
 
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
             "trial_id": sanitize_for_prompt(request.trial_id, max_chars=200),
-            "bias_flags": list(dict.fromkeys(all_bias_flags)),
-            "eligibility_flags": list(dict.fromkeys(all_eligibility_flags)),
-            "evidence_flags": list(dict.fromkeys(all_evidence_flags)),
+            "bias_flags": list(dict.fromkeys(accumulated["BIAS FLAGS:"])),
+            "eligibility_flags": list(dict.fromkeys(accumulated["ELIGIBILITY FLAGS:"])),
+            "evidence_flags": list(dict.fromkeys(accumulated["EVIDENCE FLAGS:"])),
             "trial_checklist": trial_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -418,45 +391,34 @@ class ClinicalTrialEligibilityWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        bias_flags: list[str],
-        eligibility_flags: list[str],
-        evidence_flags: list[str],
-    ) -> str:
-        if not bias_flags and not eligibility_flags and not evidence_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if bias_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(bias_flags)
-            )
-            parts.append(
+        banner = {
+            "BIAS FLAGS:": (
                 "⚠️  BIAS FLAGS (remove protected-class attribute from "
                 "determinative role; document protocol-specified clinical justification "
-                "or escalate to IRB):\n"
-                f"{flags_text}"
-            )
-        if eligibility_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(eligibility_flags)
-            )
-            parts.append(
+                "or escalate to IRB):"
+            ),
+            "ELIGIBILITY FLAGS:": (
                 "⚠️  ELIGIBILITY FLAGS (re-verify every criterion against "
-                "the protocol section number; do not paraphrase eligibility):\n"
-                f"{flags_text}"
-            )
-        if evidence_flags:
+                "the protocol section number; do not paraphrase eligibility):"
+            ),
+            "EVIDENCE FLAGS:": (
+                "⚠️  EVIDENCE FLAGS (cite the biomarker / lab / treatment-history "
+                "input directly; do not paraphrase eligibility from inferred data):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(evidence_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  EVIDENCE FLAGS (cite the biomarker / lab / treatment-history "
-                "input directly; do not paraphrase eligibility from inferred data):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

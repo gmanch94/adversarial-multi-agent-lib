@@ -255,12 +255,8 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_endpoint_flags: list[str] = []
-        current_power_flags: list[str] = []
-        current_safety_monitoring_flags: list[str] = []
-        all_endpoint_flags: list[str] = []
-        all_power_flags: list[str] = []
-        all_safety_monitoring_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -274,11 +270,7 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_endpoint_flags,
-                    current_power_flags,
-                    current_safety_monitoring_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -299,14 +291,9 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
                 criteria=_CLINICAL_PROTOCOL_REVIEW_CRITERIA,
             )
             score = review.score
-            current_endpoint_flags = extract_flags(review.critique, "ENDPOINT FLAGS:")
-            current_power_flags = extract_flags(review.critique, "POWER FLAGS:")
-            current_safety_monitoring_flags = extract_flags(
-                review.critique, "SAFETY-MONITORING FLAGS:"
-            )
-            all_endpoint_flags.extend(current_endpoint_flags)
-            all_power_flags.extend(current_power_flags)
-            all_safety_monitoring_flags.extend(current_safety_monitoring_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-4).
@@ -320,23 +307,12 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_endpoint_flags
-                and not current_power_flags
-                and not current_safety_monitoring_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         clinical_protocol_checklist = self._build_clinical_protocol_checklist(
-            request,
-            {
-                "ENDPOINT FLAGS:": all_endpoint_flags,
-                "POWER FLAGS:": all_power_flags,
-                "SAFETY-MONITORING FLAGS:": all_safety_monitoring_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -345,9 +321,11 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
             "protocol_synopsis": sanitize_for_prompt(
                 request.protocol_synopsis, max_chars=200
             ),
-            "endpoint_flags": list(dict.fromkeys(all_endpoint_flags)),
-            "power_flags": list(dict.fromkeys(all_power_flags)),
-            "safety_monitoring_flags": list(dict.fromkeys(all_safety_monitoring_flags)),
+            "endpoint_flags": list(dict.fromkeys(accumulated["ENDPOINT FLAGS:"])),
+            "power_flags": list(dict.fromkeys(accumulated["POWER FLAGS:"])),
+            "safety_monitoring_flags": list(
+                dict.fromkeys(accumulated["SAFETY-MONITORING FLAGS:"])
+            ),
             "clinical_protocol_checklist": clinical_protocol_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -375,48 +353,33 @@ class ClinicalProtocolDesignWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        endpoint_flags: list[str],
-        power_flags: list[str],
-        safety_monitoring_flags: list[str],
-    ) -> str:
-        if (
-            not endpoint_flags
-            and not power_flags
-            and not safety_monitoring_flags
-        ):
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if endpoint_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(endpoint_flags)
-            )
-            parts.append(
+        banner = {
+            "ENDPOINT FLAGS:": (
                 "⚠️  ENDPOINT FLAGS (re-assess whether the endpoint supports the "
-                "objective):\n"
-                f"{flags_text}"
-            )
-        if power_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(power_flags)
-            )
-            parts.append(
+                "objective):"
+            ),
+            "POWER FLAGS:": (
                 "⚠️  POWER FLAGS (re-justify the sample size and effect-size "
-                "assumptions):\n"
-                f"{flags_text}"
-            )
-        if safety_monitoring_flags:
+                "assumptions):"
+            ),
+            "SAFETY-MONITORING FLAGS:": (
+                "⚠️  SAFETY-MONITORING FLAGS (strengthen the monitoring / stopping "
+                "rules for the known risk):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(safety_monitoring_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  SAFETY-MONITORING FLAGS (strengthen the monitoring / stopping "
-                "rules for the known risk):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

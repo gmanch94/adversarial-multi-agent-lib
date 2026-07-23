@@ -391,7 +391,9 @@ class RecallScopeManufacturingWorkflow(BaseWorkflow):
         output_with_banners = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "trigger_summary": request.trigger_summary,
+            "trigger_summary": sanitize_for_prompt(
+                request.trigger_summary, max_chars=200
+            ),
             "trigger_evidence_flags": list(dict.fromkeys(all_trigger_flags)),
             "fleet_scope_flags": list(dict.fromkeys(all_fleet_flags)),
             "regulatory_notify_flags": list(dict.fromkeys(all_regulatory_flags)),
@@ -467,7 +469,10 @@ class RecallScopeManufacturingWorkflow(BaseWorkflow):
     def _compose_output(draft: str, veto_reason: str | None) -> str:
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
-        return f"{draft}\n\n---\n\n{_VETO_BANNER}\n\n{_DISCLAIMER}"
+        return (
+            f"{_VETO_BANNER}\n\nVETO DIRECTIVE: {veto_reason}\n\n"
+            f"--- Vetoed draft below ---\n\n{draft}\n\n---\n\n{_DISCLAIMER}"
+        )
 
     @staticmethod
     def _build_safety_checklist(

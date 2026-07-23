@@ -262,12 +262,8 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_off_label_flags: list[str] = []
-        current_balance_flags: list[str] = []
-        current_evidence_flags: list[str] = []
-        all_off_label_flags: list[str] = []
-        all_balance_flags: list[str] = []
-        all_evidence_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -281,11 +277,7 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_off_label_flags,
-                    current_balance_flags,
-                    current_evidence_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -306,14 +298,9 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
                 criteria=_MEDINFO_REVIEW_CRITERIA,
             )
             score = review.score
-            current_off_label_flags = extract_flags(review.critique, "OFF-LABEL FLAGS:")
-            current_balance_flags = extract_flags(review.critique, "BALANCE FLAGS:")
-            current_evidence_flags = extract_flags(
-                review.critique, "EVIDENCE-LEVEL FLAGS:"
-            )
-            all_off_label_flags.extend(current_off_label_flags)
-            all_balance_flags.extend(current_balance_flags)
-            all_evidence_flags.extend(current_evidence_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -326,23 +313,12 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_off_label_flags
-                and not current_balance_flags
-                and not current_evidence_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         medinfo_checklist = self._build_medinfo_checklist(
-            request,
-            {
-                "OFF-LABEL FLAGS:": all_off_label_flags,
-                "BALANCE FLAGS:": all_balance_flags,
-                "EVIDENCE-LEVEL FLAGS:": all_evidence_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -351,9 +327,11 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "off_label_flags": list(dict.fromkeys(all_off_label_flags)),
-            "balance_flags": list(dict.fromkeys(all_balance_flags)),
-            "evidence_level_flags": list(dict.fromkeys(all_evidence_flags)),
+            "off_label_flags": list(dict.fromkeys(accumulated["OFF-LABEL FLAGS:"])),
+            "balance_flags": list(dict.fromkeys(accumulated["BALANCE FLAGS:"])),
+            "evidence_level_flags": list(
+                dict.fromkeys(accumulated["EVIDENCE-LEVEL FLAGS:"])
+            ),
             "medinfo_checklist": medinfo_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -384,44 +362,33 @@ class MedicalInformationResponseWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        off_label_flags: list[str],
-        balance_flags: list[str],
-        evidence_flags: list[str],
-    ) -> str:
-        if not off_label_flags and not balance_flags and not evidence_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if off_label_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(off_label_flags)
-            )
-            parts.append(
+        banner = {
+            "OFF-LABEL FLAGS:": (
                 "⚠️  OFF-LABEL FLAGS (keep the response reactive and "
-                "non-promotional; do not promote an off-label use):\n"
-                f"{flags_text}"
-            )
-        if balance_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(balance_flags)
-            )
-            parts.append(
+                "non-promotional; do not promote an off-label use):"
+            ),
+            "BALANCE FLAGS:": (
                 "⚠️  BALANCE FLAGS (present the corresponding risk/limitation "
-                "alongside efficacy):\n"
-                f"{flags_text}"
-            )
-        if evidence_flags:
+                "alongside efficacy):"
+            ),
+            "EVIDENCE-LEVEL FLAGS:": (
+                "⚠️  EVIDENCE-LEVEL FLAGS (state the claim no more strongly than "
+                "its evidence supports):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(evidence_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  EVIDENCE-LEVEL FLAGS (state the claim no more strongly than "
-                "its evidence supports):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

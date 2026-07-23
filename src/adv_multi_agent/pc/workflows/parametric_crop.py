@@ -346,8 +346,12 @@ class ParametricCropWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "producer_summary": request.producer_summary,
-                "proposed_cover_type": request.proposed_cover_type,
+                "producer_summary": sanitize_for_prompt(
+                    request.producer_summary, max_chars=200
+                ),
+                "proposed_cover_type": sanitize_for_prompt(
+                    request.proposed_cover_type, max_chars=200
+                ),
                 "peril_match_flags": list(dict.fromkeys(accumulated["PERIL-MATCH FLAGS:"])),
                 "basis_flags": list(dict.fromkeys(accumulated["BASIS FLAGS:"])),
                 "attachment_flags": list(dict.fromkeys(accumulated["ATTACHMENT FLAGS:"])),

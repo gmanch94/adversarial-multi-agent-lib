@@ -268,12 +268,8 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_signal_strength_flags: list[str] = []
-        current_causality_flags: list[str] = []
-        current_labeling_impact_flags: list[str] = []
-        all_signal_strength_flags: list[str] = []
-        all_causality_flags: list[str] = []
-        all_labeling_impact_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -287,11 +283,7 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_signal_strength_flags,
-                    current_causality_flags,
-                    current_labeling_impact_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -312,16 +304,9 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
                 criteria=_PV_SIGNAL_REVIEW_CRITERIA,
             )
             score = review.score
-            current_signal_strength_flags = extract_flags(
-                review.critique, "SIGNAL-STRENGTH FLAGS:"
-            )
-            current_causality_flags = extract_flags(review.critique, "CAUSALITY FLAGS:")
-            current_labeling_impact_flags = extract_flags(
-                review.critique, "LABELING-IMPACT FLAGS:"
-            )
-            all_signal_strength_flags.extend(current_signal_strength_flags)
-            all_causality_flags.extend(current_causality_flags)
-            all_labeling_impact_flags.extend(current_labeling_impact_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-4).
@@ -335,23 +320,12 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_signal_strength_flags
-                and not current_causality_flags
-                and not current_labeling_impact_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         pv_signal_checklist = self._build_pv_signal_checklist(
-            request,
-            {
-                "SIGNAL-STRENGTH FLAGS:": all_signal_strength_flags,
-                "CAUSALITY FLAGS:": all_causality_flags,
-                "LABELING-IMPACT FLAGS:": all_labeling_impact_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -360,9 +334,13 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "signal_strength_flags": list(dict.fromkeys(all_signal_strength_flags)),
-            "causality_flags": list(dict.fromkeys(all_causality_flags)),
-            "labeling_impact_flags": list(dict.fromkeys(all_labeling_impact_flags)),
+            "signal_strength_flags": list(
+                dict.fromkeys(accumulated["SIGNAL-STRENGTH FLAGS:"])
+            ),
+            "causality_flags": list(dict.fromkeys(accumulated["CAUSALITY FLAGS:"])),
+            "labeling_impact_flags": list(
+                dict.fromkeys(accumulated["LABELING-IMPACT FLAGS:"])
+            ),
             "pv_signal_checklist": pv_signal_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -394,48 +372,33 @@ class PharmacovigilanceSignalWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        signal_strength_flags: list[str],
-        causality_flags: list[str],
-        labeling_impact_flags: list[str],
-    ) -> str:
-        if (
-            not signal_strength_flags
-            and not causality_flags
-            and not labeling_impact_flags
-        ):
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if signal_strength_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(signal_strength_flags)
-            )
-            parts.append(
+        banner = {
+            "SIGNAL-STRENGTH FLAGS:": (
                 "⚠️  SIGNAL-STRENGTH FLAGS (re-characterize the signal against the "
-                "metrics):\n"
-                f"{flags_text}"
-            )
-        if causality_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(causality_flags)
-            )
-            parts.append(
+                "metrics):"
+            ),
+            "CAUSALITY FLAGS:": (
                 "⚠️  CAUSALITY FLAGS (re-assess population-level causality with a "
-                "basis):\n"
-                f"{flags_text}"
-            )
-        if labeling_impact_flags:
+                "basis):"
+            ),
+            "LABELING-IMPACT FLAGS:": (
+                "⚠️  LABELING-IMPACT FLAGS (reflect the labeling / regulatory "
+                "implication in the action):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(labeling_impact_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  LABELING-IMPACT FLAGS (reflect the labeling / regulatory "
-                "implication in the action):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

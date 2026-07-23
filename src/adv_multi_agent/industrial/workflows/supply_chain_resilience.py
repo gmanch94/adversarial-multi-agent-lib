@@ -316,7 +316,9 @@ class SupplyChainResilienceWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "commodity_summary": request.commodity_summary,
+                "commodity_summary": sanitize_for_prompt(
+                    request.commodity_summary, max_chars=200
+                ),
                 "single_source_flags": list(
                     dict.fromkeys(accumulated["SINGLE-SOURCE FLAGS:"])
                 ),

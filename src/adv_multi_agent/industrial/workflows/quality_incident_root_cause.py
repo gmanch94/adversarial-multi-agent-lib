@@ -309,7 +309,9 @@ class QualityIncidentRootCauseWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "incident_summary": request.incident_summary,
+                "incident_summary": sanitize_for_prompt(
+                    request.incident_summary, max_chars=200
+                ),
                 "causal_chain_flags": list(
                     dict.fromkeys(accumulated["CAUSAL-CHAIN FLAGS:"])
                 ),

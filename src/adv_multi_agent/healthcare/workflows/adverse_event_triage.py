@@ -271,12 +271,8 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_severity_flags: list[str] = []
-        current_causality_flags: list[str] = []
-        current_regulatory_flags: list[str] = []
-        all_severity_flags: list[str] = []
-        all_causality_flags: list[str] = []
-        all_regulatory_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -290,11 +286,7 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_severity_flags,
-                    current_causality_flags,
-                    current_regulatory_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -315,12 +307,9 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
                 criteria=_ADVERSE_EVENT_REVIEW_CRITERIA,
             )
             score = review.score
-            current_severity_flags = extract_flags(review.critique, "SEVERITY FLAGS:")
-            current_causality_flags = extract_flags(review.critique, "CAUSALITY FLAGS:")
-            current_regulatory_flags = extract_flags(review.critique, "REGULATORY FLAGS:")
-            all_severity_flags.extend(current_severity_flags)
-            all_causality_flags.extend(current_causality_flags)
-            all_regulatory_flags.extend(current_regulatory_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-HEALTH-2).
@@ -334,23 +323,12 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_severity_flags
-                and not current_causality_flags
-                and not current_regulatory_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         adverse_event_checklist = self._build_adverse_event_checklist(
-            request,
-            {
-                "SEVERITY FLAGS:": all_severity_flags,
-                "CAUSALITY FLAGS:": all_causality_flags,
-                "REGULATORY FLAGS:": all_regulatory_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -359,9 +337,9 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
             "product_name": sanitize_for_prompt(
                 request.product_name, max_chars=200
             ),
-            "severity_flags": list(dict.fromkeys(all_severity_flags)),
-            "causality_flags": list(dict.fromkeys(all_causality_flags)),
-            "regulatory_flags": list(dict.fromkeys(all_regulatory_flags)),
+            "severity_flags": list(dict.fromkeys(accumulated["SEVERITY FLAGS:"])),
+            "causality_flags": list(dict.fromkeys(accumulated["CAUSALITY FLAGS:"])),
+            "regulatory_flags": list(dict.fromkeys(accumulated["REGULATORY FLAGS:"])),
             "adverse_event_checklist": adverse_event_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -392,47 +370,36 @@ class AdverseEventTriageWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        severity_flags: list[str],
-        causality_flags: list[str],
-        regulatory_flags: list[str],
-    ) -> str:
-        if not severity_flags and not causality_flags and not regulatory_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if severity_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(severity_flags)
-            )
-            parts.append(
+        banner = {
+            "SEVERITY FLAGS:": (
                 "⚠️  SEVERITY FLAGS (grade severity against CTCAE / ICH E2A "
-                "definitions; do not infer beyond reporter's narrative):\n"
-                f"{flags_text}"
-            )
-        if causality_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(causality_flags)
-            )
-            parts.append(
+                "definitions; do not infer beyond reporter's narrative):"
+            ),
+            "CAUSALITY FLAGS:": (
                 "⚠️  CAUSALITY FLAGS (use WHO-UMC or Naranjo causality scale; "
                 "cite the specific criterion (temporal, dechallenge, rechallenge, "
-                "alternative cause)):\n"
-                f"{flags_text}"
-            )
-        if regulatory_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(regulatory_flags)
-            )
-            parts.append(
+                "alternative cause)):"
+            ),
+            "REGULATORY FLAGS:": (
                 "⚠️  REGULATORY FLAGS (match obligation to FDA 21 CFR 312 / EMA "
                 "EudraVigilance / ICH E2A reporting clock (7-day for "
                 "fatal+life-threatening unexpected; 15-day for other serious "
-                "unexpected)):\n"
-                f"{flags_text}"
+                "unexpected)):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

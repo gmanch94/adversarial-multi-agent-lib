@@ -260,12 +260,8 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_sensitivity_flags: list[str] = []
-        current_specificity_flags: list[str] = []
-        current_interference_flags: list[str] = []
-        all_sensitivity_flags: list[str] = []
-        all_specificity_flags: list[str] = []
-        all_interference_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -279,11 +275,7 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_sensitivity_flags,
-                    current_specificity_flags,
-                    current_interference_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -304,12 +296,9 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
                 criteria=_ASSAY_REVIEW_CRITERIA,
             )
             score = review.score
-            current_sensitivity_flags = extract_flags(review.critique, "SENSITIVITY-CLAIM FLAGS:")
-            current_specificity_flags = extract_flags(review.critique, "SPECIFICITY-CLAIM FLAGS:")
-            current_interference_flags = extract_flags(review.critique, "INTERFERENCE FLAGS:")
-            all_sensitivity_flags.extend(current_sensitivity_flags)
-            all_specificity_flags.extend(current_specificity_flags)
-            all_interference_flags.extend(current_interference_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-2).
@@ -323,23 +312,12 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_sensitivity_flags
-                and not current_specificity_flags
-                and not current_interference_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         assay_checklist = self._build_assay_checklist(
-            request,
-            {
-                "SENSITIVITY-CLAIM FLAGS:": all_sensitivity_flags,
-                "SPECIFICITY-CLAIM FLAGS:": all_specificity_flags,
-                "INTERFERENCE FLAGS:": all_interference_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -348,9 +326,15 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
             "assay_description": sanitize_for_prompt(
                 request.assay_description, max_chars=200
             ),
-            "sensitivity_claim_flags": list(dict.fromkeys(all_sensitivity_flags)),
-            "specificity_claim_flags": list(dict.fromkeys(all_specificity_flags)),
-            "interference_flags": list(dict.fromkeys(all_interference_flags)),
+            "sensitivity_claim_flags": list(
+                dict.fromkeys(accumulated["SENSITIVITY-CLAIM FLAGS:"])
+            ),
+            "specificity_claim_flags": list(
+                dict.fromkeys(accumulated["SPECIFICITY-CLAIM FLAGS:"])
+            ),
+            "interference_flags": list(
+                dict.fromkeys(accumulated["INTERFERENCE FLAGS:"])
+            ),
             "assay_checklist": assay_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -378,45 +362,34 @@ class AssayPerformanceClaimWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        sensitivity_flags: list[str],
-        specificity_flags: list[str],
-        interference_flags: list[str],
-    ) -> str:
-        if not sensitivity_flags and not specificity_flags and not interference_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if sensitivity_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(sensitivity_flags)
-            )
-            parts.append(
+        banner = {
+            "SENSITIVITY-CLAIM FLAGS:": (
                 "⚠️  SENSITIVITY-CLAIM FLAGS (re-state each claim within the study "
-                "confidence interval and n, or remove it):\n"
-                f"{flags_text}"
-            )
-        if specificity_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(specificity_flags)
-            )
-            parts.append(
+                "confidence interval and n, or remove it):"
+            ),
+            "SPECIFICITY-CLAIM FLAGS:": (
                 "⚠️  SPECIFICITY-CLAIM FLAGS (re-state each specificity / "
                 "false-positive-rate claim within the data and its CI, or remove "
-                "it):\n"
-                f"{flags_text}"
-            )
-        if interference_flags:
+                "it):"
+            ),
+            "INTERFERENCE FLAGS:": (
+                "⚠️  INTERFERENCE FLAGS (restrict each claimed matrix / population "
+                "to the interferents and cross-reactants actually tested):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(interference_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  INTERFERENCE FLAGS (restrict each claimed matrix / population "
-                "to the interferents and cross-reactants actually tested):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

@@ -1,6 +1,25 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-20 — Lifesciences Phase-2 **batch B (#17–27) SHIPPED**; lifesciences catalog **COMPLETE (27/27)**; full gate green; ship-audit fixed pre-push; deferred core-docstring LOW fixed on confirmation; pushed to origin/main; tree clean.
+Last updated: 2026-07-23 — **Architecture depth review + D1/D2/D3/D4 applied.** Flag-header convention unified across 18 workflows; all 25 veto outputs standardized; 28 metadata scalars sanitized; dead `cap_field` deleted (forced a false-closure fix in SECURITY_MODEL). 4 mutation-tested AST guards added. Full gate green — **1449 library tests** (was 1257). NOT yet committed.
+
+## 2026-07-23 — Architecture depth review (D-DEPTH-1/2/3)
+
+**Review:** [`docs/reviews/2026-07-23-architecture-depth-review.md`](reviews/2026-07-23-architecture-depth-review.md). Lens: module depth (leverage behind a small interface) + locality. Complements the 2026-07-18 holistic review (convention/test-quality lens) and the 16 security cycles. Findings are counted censuses, not samples.
+
+- **D1 (MEDIUM) — `_FLAG_HEADERS` was declared-but-dead in 18 files.** 51 modules declared it; 33 used it, **18 never referenced it again** (healthcare 4 veto + lifesciences 14 veto) while hardcoding the same header strings at five other sites per file. Renaming a header in the tuple would change nothing → `extract_flags` returns `[]` forever → the gate clause `and not <flags>` is permanently satisfied. **Fail-OPEN, invisible to `any(substr in f)` tests.** All 18 converged onto the dict-driven form. Not a new abstraction — two pc **veto** workflows already used it, disproving any "veto needs named locals" rationale.
+- **D2 (MEDIUM) — the veto seam had two contracts.** 25 `_compose_output` bodies → 2 variants. 7 (retail/pc/industrial) emitted `draft + banner` and **never rendered `veto_reason`** into `output` — the banner told the reader to go find it in `metadata`. On reserve booking, coverage denial, and recall scope. All 25 now byte-identical, directive on top.
+- **D3 (LOW-MED) — 28 unsanitized metadata scalars** in industrial 8 / pc 8 / retail 12. L-HEALTH-2 had been fixed for healthcare only; the lesson generalized, the remediation had not.
+- **D4 (LOW) — `cap_field` deleted: 0 callers.** Added 2026-05-16 to close L-IND-5, its docstring declared it the convention, and **all 27 lifesciences workflows shipped after it use the bare slice.** `SECURITY_MODEL.md` had recorded it **"Closed"** — a false-closure claim now rewritten to **Open** with the real adoption cost named.
+- **D5 deferred** — 25 `_extract_veto` pure pass-throughs, cosmetic; fold in next time those files are touched.
+- **D6 NOT attempted, ADR-blocked** — 5208 `run()` lines across 64 files is real, but D-RETAIL-7 / D-IND-1 / D-LIFESCI-1 stand and the reasoning survives the census (the per-scenario config surface exists whether injected into a base class or a shared loop fn). Recorded in D-DEPTH-3 so the next depth review doesn't re-derive it.
+
+**The durable half — [`tests/unit/test_workflow_conventions.py`](../tests/unit/test_workflow_conventions.py), +192 tests.** Four AST guards: G1 (declared `_FLAG_HEADERS` is referenced ≥2×), G2 (every `extract_flags` literal ∈ the tuple), G3 (every veto `_compose_output` interpolates `veto_reason`), G4 (no bare `request.<attr>` metadata scalar), plus a veto-census-stability test. **All four mutation-tested** — each bug shape reintroduced, guard confirmed red, reverted.
+
+**Gate:** ruff (src + tests) · mypy strict 111 files · **1449 tests** + 26 skipped. Counts refreshed in CLAUDE.md / README / architecture / deployment-architecture.
+
+**Things NOT to do next:** don't re-add `cap_field` (deleted deliberately — adopting it across 58 `to_prompt_text` sites is the only real closure, and that's a separate decision); don't "fix" the 26 skipped guard tests (modules without `_FLAG_HEADERS`, by design); don't propose a workflow base class (D-DEPTH-3); don't revert the 18 files to named-locals.
+
+**Open:** the change is **uncommitted** — review the diff, then commit + push (code change, so NO `[skip ci]`).
 
 ## 2026-07-20 — Lifesciences Phase-2 batch B (#17–27) SHIPPED — CATALOG COMPLETE
 

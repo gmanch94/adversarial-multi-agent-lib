@@ -253,12 +253,8 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_off_label_flags: list[str] = []
-        current_fair_balance_flags: list[str] = []
-        current_substantiation_flags: list[str] = []
-        all_off_label_flags: list[str] = []
-        all_fair_balance_flags: list[str] = []
-        all_substantiation_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -272,11 +268,7 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_off_label_flags,
-                    current_fair_balance_flags,
-                    current_substantiation_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -297,12 +289,9 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
                 criteria=_PROMO_REVIEW_CRITERIA,
             )
             score = review.score
-            current_off_label_flags = extract_flags(review.critique, "OFF-LABEL FLAGS:")
-            current_fair_balance_flags = extract_flags(review.critique, "FAIR-BALANCE FLAGS:")
-            current_substantiation_flags = extract_flags(review.critique, "SUBSTANTIATION FLAGS:")
-            all_off_label_flags.extend(current_off_label_flags)
-            all_fair_balance_flags.extend(current_fair_balance_flags)
-            all_substantiation_flags.extend(current_substantiation_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-3).
@@ -316,23 +305,12 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_off_label_flags
-                and not current_fair_balance_flags
-                and not current_substantiation_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         promo_checklist = self._build_promo_checklist(
-            request,
-            {
-                "OFF-LABEL FLAGS:": all_off_label_flags,
-                "FAIR-BALANCE FLAGS:": all_fair_balance_flags,
-                "SUBSTANTIATION FLAGS:": all_substantiation_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -341,9 +319,13 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
             "material_type": sanitize_for_prompt(
                 request.material_type, max_chars=200
             ),
-            "off_label_flags": list(dict.fromkeys(all_off_label_flags)),
-            "fair_balance_flags": list(dict.fromkeys(all_fair_balance_flags)),
-            "substantiation_flags": list(dict.fromkeys(all_substantiation_flags)),
+            "off_label_flags": list(dict.fromkeys(accumulated["OFF-LABEL FLAGS:"])),
+            "fair_balance_flags": list(
+                dict.fromkeys(accumulated["FAIR-BALANCE FLAGS:"])
+            ),
+            "substantiation_flags": list(
+                dict.fromkeys(accumulated["SUBSTANTIATION FLAGS:"])
+            ),
             "promo_checklist": promo_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -371,44 +353,33 @@ class PromotionalOffLabelReviewWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        off_label_flags: list[str],
-        fair_balance_flags: list[str],
-        substantiation_flags: list[str],
-    ) -> str:
-        if not off_label_flags and not fair_balance_flags and not substantiation_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if off_label_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(off_label_flags)
-            )
-            parts.append(
+        banner = {
+            "OFF-LABEL FLAGS:": (
                 "⚠️  OFF-LABEL FLAGS (remove the claim or restrict it to the "
-                "approved indication):\n"
-                f"{flags_text}"
-            )
-        if fair_balance_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(fair_balance_flags)
-            )
-            parts.append(
+                "approved indication):"
+            ),
+            "FAIR-BALANCE FLAGS:": (
                 "⚠️  FAIR-BALANCE FLAGS (add risk information with comparable "
-                "prominence to the benefit claims):\n"
-                f"{flags_text}"
-            )
-        if substantiation_flags:
+                "prominence to the benefit claims):"
+            ),
+            "SUBSTANTIATION FLAGS:": (
+                "⚠️  SUBSTANTIATION FLAGS (attach an adequate citation or remove "
+                "the claim):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(substantiation_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  SUBSTANTIATION FLAGS (attach an adequate citation or remove "
-                "the claim):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

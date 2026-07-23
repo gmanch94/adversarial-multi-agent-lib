@@ -273,12 +273,8 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_signal_flags: list[str] = []
-        current_regional_flags: list[str] = []
-        current_clock_flags: list[str] = []
-        all_signal_flags: list[str] = []
-        all_regional_flags: list[str] = []
-        all_clock_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -292,11 +288,7 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_signal_flags,
-                    current_regional_flags,
-                    current_clock_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -317,16 +309,9 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
                 criteria=_CCDS_REVIEW_CRITERIA,
             )
             score = review.score
-            current_signal_flags = extract_flags(review.critique, "SAFETY-SIGNAL FLAGS:")
-            current_regional_flags = extract_flags(
-                review.critique, "REGIONAL-DIVERGENCE FLAGS:"
-            )
-            current_clock_flags = extract_flags(
-                review.critique, "IMPLEMENTATION-CLOCK FLAGS:"
-            )
-            all_signal_flags.extend(current_signal_flags)
-            all_regional_flags.extend(current_regional_flags)
-            all_clock_flags.extend(current_clock_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -339,24 +324,11 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_signal_flags
-                and not current_regional_flags
-                and not current_clock_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
-        ccds_checklist = self._build_ccds_checklist(
-            request,
-            {
-                "SAFETY-SIGNAL FLAGS:": all_signal_flags,
-                "REGIONAL-DIVERGENCE FLAGS:": all_regional_flags,
-                "IMPLEMENTATION-CLOCK FLAGS:": all_clock_flags,
-            },
-            veto_reason,
-        )
+        ccds_checklist = self._build_ccds_checklist(request, accumulated, veto_reason)
 
         output_with_banner = self._compose_output(output, veto_reason)
 
@@ -364,9 +336,15 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "safety_signal_flags": list(dict.fromkeys(all_signal_flags)),
-            "regional_divergence_flags": list(dict.fromkeys(all_regional_flags)),
-            "implementation_clock_flags": list(dict.fromkeys(all_clock_flags)),
+            "safety_signal_flags": list(
+                dict.fromkeys(accumulated["SAFETY-SIGNAL FLAGS:"])
+            ),
+            "regional_divergence_flags": list(
+                dict.fromkeys(accumulated["REGIONAL-DIVERGENCE FLAGS:"])
+            ),
+            "implementation_clock_flags": list(
+                dict.fromkeys(accumulated["IMPLEMENTATION-CLOCK FLAGS:"])
+            ),
             "ccds_checklist": ccds_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -395,44 +373,33 @@ class CCDSLabelChangeWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        signal_flags: list[str],
-        regional_flags: list[str],
-        clock_flags: list[str],
-    ) -> str:
-        if not signal_flags and not regional_flags and not clock_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if signal_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(signal_flags)
-            )
-            parts.append(
+        banner = {
+            "SAFETY-SIGNAL FLAGS:": (
                 "⚠️  SAFETY-SIGNAL FLAGS (convey the established signal faithfully; "
-                "do not understate it):\n"
-                f"{flags_text}"
-            )
-        if regional_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(regional_flags)
-            )
-            parts.append(
+                "do not understate it):"
+            ),
+            "REGIONAL-DIVERGENCE FLAGS:": (
                 "⚠️  REGIONAL-DIVERGENCE FLAGS (reconcile the region or justify the "
-                "divergence):\n"
-                f"{flags_text}"
-            )
-        if clock_flags:
+                "divergence):"
+            ),
+            "IMPLEMENTATION-CLOCK FLAGS:": (
+                "⚠️  IMPLEMENTATION-CLOCK FLAGS (correct the plan to meet the "
+                "mandatory clock):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(clock_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  IMPLEMENTATION-CLOCK FLAGS (correct the plan to meet the "
-                "mandatory clock):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

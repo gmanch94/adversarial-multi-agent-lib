@@ -265,12 +265,8 @@ class FieldActionClassificationWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_recall_class_flags: list[str] = []
-        current_correction_removal_flags: list[str] = []
-        current_health_hazard_flags: list[str] = []
-        all_recall_class_flags: list[str] = []
-        all_correction_removal_flags: list[str] = []
-        all_health_hazard_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -284,11 +280,7 @@ class FieldActionClassificationWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_recall_class_flags,
-                    current_correction_removal_flags,
-                    current_health_hazard_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -309,14 +301,9 @@ class FieldActionClassificationWorkflow(BaseWorkflow):
                 criteria=_FIELD_ACTION_REVIEW_CRITERIA,
             )
             score = review.score
-            current_recall_class_flags = extract_flags(review.critique, "RECALL-CLASS FLAGS:")
-            current_correction_removal_flags = extract_flags(
-                review.critique, "CORRECTION-REMOVAL FLAGS:"
-            )
-            current_health_hazard_flags = extract_flags(review.critique, "HEALTH-HAZARD FLAGS:")
-            all_recall_class_flags.extend(current_recall_class_flags)
-            all_correction_removal_flags.extend(current_correction_removal_flags)
-            all_health_hazard_flags.extend(current_health_hazard_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-3).
@@ -330,32 +317,27 @@ class FieldActionClassificationWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_recall_class_flags
-                and not current_correction_removal_flags
-                and not current_health_hazard_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         field_action_checklist = self._build_field_action_checklist(
-            request,
-            {
-                "RECALL-CLASS FLAGS:": all_recall_class_flags,
-                "CORRECTION-REMOVAL FLAGS:": all_correction_removal_flags,
-                "HEALTH-HAZARD FLAGS:": all_health_hazard_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
             "action_type": sanitize_for_prompt(request.action_type, max_chars=200),
-            "recall_class_flags": list(dict.fromkeys(all_recall_class_flags)),
-            "correction_removal_flags": list(dict.fromkeys(all_correction_removal_flags)),
-            "health_hazard_flags": list(dict.fromkeys(all_health_hazard_flags)),
+            "recall_class_flags": list(
+                dict.fromkeys(accumulated["RECALL-CLASS FLAGS:"])
+            ),
+            "correction_removal_flags": list(
+                dict.fromkeys(accumulated["CORRECTION-REMOVAL FLAGS:"])
+            ),
+            "health_hazard_flags": list(
+                dict.fromkeys(accumulated["HEALTH-HAZARD FLAGS:"])
+            ),
             "field_action_checklist": field_action_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -383,48 +365,33 @@ class FieldActionClassificationWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        recall_class_flags: list[str],
-        correction_removal_flags: list[str],
-        health_hazard_flags: list[str],
-    ) -> str:
-        if (
-            not recall_class_flags
-            and not correction_removal_flags
-            and not health_hazard_flags
-        ):
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if recall_class_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(recall_class_flags)
-            )
-            parts.append(
+        banner = {
+            "RECALL-CLASS FLAGS:": (
                 "⚠️  RECALL-CLASS FLAGS (re-derive the class from the health "
-                "hazard):\n"
-                f"{flags_text}"
-            )
-        if correction_removal_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(correction_removal_flags)
-            )
-            parts.append(
+                "hazard):"
+            ),
+            "CORRECTION-REMOVAL FLAGS:": (
                 "⚠️  CORRECTION-REMOVAL FLAGS (apply the 21 CFR 806 reportability "
-                "test):\n"
-                f"{flags_text}"
-            )
-        if health_hazard_flags:
+                "test):"
+            ),
+            "HEALTH-HAZARD FLAGS:": (
+                "⚠️  HEALTH-HAZARD FLAGS (re-state probability/severity/population "
+                "without understating):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(health_hazard_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  HEALTH-HAZARD FLAGS (re-state probability/severity/population "
-                "without understating):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

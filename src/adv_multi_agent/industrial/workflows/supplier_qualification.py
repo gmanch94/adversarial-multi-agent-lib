@@ -306,7 +306,9 @@ class SupplierQualificationWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "supplier_summary": request.supplier_summary,
+                "supplier_summary": sanitize_for_prompt(
+                    request.supplier_summary, max_chars=200
+                ),
                 "financial_flags": list(dict.fromkeys(accumulated["FINANCIAL FLAGS:"])),
                 "quality_flags": list(dict.fromkeys(accumulated["QUALITY FLAGS:"])),
                 "geo_concentration_flags": list(

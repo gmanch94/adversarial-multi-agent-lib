@@ -313,7 +313,9 @@ class CyberUnderwritingWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "applicant_summary": request.applicant_summary,
+                "applicant_summary": sanitize_for_prompt(
+                    request.applicant_summary, max_chars=200
+                ),
                 "control_gap_flags": list(dict.fromkeys(accumulated["CONTROL-GAP FLAGS:"])),
                 "sub_limit_flags": list(dict.fromkeys(accumulated["SUB-LIMIT FLAGS:"])),
                 "aggregation_flags": list(dict.fromkeys(accumulated["AGGREGATION FLAGS:"])),

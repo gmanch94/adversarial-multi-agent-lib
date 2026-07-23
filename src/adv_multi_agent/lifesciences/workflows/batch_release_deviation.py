@@ -250,12 +250,8 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_criticality_flags: list[str] = []
-        current_impact_assessment_flags: list[str] = []
-        current_release_risk_flags: list[str] = []
-        all_criticality_flags: list[str] = []
-        all_impact_assessment_flags: list[str] = []
-        all_release_risk_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -269,11 +265,7 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_criticality_flags,
-                    current_impact_assessment_flags,
-                    current_release_risk_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -294,14 +286,9 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
                 criteria=_BATCH_RELEASE_REVIEW_CRITERIA,
             )
             score = review.score
-            current_criticality_flags = extract_flags(review.critique, "CRITICALITY FLAGS:")
-            current_impact_assessment_flags = extract_flags(
-                review.critique, "IMPACT-ASSESSMENT FLAGS:"
-            )
-            current_release_risk_flags = extract_flags(review.critique, "RELEASE-RISK FLAGS:")
-            all_criticality_flags.extend(current_criticality_flags)
-            all_impact_assessment_flags.extend(current_impact_assessment_flags)
-            all_release_risk_flags.extend(current_release_risk_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-4).
@@ -315,23 +302,12 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_criticality_flags
-                and not current_impact_assessment_flags
-                and not current_release_risk_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         batch_release_checklist = self._build_batch_release_checklist(
-            request,
-            {
-                "CRITICALITY FLAGS:": all_criticality_flags,
-                "IMPACT-ASSESSMENT FLAGS:": all_impact_assessment_flags,
-                "RELEASE-RISK FLAGS:": all_release_risk_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -340,9 +316,13 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
             "batch_identifier": sanitize_for_prompt(
                 request.batch_identifier, max_chars=200
             ),
-            "criticality_flags": list(dict.fromkeys(all_criticality_flags)),
-            "impact_assessment_flags": list(dict.fromkeys(all_impact_assessment_flags)),
-            "release_risk_flags": list(dict.fromkeys(all_release_risk_flags)),
+            "criticality_flags": list(dict.fromkeys(accumulated["CRITICALITY FLAGS:"])),
+            "impact_assessment_flags": list(
+                dict.fromkeys(accumulated["IMPACT-ASSESSMENT FLAGS:"])
+            ),
+            "release_risk_flags": list(
+                dict.fromkeys(accumulated["RELEASE-RISK FLAGS:"])
+            ),
             "batch_release_checklist": batch_release_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -370,47 +350,32 @@ class BatchReleaseDeviationWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        criticality_flags: list[str],
-        impact_assessment_flags: list[str],
-        release_risk_flags: list[str],
-    ) -> str:
-        if (
-            not criticality_flags
-            and not impact_assessment_flags
-            and not release_risk_flags
-        ):
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if criticality_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(criticality_flags)
-            )
-            parts.append(
+        banner = {
+            "CRITICALITY FLAGS:": (
                 "⚠️  CRITICALITY FLAGS (re-classify the deviation against its "
-                "CQA/safety impact):\n"
-                f"{flags_text}"
-            )
-        if impact_assessment_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(impact_assessment_flags)
-            )
-            parts.append(
-                "⚠️  IMPACT-ASSESSMENT FLAGS (identify every affected CQA):\n"
-                f"{flags_text}"
-            )
-        if release_risk_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(release_risk_flags)
-            )
-            parts.append(
+                "CQA/safety impact):"
+            ),
+            "IMPACT-ASSESSMENT FLAGS:": (
+                "⚠️  IMPACT-ASSESSMENT FLAGS (identify every affected CQA):"
+            ),
+            "RELEASE-RISK FLAGS:": (
                 "⚠️  RELEASE-RISK FLAGS (state and resolve the unresolved risk "
-                "before release):\n"
-                f"{flags_text}"
+                "before release):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

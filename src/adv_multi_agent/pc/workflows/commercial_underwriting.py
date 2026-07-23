@@ -310,7 +310,9 @@ class CommercialUnderwritingWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "insured_summary": request.insured_summary,
+                "insured_summary": sanitize_for_prompt(
+                    request.insured_summary, max_chars=200
+                ),
                 "loss_cost_flags": list(dict.fromkeys(accumulated["LOSS-COST FLAGS:"])),
                 "exclusion_flags": list(dict.fromkeys(accumulated["EXCLUSION FLAGS:"])),
                 "capacity_flags": list(dict.fromkeys(accumulated["CAPACITY FLAGS:"])),

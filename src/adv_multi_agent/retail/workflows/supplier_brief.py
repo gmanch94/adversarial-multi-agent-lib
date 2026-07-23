@@ -328,8 +328,10 @@ class SupplierBriefWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "supplier_name": request.supplier_name,
-                "category": request.category,
+                "supplier_name": sanitize_for_prompt(
+                    request.supplier_name, max_chars=200
+                ),
+                "category": sanitize_for_prompt(request.category, max_chars=200),
                 "batna_flags": list(dict.fromkeys(accumulated["BATNA FLAGS:"])),
                 "cost_flags": list(dict.fromkeys(accumulated["COST FLAGS:"])),
                 "relationship_flags": list(dict.fromkeys(accumulated["RELATIONSHIP FLAGS:"])),

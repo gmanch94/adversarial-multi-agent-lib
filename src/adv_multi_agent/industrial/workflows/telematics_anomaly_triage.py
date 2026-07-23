@@ -313,7 +313,9 @@ class TelematicsAnomalyTriageWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "asset_summary": request.asset_summary,
+                "asset_summary": sanitize_for_prompt(
+                    request.asset_summary, max_chars=200
+                ),
                 "signal_evidence_flags": list(
                     dict.fromkeys(accumulated["SIGNAL-EVIDENCE FLAGS:"])
                 ),

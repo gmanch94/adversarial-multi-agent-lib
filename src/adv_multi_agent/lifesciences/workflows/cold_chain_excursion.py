@@ -255,12 +255,8 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_stability_flags: list[str] = []
-        current_disposition_flags: list[str] = []
-        current_scope_flags: list[str] = []
-        all_stability_flags: list[str] = []
-        all_disposition_flags: list[str] = []
-        all_scope_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -274,11 +270,7 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_stability_flags,
-                    current_disposition_flags,
-                    current_scope_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -299,18 +291,9 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
                 criteria=_COLDCHAIN_REVIEW_CRITERIA,
             )
             score = review.score
-            current_stability_flags = extract_flags(
-                review.critique, "STABILITY-IMPACT FLAGS:"
-            )
-            current_disposition_flags = extract_flags(
-                review.critique, "DISPOSITION FLAGS:"
-            )
-            current_scope_flags = extract_flags(
-                review.critique, "EXCURSION-SCOPE FLAGS:"
-            )
-            all_stability_flags.extend(current_stability_flags)
-            all_disposition_flags.extend(current_disposition_flags)
-            all_scope_flags.extend(current_scope_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -323,23 +306,12 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_stability_flags
-                and not current_disposition_flags
-                and not current_scope_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         coldchain_checklist = self._build_coldchain_checklist(
-            request,
-            {
-                "STABILITY-IMPACT FLAGS:": all_stability_flags,
-                "DISPOSITION FLAGS:": all_disposition_flags,
-                "EXCURSION-SCOPE FLAGS:": all_scope_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -348,9 +320,13 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "stability_impact_flags": list(dict.fromkeys(all_stability_flags)),
-            "disposition_flags": list(dict.fromkeys(all_disposition_flags)),
-            "excursion_scope_flags": list(dict.fromkeys(all_scope_flags)),
+            "stability_impact_flags": list(
+                dict.fromkeys(accumulated["STABILITY-IMPACT FLAGS:"])
+            ),
+            "disposition_flags": list(dict.fromkeys(accumulated["DISPOSITION FLAGS:"])),
+            "excursion_scope_flags": list(
+                dict.fromkeys(accumulated["EXCURSION-SCOPE FLAGS:"])
+            ),
             "coldchain_checklist": coldchain_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -378,44 +354,33 @@ class ColdChainExcursionWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        stability_flags: list[str],
-        disposition_flags: list[str],
-        scope_flags: list[str],
-    ) -> str:
-        if not stability_flags and not disposition_flags and not scope_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if stability_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(stability_flags)
-            )
-            parts.append(
+        banner = {
+            "STABILITY-IMPACT FLAGS:": (
                 "⚠️  STABILITY-IMPACT FLAGS (ground the impact in stability data and "
-                "the MKT budget):\n"
-                f"{flags_text}"
-            )
-        if disposition_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(disposition_flags)
-            )
-            parts.append(
+                "the MKT budget):"
+            ),
+            "DISPOSITION FLAGS:": (
                 "⚠️  DISPOSITION FLAGS (align the disposition with the stability "
-                "conclusion):\n"
-                f"{flags_text}"
-            )
-        if scope_flags:
+                "conclusion):"
+            ),
+            "EXCURSION-SCOPE FLAGS:": (
+                "⚠️  EXCURSION-SCOPE FLAGS (sum the cumulative excursion across all "
+                "legs and lots):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(scope_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  EXCURSION-SCOPE FLAGS (sum the cumulative excursion across all "
-                "legs and lots):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

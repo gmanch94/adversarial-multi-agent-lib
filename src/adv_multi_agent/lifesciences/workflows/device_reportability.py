@@ -269,12 +269,8 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_reportability_flags: list[str] = []
-        current_serious_injury_flags: list[str] = []
-        current_malfunction_trend_flags: list[str] = []
-        all_reportability_flags: list[str] = []
-        all_serious_injury_flags: list[str] = []
-        all_malfunction_trend_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -288,11 +284,7 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_reportability_flags,
-                    current_serious_injury_flags,
-                    current_malfunction_trend_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -313,14 +305,9 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
                 criteria=_REPORTABILITY_REVIEW_CRITERIA,
             )
             score = review.score
-            current_reportability_flags = extract_flags(review.critique, "REPORTABILITY FLAGS:")
-            current_serious_injury_flags = extract_flags(review.critique, "SERIOUS-INJURY FLAGS:")
-            current_malfunction_trend_flags = extract_flags(
-                review.critique, "MALFUNCTION-TREND FLAGS:"
-            )
-            all_reportability_flags.extend(current_reportability_flags)
-            all_serious_injury_flags.extend(current_serious_injury_flags)
-            all_malfunction_trend_flags.extend(current_malfunction_trend_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail writes happen BEFORE the veto check — preserves the
             # round-N draft in wiki + ledger even if vetoed (D-LIFESCI-3).
@@ -334,23 +321,12 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_reportability_flags
-                and not current_serious_injury_flags
-                and not current_malfunction_trend_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         reportability_checklist = self._build_reportability_checklist(
-            request,
-            {
-                "REPORTABILITY FLAGS:": all_reportability_flags,
-                "SERIOUS-INJURY FLAGS:": all_serious_injury_flags,
-                "MALFUNCTION-TREND FLAGS:": all_malfunction_trend_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -359,9 +335,15 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
             "device_identifier": sanitize_for_prompt(
                 request.device_identifier, max_chars=200
             ),
-            "reportability_flags": list(dict.fromkeys(all_reportability_flags)),
-            "serious_injury_flags": list(dict.fromkeys(all_serious_injury_flags)),
-            "malfunction_trend_flags": list(dict.fromkeys(all_malfunction_trend_flags)),
+            "reportability_flags": list(
+                dict.fromkeys(accumulated["REPORTABILITY FLAGS:"])
+            ),
+            "serious_injury_flags": list(
+                dict.fromkeys(accumulated["SERIOUS-INJURY FLAGS:"])
+            ),
+            "malfunction_trend_flags": list(
+                dict.fromkeys(accumulated["MALFUNCTION-TREND FLAGS:"])
+            ),
             "reportability_checklist": reportability_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -392,48 +374,33 @@ class DeviceReportabilityWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        reportability_flags: list[str],
-        serious_injury_flags: list[str],
-        malfunction_trend_flags: list[str],
-    ) -> str:
-        if (
-            not reportability_flags
-            and not serious_injury_flags
-            and not malfunction_trend_flags
-        ):
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if reportability_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(reportability_flags)
-            )
-            parts.append(
+        banner = {
+            "REPORTABILITY FLAGS:": (
                 "⚠️  REPORTABILITY FLAGS (re-apply the reporting definition and "
-                "state the clock):\n"
-                f"{flags_text}"
-            )
-        if serious_injury_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(serious_injury_flags)
-            )
-            parts.append(
+                "state the clock):"
+            ),
+            "SERIOUS-INJURY FLAGS:": (
                 "⚠️  SERIOUS-INJURY FLAGS (re-grade the outcome against the "
-                "definition):\n"
-                f"{flags_text}"
-            )
-        if malfunction_trend_flags:
+                "definition):"
+            ),
+            "MALFUNCTION-TREND FLAGS:": (
+                "⚠️  MALFUNCTION-TREND FLAGS (account for prior similar events "
+                "against the trend trigger):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(malfunction_trend_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  MALFUNCTION-TREND FLAGS (account for prior similar events "
-                "against the trend trigger):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

@@ -282,8 +282,8 @@ class DemandForecastWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "store_id": request.store_id,
-                "sku": request.sku,
+                "store_id": sanitize_for_prompt(request.store_id, max_chars=200),
+                "sku": sanitize_for_prompt(request.sku, max_chars=200),
                 "assumption_flags": list(dict.fromkeys(all_flags)),
                 "buyer_checklist": buyer_checklist,
                 "disclaimer": _DISCLAIMER,

@@ -279,8 +279,8 @@ class LaborSchedulingWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "store_id": request.store_id,
-                "week_start": request.week_start,
+                "store_id": sanitize_for_prompt(request.store_id, max_chars=200),
+                "week_start": sanitize_for_prompt(request.week_start, max_chars=200),
                 "compliance_flags": list(dict.fromkeys(all_flags)),
                 "manager_checklist": manager_checklist,
                 "disclaimer": _DISCLAIMER,

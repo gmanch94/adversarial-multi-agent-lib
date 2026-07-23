@@ -260,13 +260,8 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
         round_num = 0
         review = None
 
-        current_guideline_flags: list[str] = []
-        current_contraindication_flags: list[str] = []
-        current_risk_flags: list[str] = []
-
-        all_guideline_flags: list[str] = []
-        all_contraindication_flags: list[str] = []
-        all_risk_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
 
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
@@ -281,11 +276,7 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_guideline_flags,
-                    current_contraindication_flags,
-                    current_risk_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -307,15 +298,9 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
             )
             score = review.score
 
-            current_guideline_flags = extract_flags(review.critique, "GUIDELINE FLAGS:")
-            current_contraindication_flags = extract_flags(
-                review.critique, "CONTRAINDICATION FLAGS:"
-            )
-            current_risk_flags = extract_flags(review.critique, "RISK FLAGS:")
-
-            all_guideline_flags.extend(current_guideline_flags)
-            all_contraindication_flags.extend(current_contraindication_flags)
-            all_risk_flags.extend(current_risk_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             self.wiki.add_feedback(
                 sanitize_for_prompt(review.critique, max_chars=max_wiki_chars),
@@ -327,31 +312,21 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_guideline_flags
-                and not current_contraindication_flags
-                and not current_risk_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
-        treatment_checklist = self._build_treatment_checklist(
-            {
-                "GUIDELINE FLAGS:": all_guideline_flags,
-                "CONTRAINDICATION FLAGS:": all_contraindication_flags,
-                "RISK FLAGS:": all_risk_flags,
-            },
-            veto_reason,
-        )
+        treatment_checklist = self._build_treatment_checklist(accumulated, veto_reason)
 
         output_with_banner = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
             "patient_summary_chars": len(request.patient_summary),
-            "guideline_flags": list(dict.fromkeys(all_guideline_flags)),
-            "contraindication_flags": list(dict.fromkeys(all_contraindication_flags)),
-            "risk_flags": list(dict.fromkeys(all_risk_flags)),
+            "guideline_flags": list(dict.fromkeys(accumulated["GUIDELINE FLAGS:"])),
+            "contraindication_flags": list(
+                dict.fromkeys(accumulated["CONTRAINDICATION FLAGS:"])
+            ),
+            "risk_flags": list(dict.fromkeys(accumulated["RISK FLAGS:"])),
             "treatment_checklist": treatment_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -381,45 +356,34 @@ class TreatmentPlanReviewWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        guideline_flags: list[str],
-        contraindication_flags: list[str],
-        risk_flags: list[str],
-    ) -> str:
-        if not guideline_flags and not contraindication_flags and not risk_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if guideline_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(guideline_flags)
-            )
-            parts.append(
+        banner = {
+            "GUIDELINE FLAGS:": (
                 "⚠️  GUIDELINE FLAGS (ground every clinical claim in the cited "
-                "guideline; cite section, not summary):\n"
-                f"{flags_text}"
-            )
-        if contraindication_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(contraindication_flags)
-            )
-            parts.append(
+                "guideline; cite section, not summary):"
+            ),
+            "CONTRAINDICATION FLAGS:": (
                 "⚠️  CONTRAINDICATION FLAGS (name the specific contraindication "
-                "mechanism (drug-allergy, drug-organ, drug-condition)):\n"
-                f"{flags_text}"
-            )
-        if risk_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(risk_flags)
-            )
-            parts.append(
+                "mechanism (drug-allergy, drug-organ, drug-condition)):"
+            ),
+            "RISK FLAGS:": (
                 "⚠️  RISK FLAGS (stratify risk against patient-specific factors "
                 "(age, comorbidity, lab values); do not import baseline-population "
-                "risk):\n"
-                f"{flags_text}"
+                "risk):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
+            flags_text = "\n".join(
+                f"  - {sanitize_for_prompt(f, max_chars=500)}"
+                for f in truncate_flag_display(flags)
             )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

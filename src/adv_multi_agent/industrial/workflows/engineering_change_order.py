@@ -315,7 +315,9 @@ class EngineeringChangeOrderWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "change_summary": request.change_summary,
+                "change_summary": sanitize_for_prompt(
+                    request.change_summary, max_chars=200
+                ),
                 "supersession_flags": list(
                     dict.fromkeys(accumulated["SUPERSESSION FLAGS:"])
                 ),

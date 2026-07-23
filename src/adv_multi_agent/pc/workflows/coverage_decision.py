@@ -342,7 +342,9 @@ class CoverageDecisionWorkflow(BaseWorkflow):
         output_with_banners = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "proposed_decision": request.proposed_decision,
+            "proposed_decision": sanitize_for_prompt(
+                request.proposed_decision, max_chars=200
+            ),
             "wording_flags": list(dict.fromkeys(all_wording_flags)),
             "case_law_flags": list(dict.fromkeys(all_case_law_flags)),
             "counsel_checklist": counsel_checklist,
@@ -400,7 +402,10 @@ class CoverageDecisionWorkflow(BaseWorkflow):
     def _compose_output(draft: str, veto_reason: str | None) -> str:
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
-        return f"{draft}\n\n---\n\n{_VETO_BANNER}\n\n{_DISCLAIMER}"
+        return (
+            f"{_VETO_BANNER}\n\nVETO DIRECTIVE: {veto_reason}\n\n"
+            f"--- Vetoed draft below ---\n\n{draft}\n\n---\n\n{_DISCLAIMER}"
+        )
 
     @staticmethod
     def _build_counsel_checklist(

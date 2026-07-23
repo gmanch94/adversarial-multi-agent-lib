@@ -257,12 +257,8 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_analytical_flags: list[str] = []
-        current_residual_flags: list[str] = []
-        current_bridging_flags: list[str] = []
-        all_analytical_flags: list[str] = []
-        all_residual_flags: list[str] = []
-        all_bridging_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -276,11 +272,7 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_analytical_flags,
-                    current_residual_flags,
-                    current_bridging_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -301,16 +293,9 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
                 criteria=_BIOSIMILAR_REVIEW_CRITERIA,
             )
             score = review.score
-            current_analytical_flags = extract_flags(
-                review.critique, "ANALYTICAL-SIMILARITY FLAGS:"
-            )
-            current_residual_flags = extract_flags(
-                review.critique, "RESIDUAL-UNCERTAINTY FLAGS:"
-            )
-            current_bridging_flags = extract_flags(review.critique, "BRIDGING FLAGS:")
-            all_analytical_flags.extend(current_analytical_flags)
-            all_residual_flags.extend(current_residual_flags)
-            all_bridging_flags.extend(current_bridging_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -323,23 +308,12 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_analytical_flags
-                and not current_residual_flags
-                and not current_bridging_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         biosimilar_checklist = self._build_biosimilar_checklist(
-            request,
-            {
-                "ANALYTICAL-SIMILARITY FLAGS:": all_analytical_flags,
-                "RESIDUAL-UNCERTAINTY FLAGS:": all_residual_flags,
-                "BRIDGING FLAGS:": all_bridging_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -348,9 +322,13 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "analytical_similarity_flags": list(dict.fromkeys(all_analytical_flags)),
-            "residual_uncertainty_flags": list(dict.fromkeys(all_residual_flags)),
-            "bridging_flags": list(dict.fromkeys(all_bridging_flags)),
+            "analytical_similarity_flags": list(
+                dict.fromkeys(accumulated["ANALYTICAL-SIMILARITY FLAGS:"])
+            ),
+            "residual_uncertainty_flags": list(
+                dict.fromkeys(accumulated["RESIDUAL-UNCERTAINTY FLAGS:"])
+            ),
+            "bridging_flags": list(dict.fromkeys(accumulated["BRIDGING FLAGS:"])),
             "biosimilar_checklist": biosimilar_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -378,43 +356,32 @@ class BiosimilarComparabilityWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        analytical_flags: list[str],
-        residual_flags: list[str],
-        bridging_flags: list[str],
-    ) -> str:
-        if not analytical_flags and not residual_flags and not bridging_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if analytical_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(analytical_flags)
-            )
-            parts.append(
+        banner = {
+            "ANALYTICAL-SIMILARITY FLAGS:": (
                 "⚠️  ANALYTICAL-SIMILARITY FLAGS (do not claim similarity a CQA "
-                "does not demonstrate):\n"
-                f"{flags_text}"
-            )
-        if residual_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(residual_flags)
-            )
-            parts.append(
+                "does not demonstrate):"
+            ),
+            "RESIDUAL-UNCERTAINTY FLAGS:": (
                 "⚠️  RESIDUAL-UNCERTAINTY FLAGS (state the uncertainty and how the "
-                "evidence resolves it):\n"
-                f"{flags_text}"
-            )
-        if bridging_flags:
+                "evidence resolves it):"
+            ),
+            "BRIDGING FLAGS:": (
+                "⚠️  BRIDGING FLAGS (justify or withdraw the bridge/extrapolation):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(bridging_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  BRIDGING FLAGS (justify or withdraw the bridge/extrapolation):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

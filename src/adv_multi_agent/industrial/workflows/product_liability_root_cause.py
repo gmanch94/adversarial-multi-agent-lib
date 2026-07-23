@@ -391,7 +391,9 @@ class ProductLiabilityRootCauseWorkflow(BaseWorkflow):
         output_with_banners = self._compose_output(output, veto_reason)
 
         metadata: dict[str, Any] = {
-            "incident_summary": request.incident_summary,
+            "incident_summary": sanitize_for_prompt(
+                request.incident_summary, max_chars=200
+            ),
             "design_defect_flags": list(dict.fromkeys(all_design_flags)),
             "operator_error_flags": list(dict.fromkeys(all_operator_flags)),
             "warning_adequacy_flags": list(dict.fromkeys(all_warning_flags)),
@@ -470,7 +472,10 @@ class ProductLiabilityRootCauseWorkflow(BaseWorkflow):
     def _compose_output(draft: str, veto_reason: str | None) -> str:
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
-        return f"{draft}\n\n---\n\n{_VETO_BANNER}\n\n{_DISCLAIMER}"
+        return (
+            f"{_VETO_BANNER}\n\nVETO DIRECTIVE: {veto_reason}\n\n"
+            f"--- Vetoed draft below ---\n\n{draft}\n\n---\n\n{_DISCLAIMER}"
+        )
 
     @staticmethod
     def _build_safety_checklist(

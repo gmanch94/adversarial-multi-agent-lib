@@ -321,7 +321,9 @@ class LoyaltyOfferWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "segment_name": request.customer_segment,
+                "segment_name": sanitize_for_prompt(
+                    request.customer_segment, max_chars=200
+                ),
                 "fairness_flags": list(dict.fromkeys(accumulated["FAIRNESS FLAGS:"])),
                 "margin_flags": list(dict.fromkeys(accumulated["MARGIN FLAGS:"])),
                 "gaming_flags": list(dict.fromkeys(accumulated["GAMING FLAGS:"])),

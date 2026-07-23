@@ -314,7 +314,9 @@ class MakeVsBuyWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "component_summary": request.component_summary,
+                "component_summary": sanitize_for_prompt(
+                    request.component_summary, max_chars=200
+                ),
                 "cost_flags": list(dict.fromkeys(accumulated["COST FLAGS:"])),
                 "capability_flags": list(dict.fromkeys(accumulated["CAPABILITY FLAGS:"])),
                 "ip_leak_flags": list(dict.fromkeys(accumulated["IP-LEAK FLAGS:"])),

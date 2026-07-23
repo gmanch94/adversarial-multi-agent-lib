@@ -253,12 +253,8 @@ class BioequivalenceWorkflow(BaseWorkflow):
         converged = False
         round_num = 0
         review = None
-        current_pk_flags: list[str] = []
-        current_design_flags: list[str] = []
-        current_waiver_flags: list[str] = []
-        all_pk_flags: list[str] = []
-        all_design_flags: list[str] = []
-        all_waiver_flags: list[str] = []
+        current: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
+        accumulated: dict[str, list[str]] = {h: [] for h in _FLAG_HEADERS}
         veto_reason: str | None = None
         max_wiki_chars = config.max_wiki_body_chars
 
@@ -272,11 +268,7 @@ class BioequivalenceWorkflow(BaseWorkflow):
                 )
             else:
                 assert review is not None
-                flag_section = self._format_flag_section(
-                    current_pk_flags,
-                    current_design_flags,
-                    current_waiver_flags,
-                )
+                flag_section = self._format_flag_section(current)
                 prompt = _REVISION_PROMPT.format(
                     previous=sanitize_for_prompt(output, max_chars=10000),
                     score=f"{score:.1f}",
@@ -297,14 +289,9 @@ class BioequivalenceWorkflow(BaseWorkflow):
                 criteria=_BIOEQUIVALENCE_REVIEW_CRITERIA,
             )
             score = review.score
-            current_pk_flags = extract_flags(review.critique, "PK-BOUNDARY FLAGS:")
-            current_design_flags = extract_flags(review.critique, "STUDY-DESIGN FLAGS:")
-            current_waiver_flags = extract_flags(
-                review.critique, "WAIVER-JUSTIFICATION FLAGS:"
-            )
-            all_pk_flags.extend(current_pk_flags)
-            all_design_flags.extend(current_design_flags)
-            all_waiver_flags.extend(current_waiver_flags)
+            for header in _FLAG_HEADERS:
+                current[header] = extract_flags(review.critique, header)
+                accumulated[header].extend(current[header])
 
             # Audit-trail write happens BEFORE the veto check (D-LIFESCI-4).
             self.wiki.add_feedback(
@@ -317,23 +304,12 @@ class BioequivalenceWorkflow(BaseWorkflow):
             if veto_reason is not None:
                 break
 
-            if (
-                review.approved
-                and not current_pk_flags
-                and not current_design_flags
-                and not current_waiver_flags
-            ):
+            if review.approved and not any(current.values()):
                 converged = True
                 break
 
         bioequivalence_checklist = self._build_bioequivalence_checklist(
-            request,
-            {
-                "PK-BOUNDARY FLAGS:": all_pk_flags,
-                "STUDY-DESIGN FLAGS:": all_design_flags,
-                "WAIVER-JUSTIFICATION FLAGS:": all_waiver_flags,
-            },
-            veto_reason,
+            request, accumulated, veto_reason
         )
 
         output_with_banner = self._compose_output(output, veto_reason)
@@ -342,9 +318,13 @@ class BioequivalenceWorkflow(BaseWorkflow):
             "product_description": sanitize_for_prompt(
                 request.product_description, max_chars=200
             ),
-            "pk_boundary_flags": list(dict.fromkeys(all_pk_flags)),
-            "study_design_flags": list(dict.fromkeys(all_design_flags)),
-            "waiver_justification_flags": list(dict.fromkeys(all_waiver_flags)),
+            "pk_boundary_flags": list(dict.fromkeys(accumulated["PK-BOUNDARY FLAGS:"])),
+            "study_design_flags": list(
+                dict.fromkeys(accumulated["STUDY-DESIGN FLAGS:"])
+            ),
+            "waiver_justification_flags": list(
+                dict.fromkeys(accumulated["WAIVER-JUSTIFICATION FLAGS:"])
+            ),
             "bioequivalence_checklist": bioequivalence_checklist,
             "disclaimer": _DISCLAIMER,
             "ledger_summary": self.ledger.summary(),
@@ -372,44 +352,33 @@ class BioequivalenceWorkflow(BaseWorkflow):
         return extract_veto_directive(critique, "REVIEWER VETO:", max_chars)
 
     @staticmethod
-    def _format_flag_section(
-        pk_flags: list[str],
-        design_flags: list[str],
-        waiver_flags: list[str],
-    ) -> str:
-        if not pk_flags and not design_flags and not waiver_flags:
+    def _format_flag_section(current: dict[str, list[str]]) -> str:
+        if not any(current.values()):
             return ""
-        parts: list[str] = []
-        if pk_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(pk_flags)
-            )
-            parts.append(
+        banner = {
+            "PK-BOUNDARY FLAGS:": (
                 "⚠️  PK-BOUNDARY FLAGS (do not treat a CI outside the limits as "
-                "equivalent):\n"
-                f"{flags_text}"
-            )
-        if design_flags:
-            flags_text = "\n".join(
-                f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(design_flags)
-            )
-            parts.append(
+                "equivalent):"
+            ),
+            "STUDY-DESIGN FLAGS:": (
                 "⚠️  STUDY-DESIGN FLAGS (correct the design element for this "
-                "product):\n"
-                f"{flags_text}"
-            )
-        if waiver_flags:
+                "product):"
+            ),
+            "WAIVER-JUSTIFICATION FLAGS:": (
+                "⚠️  WAIVER-JUSTIFICATION FLAGS (justify or withdraw the "
+                "waiver/limit):"
+            ),
+        }
+        parts: list[str] = []
+        for header in _FLAG_HEADERS:
+            flags = current[header]
+            if not flags:
+                continue
             flags_text = "\n".join(
                 f"  - {sanitize_for_prompt(f, max_chars=500)}"
-                for f in truncate_flag_display(waiver_flags)
+                for f in truncate_flag_display(flags)
             )
-            parts.append(
-                "⚠️  WAIVER-JUSTIFICATION FLAGS (justify or withdraw the "
-                "waiver/limit):\n"
-                f"{flags_text}"
-            )
+            parts.append(f"{banner[header]}\n{flags_text}")
         return "\n" + "\n".join(parts) + "\n"
 
     @staticmethod

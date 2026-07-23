@@ -334,7 +334,9 @@ class PrivateLabelWorkflow(BaseWorkflow):
             final_score=score,
             converged=converged,
             metadata={
-                "proposed_sku": request.proposed_sku,
+                "proposed_sku": sanitize_for_prompt(
+                    request.proposed_sku, max_chars=200
+                ),
                 "cannibalization_flags": list(
                     dict.fromkeys(accumulated["CANNIBALIZATION FLAGS:"])
                 ),
