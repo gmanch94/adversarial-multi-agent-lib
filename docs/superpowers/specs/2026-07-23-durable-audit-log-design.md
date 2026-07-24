@@ -75,7 +75,8 @@ Frozen dataclass:
 run_id: str
 tenant_id: str
 event_type: str            # closed enum, D-AUDIT-4
-round: int                 # always concrete (D-AUDIT-6); lifecycle uses 0 / last round
+event_seq: int             # per-run event ordinal; idempotency key (D-AUDIT-6)
+round: int                 # always concrete; lifecycle uses 0 / last round
 at: str                    # ISO-8601 µs UTC, app-supplied (canonical, D-AUDIT-5)
 workflow_class: str
 workflow_version_hash: str | None
@@ -128,11 +129,11 @@ run_started | run_completed | run_failed
 
 **Rejected — a BEFORE-INSERT plpgsql trigger.** DB-enforced linkage against a compromised daemon role, but forces a **second SHA-256 + canonicalization impl in plpgsql** that must byte-match the Python walker forever (M-PC-1/H-IND-1 drift class). It does not reach the target adversary (a superuser disables the trigger; only the WORM anchor catches them), and daemon-role forgery between anchors is caught by the walker. Not worth the drift risk.
 
-### D-AUDIT-6: Idempotent append + concrete `round` — `UNIQUE(tenant_id, run_id, round, event_type)`
+### D-AUDIT-6: Idempotent append keyed on a per-run `event_seq` — `UNIQUE(tenant_id, run_id, event_seq)`
 
-The checkpoint is written before emit (D-AUDIT-3, §5.1). A crash after checkpoint-write but before/within emit means the next resume/reconcile re-derives and re-emits from the durable entry. `UNIQUE(tenant_id, run_id, round, event_type)` + `ON CONFLICT DO NOTHING` makes the re-emit a no-op. Because emission derives from the *stable persisted* entry (not a re-run of the model), the re-emitted `content_hash` is identical — no divergence (H3 fixed).
+The checkpoint is written before emit (D-AUDIT-3, §5.1). A crash after checkpoint-write but before/within emit means the next resume/reconcile re-derives and re-emits from the durable entry. `UNIQUE(tenant_id, run_id, event_seq)` + `ON CONFLICT DO NOTHING` makes the re-emit a no-op. Because emission derives from the *stable persisted* checkpoint (not a re-run of the model), the re-derived `event_seq` and `content_hash` are identical — no divergence (H3 fixed).
 
-**`round` is always concrete** in the key. The sink sets `round` = the current round counter (`run_started` → 0; `run_completed`/`run_failed` → last executed round), never NULL, so the UNIQUE key never hits Postgres's NULL-distinctness. The column is nullable in DDL only for forward-compat; the sink never writes NULL.
+**Why `event_seq`, not `(round, event_type)` (implementation correction).** v2 keyed on `(round, event_type)`, but the code review of the real `workflow.py` showed two `model_upgrade` entries (executor + reviewer) occur in one resume at the same `round` with the same `event_type` — a `(round, event_type)` key would collide and silently drop one. `event_seq` is the entry's position in the derived event list: `0` for `run_started`, `i+1` for `rounds_history[i]`, `len+1` for the terminal event. It is deterministic from the persisted checkpoint (so re-derivation is stable), distinguishes same-type events, and never hits Postgres NULL-distinctness. `round` remains an informational column.
 
 ### D-AUDIT-7: Emit failure = an outbox gap re-derived on the next resume/reconcile — not a pause, not a lost row
 
@@ -225,7 +226,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     seq                   BIGINT       NOT NULL,
     run_id                VARCHAR(64)  NOT NULL,
     event_type            VARCHAR(48)  NOT NULL,
-    round                 INTEGER,                          -- sink always sets concrete (D-AUDIT-6)
+    event_seq             INTEGER      NOT NULL,             -- per-run event ordinal (D-AUDIT-6 idempotency)
+    round                 INTEGER,                          -- informational; sink sets concrete
     at                    TEXT         NOT NULL,             -- canonical ISO-8601 µs UTC; hash-bound; NO default
     workflow_class        TEXT         NOT NULL,
     workflow_version_hash VARCHAR(16),
@@ -240,6 +242,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     CONSTRAINT audit_run_id_charset    CHECK (run_id    ~ '^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$'),
     CONSTRAINT audit_tenant_id_charset CHECK (tenant_id ~ '^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$'),
     CONSTRAINT audit_seq_positive      CHECK (seq >= 1),
+    CONSTRAINT audit_event_seq_bounds  CHECK (event_seq >= 0),
     CONSTRAINT audit_content_hash_hex  CHECK (content_hash ~ '^[0-9a-f]{64}$'),
     CONSTRAINT audit_prev_hash_hex     CHECK (prev_hash    ~ '^[0-9a-f]{64}$'),
     CONSTRAINT audit_row_hash_hex      CHECK (row_hash     ~ '^[0-9a-f]{64}$'),
@@ -249,7 +252,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
         'model_upgrade','workflow_version_backfill','workflow_version_upgrade',
         'budget_cap_acknowledged','run_cancelled',
         'run_started','run_completed','run_failed')),          -- L1; extend with 3.2 approval events
-    CONSTRAINT audit_idempotent        UNIQUE (tenant_id, run_id, round, event_type)
+    CONSTRAINT audit_idempotent        UNIQUE (tenant_id, run_id, event_seq)
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_tenant_seq ON audit_log (tenant_id, seq DESC);  -- head lookup (hot)
@@ -325,7 +328,7 @@ Verbs scan: _create, grant, configure, run, schedule, verify, sign off._
 - **D-AUDIT-3** — Durable layer is sole emission owner; events derive from the **persisted** checkpoint. Reconciles D-BUDGET-3. Alt rejected: independent second write path (proven divergent on crash).
 - **D-AUDIT-4** — `rounds_history` entries carry `kind`; `event_type` closed extensible enum incl. `round_completed` vs `round_converged`; drops `decision_class`.
 - **D-AUDIT-5** — Per-tenant chain, app-side hash over app-owned canonical TEXT (`hash_input`), `pg_advisory_xact_lock`. Alt rejected: BEFORE-INSERT trigger (dual canonicalization drift; doesn't reach superuser).
-- **D-AUDIT-6** — `UNIQUE(tenant_id,run_id,round,event_type)` + `ON CONFLICT DO NOTHING`; `round` always concrete; idempotent re-derivation from the durable entry (no divergence).
+- **D-AUDIT-6** — `UNIQUE(tenant_id,run_id,event_seq)` (per-run event ordinal) + `ON CONFLICT DO NOTHING`; idempotent re-derivation from the durable checkpoint (no divergence). Corrected from v2's `(round,event_type)` key, which collided on two same-round `model_upgrade` events.
 - **D-AUDIT-7** — Emit failure = outbox gap re-derived on resume/reconcile, not a pause; checkpoint-first ordering guarantees the ledger lags but never diverges. Ships a negative test.
 - **D-AUDIT-8** — Walker trusts **all** retained WORM anchors, earliest-object-creation-time wins; catches truncate-and-re-anchor. Rests on COMPLIANCE forbidding add-with-backdated-creation-time.
 

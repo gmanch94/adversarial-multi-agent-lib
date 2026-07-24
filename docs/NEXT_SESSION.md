@@ -1,6 +1,22 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-23 — **Depth review shipped (`b8857f1`), then a security audit on that same diff found 20 findings — ALL FIXED.** Convergence gate no longer fail-open on a dropped flag section; parser tolerant of reviewer formatting variance; the one live crash (`sanitize_for_prompt` overshoot) closed. Guards now G1–G6, all mutation-tested. **1649 library tests, 0 skipped** (was 1449 + 26 skipped).
+Last updated: 2026-07-23 (PM2) — **Tier 3.1 audit log SHIPPED (D-AUDIT-1..8).** Append-only, per-tenant hash-chained, WORM-anchored decision ledger defending the DB-admin/superuser threat. Library `AuditSink` seam + sibling `PostgresAuditSink` + anchor/walker/reconcile scripts. Independent spec review returned REDESIGN (4 architectural findings) — folded into v2 before code. 3 commits: `f3ad28e` library · `26e3332` sibling · docs pending. See section below.
+
+## 2026-07-23 (PM2) — Tier 3.1 audit log (D-AUDIT-1..8)
+
+**What shipped:** the [3.1 gap](production-readiness-gaps.md) — a cross-run, append-only, tamper-evident ledger of every AI decision, defensible against a DB admin / superuser ("logs were altered"). Spec: [`2026-07-23-durable-audit-log-design.md`](superpowers/specs/2026-07-23-durable-audit-log-design.md) (§0 logs the v1→v2 review deltas).
+
+- **Library (`f3ad28e`):** `core/durable/audit.py` — `AuditSink` Protocol (INVERTED-raise vs metrics), `NoopAuditSink` default, content-hash-bound `AuditEvent` (never raw model I/O; `extra` a closed non-PHI allowlist). `DurableWorkflow(audit=)`; the durable layer injects `content_hash` into each entry at the append site and emits events **derived from the persisted checkpoint** after each `_write` — fail-open outbox, never a pause (D-AUDIT-7). `event_type` classified structurally from existing entry keys (no domain-flag coupling). 29 tests; public-API pin bumped (minor).
+- **Sibling (`26e3332`):** `audit_sink.py` `PostgresAuditSink` (per-tenant chain, `pg_advisory_xact_lock`, app-side hash over app-owned canonical TEXT — H2-safe), `scripts/0008_add_audit_log.sql` (append-only grants, FORCE RLS, non-owner-daemon precondition; folded into `schema.sql`), `anchor_audit_chain.py` (WORM Object-Lock anchor), `verify_audit_chain.py` (**all-anchors** walker — the C1 truncate-and-re-anchor catch), `reconcile_audit.py` (outbox sweep). 15 pure-logic tests (chain verify, C1, H2, gaps).
+- **The review earned its keep:** v1 verdict REDESIGN. C1 (latest-anchor-only → superuser truncate-and-re-anchor undetected), H1 (content-hash inputs absent at emit point), H2 (hash over normalizing DB columns → false positives), H3 (emit ordering → crash divergence + pause trilemma) all fixed in v2. Then coding surfaced a further correction: idempotency key `(round,event_type)` → **`event_seq`** (two same-round `model_upgrade` events collide) — D-AUDIT-6.
+
+**Things NOT to do next:** don't convert `at`/`extra_canonical`/`hash_input` to JSONB/TIMESTAMPTZ (H2 false-positive); don't check only the latest anchor (C1); don't copy the MetricsBackend never-raise contract into a real AuditSink (drops rows); the durable-layer emission is the SINGLE owner — don't add a second write path (D-BUDGET-3 / D-AUDIT-3).
+
+**Open follow-ups (documented, not built):** RFC-3161 TSA anchor (spec §10); OTel `audit_chain_verify_failed` + `audit_outbox_lag` metrics; a live-Postgres integration test exercising RLS + append-only grants (`needs_postgres`); 3.2 e-signature builds on this (`content_hash` is the approval binding). Docs commit (decisions/SECURITY_MODEL/gaps/compliance/this file) lands next.
+
+### Earlier 2026-07-23 — Depth review + security audit A11
+
+**Depth review shipped (`b8857f1`), then a security audit on that same diff found 20 findings — ALL FIXED.** Convergence gate no longer fail-open on a dropped flag section; parser tolerant of reviewer formatting variance; the one live crash (`sanitize_for_prompt` overshoot) closed. Guards now G1–G6, all mutation-tested. **1649 library tests, 0 skipped** (was 1449 + 26 skipped).
 
 ## 2026-07-23 (PM) — Security audit A11 on `b8857f1` — 20 findings, all closed
 

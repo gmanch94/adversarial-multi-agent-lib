@@ -125,28 +125,39 @@ class Cipher(Protocol):
 
 | Requirement | Caller obligation |
 |---|---|
-| **Tamper-evident store** (append-only with cryptographic chain) | Wrap `CheckpointStore` with a Merkle-chain or signed-append-log decorator; OR write `rounds_history` to a separate append-only store (CloudWatch Logs Immutable, AWS QLDB, Postgres `pg_audit` + role-revoke) |
+| **Tamper-evident store** (append-only with cryptographic chain) | **SHIPPED 2026-07-23 (Tier 3.1) — wire `PostgresAuditSink` via `DurableWorkflow(audit=...)`.** See §4.3. Caller no longer builds this by hand. |
 | **User attribution** (who triggered each event) | Caller threads user-id through `Config` / `*Request.pause_context` — library does not own user identity |
 | **Time-sync** (trusted time source) | Caller's host NTP / cloud time service; library uses `datetime.utcnow()` |
 | **Electronic signatures** (where required) | Caller's domain workflow — outside library scope |
 | **Periodic review** (audit cadence) | Caller's process; library's structured logs are the data source |
 | **Validation documentation** (CSV / GxP validation) | Caller produces; library design spec + test suite are inputs |
 
-### 4.3 Recommended pattern: tamper-evident audit log
+### 4.3 Tamper-evident audit log — SHIPPED (Tier 3.1, D-AUDIT-1..8)
 
-For 21 CFR Part 11 deployments, log `rounds_history` entries to an append-only store separate from the `CheckpointStore`:
+The library now owns the seam. Wire the sibling ledger:
 
 ```python
-class TamperEvidentAuditLog:
-    """Append-only log with hash-chained entries.
-    Caller's responsibility; library does not own this surface."""
-
-    async def append(self, run_id: str, round: int, event: dict) -> str:
-        """Returns the entry hash linking to previous entry."""
-        ...
+from examples.production.durable_postgres.audit_sink import PostgresAuditSink
+dw = DurableWorkflow(inner=..., config=..., audit=PostgresAuditSink(pool))
 ```
 
-Caller invokes this from a `ReconciliationHook` or from a custom `CheckpointStore` decorator. Pattern is OPERATIONAL.
+The durable layer emits content-hash-bound `AuditEvent`s derived from the persisted checkpoint after each write. The default is a zero-overhead `NoopAuditSink` — a regulated deploy MUST wire `PostgresAuditSink` (checklist below). Design: [`2026-07-23-durable-audit-log-design.md`](../superpowers/specs/2026-07-23-durable-audit-log-design.md).
+
+**Adversary model = DB admin / superuser.** Three layers: (1) per-tenant `prev_hash` chain, (2) append-only grants (SELECT+INSERT only, FORCE RLS, non-owner daemon role), (3) WORM Object-Lock anchor of the chain head — the only layer that reaches a superuser. The walker trusts every retained anchor, earliest server-side-creation-time wins, catching a truncate-and-re-anchor.
+
+**What is stored vs never stored:** a row is metadata + `content_hash` (sha256 of the model output + review decision) + an enum-keyed non-PHI `extra` scalar map. Raw model I/O and exception text NEVER enter a row — so the ledger is PHI-safe (Tier 1.7) and shred-safe (3.3): a subject's payload can be crypto-shredded while the audit row survives.
+
+**Operator checklist (§9 of the spec):**
+
+1. **Create a non-owner `daemon_user`** (append-only + FORCE RLS depend on non-ownership) + an `auditor_ro` read role.
+2. **Apply `scripts/0008_add_audit_log.sql`** (folded into fresh `schema.sql`), then grant: `GRANT SELECT, INSERT ON audit_log TO daemon_user;` (NO UPDATE/DELETE/TRUNCATE) and `GRANT SELECT ON audit_log TO auditor_ro;`. Verify with `\dp audit_log`.
+3. **Configure a WORM bucket/prefix** (S3/GCS Object-Lock COMPLIANCE, retention ≥ the regulatory window); set `AUDIT_ANCHOR_BUCKET` / `AUDIT_ANCHOR_PREFIX` / `AUDIT_ANCHOR_RETAIN_DAYS`.
+4. **Schedule `anchor_audit_chain.py`** (cron; interval = max acceptable superuser-undetectability window, default hourly) + an anchor-freshness alert (newest receipt older than 2× interval).
+5. **Schedule `verify_audit_chain.py`** (daily + pre-restore; alert on non-zero exit) and `reconcile_audit.py` (outbox-gap sweep).
+6. **Wire `PostgresAuditSink`** into the daemon; confirm the regulated deploy is NOT on `NoopAuditSink`.
+7. **Sign off** the pre-prod row: "audit ledger wired, first anchor written, first walk clean, reconcile idle."
+
+RFC-3161 TSA is the documented alternative anchor (spec §10, not built); 3.2 e-signature builds on this (`content_hash` is what an approval binds to).
 
 ---
 

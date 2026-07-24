@@ -64,4 +64,5 @@ def test_migration_0007_runs_after_not_null() -> None:
         "0005_enable_tenant_rls.sql",
         "0006_tenant_id_not_null.sql",
         "0007_force_tenant_rls.sql",
+        "0008_add_audit_log.sql",
     ], f"Migration ordering broken: {names}"

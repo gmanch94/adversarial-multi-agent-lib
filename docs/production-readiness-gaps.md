@@ -305,9 +305,13 @@ Wired metric emissions (8 distinct names):
 
 ## Tier 3 — needed for regulated / enterprise sales
 
-### 3.1 Audit log — append-only, signed, immutable
+### 3.1 Audit log — append-only, signed, immutable — **SHIPPED 2026-07-23** (D-AUDIT-1..8)
 
-**Gap.** `LOG_FIELD_ALLOWLIST` filters at emit. Log lines go to stdout → docker → journald → wherever. No cryptographic guarantee that the log was not edited after the fact.
+**Final status:** library seam `core/durable/audit.py` (`AuditSink` Protocol + `NoopAuditSink` + content-hash-bound `AuditEvent`) + `DurableWorkflow(audit=)`; the durable layer emits events derived from the PERSISTED checkpoint after each write, fail-open to an outbox reconciled on resume (D-AUDIT-3/7). Sibling `examples/production/durable_postgres/`: `audit_sink.py` `PostgresAuditSink` (per-tenant hash chain, `pg_advisory_xact_lock` serialized, app-side hash over app-owned canonical TEXT), `scripts/0008_add_audit_log.sql` (append-only: SELECT+INSERT grants only, FORCE RLS, non-owner-daemon precondition), `scripts/anchor_audit_chain.py` (WORM Object-Lock COMPLIANCE anchor of the chain head), `scripts/verify_audit_chain.py` (all-anchors tamper walker — D-AUDIT-8), `scripts/reconcile_audit.py` (outbox-gap sweep). Adversary model = **DB admin / superuser** (user decision): only the WORM anchor reaches them; the walker trusts every retained anchor, earliest-creation-time wins, catching truncate-and-re-anchor. Spec: [`2026-07-23-durable-audit-log-design.md`](superpowers/specs/2026-07-23-durable-audit-log-design.md). Runbook: [`durable-compliance.md §3.1`](runbooks/durable-compliance.md). Independent review (v1) returned REDESIGN — 4 architectural findings (all-anchors, content-hash sourcing, hash-over-normalizing-columns, emit ordering) folded into v2 before code; §0 of the spec logs the v1→v2 deltas.
+
+**Tests:** library `tests/unit/durable/test_audit.py` (29 — validation, content-hash binding, no-raw-text, structural classifier, fail-open, idempotent reconcile) + sibling `tests/test_audit_sink.py` (15 — chain verify, C1 truncate-and-re-anchor catch, H2 no-false-positive, outbox gaps). Public-API pin updated (D-API-1, minor bump). **RFC-3161 TSA + OTel `audit_chain_verify_failed`/`audit_outbox_lag` metrics + a live-Postgres RLS/grant integration test remain documented follow-ups (§10 / below).**
+
+**Historic gap (preserved):** `LOG_FIELD_ALLOWLIST` filters at emit. Log lines go to stdout → docker → journald → wherever. No cryptographic guarantee that the log was not edited after the fact.
 
 **Failure mode without it.** Regulator asks "show me every decision the agent made on patient X's eligibility on 2026-03-15." Operator can show logs. Defense lawyer can claim logs were altered. No signature, no integrity proof.
 
