@@ -311,8 +311,10 @@ Wired metric emissions (8 distinct names):
 
 **Tests:** library `tests/unit/durable/test_audit.py` (33 — validation, content-hash binding, no-raw-text, structural classifier, fail-open, `reemit_audit` terminal recovery, immutable `at`, idempotent reconcile) + sibling `tests/test_audit_sink.py` (15 pure-logic — chain verify, C1 truncate-and-re-anchor catch, H2 no-false-positive, outbox gaps). Public-API pin updated (D-API-1, minor bump).
 
-**Open follow-ups (NOT done — honest status after the advisor final check):**
-- **DB-layer + anchor are UNRUN.** The `0008`/`schema.sql` DDL, append-only grants, FORCE-RLS `WITH CHECK`, `pg_advisory_xact_lock`, `ON CONFLICT`, CHECKs (layer 2) and the WORM anchor (layer 3) have never executed — no Docker/DSN in the ship env. `tests/test_audit_sink_pg.py` (needs_postgres — chain append, dedup, cross-tenant RLS reject) is written and skip-clean but **unverified**. **Run it against the sibling `docker compose` Postgres + do one live anchor+walk before relying on the superuser defense.** Append-only GRANT enforcement additionally needs a non-owner-role test the harness doesn't yet provision.
+**Live-DB verification (2026-07-24):** layers 1 + 2 confirmed against a real `postgres:16-alpine` — `test_audit_sink_pg.py` 3/3: chain append + `hashtext($1)::bigint` advisory lock (layer 1), `ON CONFLICT` dedup, and RLS-reject-cross-tenant + append-only-grant-reject UPDATE/DELETE against a provisioned **NOSUPERUSER** role (layer 2). The full `needs_postgres` sibling run was 277 passed; the 9 non-audit failures are pre-existing (stale `test_store`/`test_tenant_isolation` assuming a non-super `daemon`, which the throwaway image makes a superuser) + 4 `cipher_gcp_kms` cloud-cred errors — none audit-related, tracked separately as needs_postgres test hygiene.
+
+**Remaining follow-ups:**
+- **Layer 3 anchor WRITER is a cloud integration** — `anchor_audit_chain.py` PUTs to S3/GCS Object-Lock COMPLIANCE, verified at deploy (same posture as the KMS-cipher siblings; not runnable without a WORM bucket). The all-anchors verify LOGIC (C1) is unit-tested.
 - **`reemit_audit` has no automated caller** — operator-invoked today; auto-wiring the terminal-gap sweep into the daemon poll loop is a follow-up.
 - **RFC-3161 TSA anchor** + **OTel `audit_chain_verify_failed`/`audit_outbox_lag` metrics** (spec §10).
 

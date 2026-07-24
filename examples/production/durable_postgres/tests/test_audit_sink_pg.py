@@ -12,14 +12,21 @@ by exercising the DB layer that pure tests cannot reach:
   4. **RLS WITH CHECK** — a cross-tenant INSERT (GUC != row tenant) is rejected.
 
 Skipped unless POSTGRES_DSN is set (same gate as test_tenant_isolation.py). Bring
-up the sibling DB via `docker compose up postgres` and set POSTGRES_DSN. NOTE:
-append-only GRANT enforcement (SELECT+INSERT only, no UPDATE/DELETE) needs a
-non-owner role the test harness does not provision — that cell is verified at
-deploy time per the runbook §3.1 checklist, not here.
+up a Postgres and set POSTGRES_DSN. The append-only-grant + RLS test provisions
+its OWN NOSUPERUSER role (a superuser bypasses RLS by design, so the plain
+image's superuser `daemon` cannot exercise layer 2) — so this suite verifies the
+real non-superuser threat, not just the happy path.
+
+Verified live 2026-07-24 (throwaway postgres:16-alpine): 3/3 pass — chain append
++ prev_hash link + row_hash=sha256(hash_input) + advisory-lock + hashtext::bigint
+(layer 1); ON CONFLICT dedup; RLS-reject-cross-tenant + append-only-grant-reject
+UPDATE/DELETE against a real NOSUPERUSER role (layer 2).
 """
 from __future__ import annotations
 
 import hashlib
+import os
+from urllib.parse import urlparse
 
 import pytest
 
@@ -75,20 +82,56 @@ async def test_emit_dedup_on_event_seq(pg_pool, fresh_checkpoints_table):
     assert n == 1
 
 
-async def test_rls_blocks_cross_tenant_insert(pg_pool, fresh_checkpoints_table):
-    """GUC set to tenant A, row tenant B → RLS WITH CHECK rejects."""
-    with pytest.raises(Exception):  # asyncpg raises on the failed WITH CHECK
-        async with pg_pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute("SELECT set_config('app.tenant_id', $1, true)", "t-a")
-                await conn.execute(
-                    """
-                    INSERT INTO audit_log
-                      (tenant_id, seq, run_id, event_type, event_seq, round, at,
-                       workflow_class, executor_model, reviewer_model, content_hash,
-                       prev_hash, hash_input, row_hash)
-                    VALUES ('t-b', 1, 'run-x', 'run_started', 0, 0, 'x', 'c',
-                            'e', 'rv', $1, $2, 'hi', $3)
-                    """,
-                    "a" * 64, GENESIS_PREV_HASH, "b" * 64,
-                )
+_INSERT_SQL = """
+    INSERT INTO audit_log
+      (tenant_id, seq, run_id, event_type, event_seq, round, at,
+       workflow_class, executor_model, reviewer_model, content_hash,
+       prev_hash, hash_input, row_hash)
+    VALUES ($1, $2, 'run-x', 'run_started', $3, 0, 'x', 'c',
+            'e', 'rv', $4, $5, 'hi', $6)
+"""
+
+
+async def test_rls_and_append_only_grants_for_nonsuperuser(pg_pool, fresh_checkpoints_table):
+    """RLS + append-only grants only bind a NON-superuser (superusers bypass RLS
+    by design — that's why the plain image's `daemon` superuser can't test this).
+    Create a NOSUPERUSER role with only SELECT+INSERT and prove the real layer-2
+    defense: legit INSERT works, cross-tenant INSERT is RLS-rejected, and
+    UPDATE/DELETE are grant-denied (append-only)."""
+    import asyncpg
+
+    role, pw = "audit_nonsuper", "testpass2"
+    async with pg_pool.acquire() as conn:
+        await conn.execute(
+            "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='audit_nonsuper') "
+            "THEN CREATE ROLE audit_nonsuper LOGIN PASSWORD 'testpass2' NOSUPERUSER; END IF; END $$;"
+        )
+        # Append-only grant: SELECT + INSERT only, never UPDATE/DELETE.
+        await conn.execute("GRANT SELECT, INSERT ON audit_log TO audit_nonsuper")
+    # Seed one row (via the superuser sink) so UPDATE/DELETE have a target.
+    await PostgresAuditSink(pg_pool).emit(_event(0, event_type="run_started"))
+
+    u = urlparse(os.environ["POSTGRES_DSN"])
+    conn2 = await asyncpg.connect(
+        user=role, password=pw, host=u.hostname, port=u.port, database=u.path.lstrip("/")
+    )
+    try:
+        # (a) UPDATE denied by grant (append-only).
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn2.execute("UPDATE audit_log SET row_hash = $1", "f" * 64)
+        # (b) DELETE denied by grant (append-only).
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn2.execute("DELETE FROM audit_log")
+        # (c) cross-tenant INSERT rejected by RLS WITH CHECK (GUC t-a, row t-b).
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            async with conn2.transaction():
+                await conn2.execute("SELECT set_config('app.tenant_id', $1, true)", "t-a")
+                await conn2.execute(_INSERT_SQL, "t-b", 90, 5, "a" * 64, GENESIS_PREV_HASH, "b" * 64)
+        # (d) legit INSERT (GUC matches row tenant) succeeds under the same role.
+        async with conn2.transaction():
+            await conn2.execute("SELECT set_config('app.tenant_id', $1, true)", "t-b")
+            await conn2.execute(_INSERT_SQL, "t-b", 91, 6, "a" * 64, GENESIS_PREV_HASH, "b" * 64)
+        n = await conn2.fetchval("SELECT count(*) FROM audit_log WHERE tenant_id = 't-b'")
+        assert n == 1
+    finally:
+        await conn2.close()
