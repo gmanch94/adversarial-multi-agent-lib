@@ -51,6 +51,8 @@ GOLDEN_ALL: frozenset[str] = frozenset({
     "BudgetExceeded",
     # Schema migrations
     "chain_migrations", "MissingMigrationError", "BrokenMigrationError",
+    # Audit log (Tier 3.1 — D-AUDIT-1, 2026-07-23): additive, minor bump.
+    "AuditEvent", "AuditSink", "NoopAuditSink",
 })
 
 

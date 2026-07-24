@@ -35,6 +35,11 @@ Budgets:
 Schema migrations:
 - chain_migrations, MissingMigrationError, BrokenMigrationError
 
+Audit log (Tier 3.1 — D-AUDIT-1):
+- AuditEvent              — one immutable decision record; binds content by hash
+- AuditSink               — Protocol; operator wires a tamper-evident ledger (sibling PostgresAuditSink)
+- NoopAuditSink           — default zero-overhead no-op
+
 See:
 - docs/superpowers/specs/2026-05-16-durable-agent-poc-design.md (Tier 0)
 - docs/superpowers/specs/2026-05-18-api-stability-design.md (Tier 2.2)
@@ -42,6 +47,11 @@ See:
 """
 from __future__ import annotations
 
+from .audit import (
+    AuditEvent,
+    AuditSink,
+    NoopAuditSink,
+)
 from .budget import BudgetCaps as BudgetCaps  # D-TENANT-8 (Tier 2.1c-2); not in __all__ — mirrors deferred BudgetTracker per D-API-3
 from .checkpoint import (
     Checkpoint,
@@ -118,4 +128,8 @@ __all__ = [
     "chain_migrations",
     "MissingMigrationError",
     "BrokenMigrationError",
+    # Audit log (Tier 3.1)
+    "AuditEvent",
+    "AuditSink",
+    "NoopAuditSink",
 ]

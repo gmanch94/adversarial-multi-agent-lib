@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 import uuid
 import warnings
 from dataclasses import asdict, dataclass, fields as dataclass_fields, is_dataclass
@@ -18,6 +19,12 @@ from typing import Any, Literal
 
 from ..config import Config
 from ..workflow import BaseWorkflow, WorkflowResult
+from .audit import (
+    EMPTY_CONTENT_HASH,
+    LEGACY_CONTENT_HASH,
+    AuditEvent,
+    NoopAuditSink,
+)
 from .budget import BudgetSnapshot, BudgetTracker
 from .checkpoint import Checkpoint, MemoryCheckpointStore, SchemaVersionMismatch
 from .hooks import ReconciliationHook
@@ -114,6 +121,81 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# --- Tier 3.1 audit-log helpers (D-AUDIT-2/4) -----------------------------
+
+def _nfc(s: str) -> str:
+    return unicodedata.normalize("NFC", s)
+
+
+def _content_hash_for(output: str, entry: dict[str, Any]) -> str:
+    """D-AUDIT-2: bind the recommendation + the review decision by hash.
+
+    Computed by the durable layer at the round-entry append site, where it
+    holds ``r["output"]`` (the executor's final recommendation) and the entry's
+    persisted review decision (score/converged/flags). Never stores raw text.
+    ``review`` excludes any pre-existing ``content_hash`` so the hash is a pure
+    function of the decision content (idempotent under re-derivation).
+    """
+    review = {k: v for k, v in entry.items() if k != "content_hash"}
+    payload = (
+        _nfc(output).encode("utf-8")
+        + b"\x00"
+        + _nfc(json.dumps(review, sort_keys=True, default=str)).encode("utf-8")
+    )
+    return hashlib.sha256(payload).hexdigest()
+
+
+# entry["event"] value -> audit event_type (D-AUDIT-4). Structural keys only —
+# never inspects domain flag lists (avoids the M-PC-1/H-IND-1 coupling class).
+_EVENT_TO_TYPE: dict[str, str] = {
+    "model_upgrade": "model_upgrade",
+    "workflow_version_backfill": "workflow_version_backfill",
+    "workflow_version_upgrade": "workflow_version_upgrade",
+    "budget_cap_acknowledged": "budget_cap_acknowledged",
+    "cancel": "run_cancelled",
+}
+
+
+def _classify_entry(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """Map a persisted rounds_history entry to (event_type, extra scalars)."""
+    ev = entry.get("event")
+    if isinstance(ev, str) and ev in _EVENT_TO_TYPE:
+        extra: dict[str, Any] = {}
+        if ev == "model_upgrade":
+            fld = entry.get("field")
+            if isinstance(fld, str):
+                extra["field"] = fld[:200]
+            frm, to = entry.get("from"), entry.get("to")
+            if isinstance(frm, str):
+                extra["from_model"] = frm[:200]
+            if isinstance(to, str):
+                extra["to_model"] = to[:200]
+        return _EVENT_TO_TYPE[ev], extra
+    if entry.get("veto_pending") is True:
+        return "veto", {}
+    # A round entry.
+    score = entry.get("score")
+    round_extra: dict[str, Any] = {}
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        round_extra["score"] = float(score)
+    if entry.get("converged"):
+        return "round_converged", round_extra
+    return "round_completed", round_extra
+
+
+def _content_hash_from_entry(entry: dict[str, Any], event_type: str) -> str:
+    """D-AUDIT-2 back-derivation for the outbox/reconcile path: read the
+    injected content_hash; fall back to the right sentinel when absent."""
+    ch = entry.get("content_hash")
+    if isinstance(ch, str) and re.fullmatch(r"[0-9a-f]{64}", ch):
+        return ch
+    # A decision entry with no hash is a pre-feature (legacy) row: mark the gap.
+    # A non-decision event entry genuinely has no content.
+    if event_type in ("round_completed", "round_converged", "veto"):
+        return LEGACY_CONTENT_HASH
+    return EMPTY_CONTENT_HASH
+
+
 def _serialize_request(request: Any) -> str:
     # M-DUR-4: strict JSON — no default=str silent stringification.
     if is_dataclass(request) and not isinstance(request, type):
@@ -196,6 +278,7 @@ class DurableWorkflow:
         checkpoint_cadence: Literal["per_round", "per_pause", "per_call"] = "per_round",
         expected_request_type: type | None = None,
         metrics: Any | None = None,
+        audit: Any | None = None,
     ) -> None:
         self._inner = inner
         self._config = config
@@ -211,6 +294,9 @@ class DurableWorkflow:
             from .metrics import NoopMetricsBackend
             metrics = NoopMetricsBackend()
         self._metrics = metrics
+        # Tier 3.1: caller-supplied AuditSink; default Noop is a zero-overhead
+        # no-op. See src/adv_multi_agent/core/durable/audit.py + D-AUDIT-1.
+        self._audit = audit if audit is not None else NoopAuditSink()
 
     def _workflow_class_path(self) -> str:
         cls = type(self._inner)
@@ -220,6 +306,85 @@ class DurableWorkflow:
         if self._config.reviewer_provider.value == "anthropic":
             return self._config.reviewer_anthropic_model
         return self._config.reviewer_model
+
+    async def _write(self, cp: Checkpoint) -> None:
+        """Persist the checkpoint (the commit point / source of truth), then
+        best-effort emit the derived audit events (D-AUDIT-3/7). Audit emission
+        is a strictly-derived, idempotent projection of the persisted checkpoint
+        that may lag but never diverges; its failure never breaks the run."""
+        _store_write = self._store.write  # aliased so the replace-all of call sites is safe
+        await _store_write(cp)
+        await self._emit_audit(cp)
+
+    async def _emit_audit(self, cp: Checkpoint) -> None:
+        if isinstance(self._audit, NoopAuditSink):
+            return  # zero-overhead default path
+        try:
+            for event in self._derive_audit_events(cp):
+                await self._audit.emit(event)
+        except Exception as exc:  # D-AUDIT-7: audit failure never breaks the run
+            warnings.warn(
+                f"audit emit failed for run {cp.run_id!r}: {exc!r}; checkpoint is "
+                f"durable, outbox reconcile (resume/sweep) will close the gap",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    def _derive_audit_events(self, cp: Checkpoint) -> list[AuditEvent]:
+        """Pure, deterministic projection of a persisted checkpoint to its full
+        audit-event list (D-AUDIT-3/4/6). Idempotent under re-derivation: the
+        sink dedupes on (tenant_id, run_id, event_seq). This is the single
+        emission owner — the hot path and the outbox reconcile both call it, so
+        they produce identical events for the same persisted state."""
+        wf_class = self._workflow_class_path()
+
+        def mk(
+            event_type: str,
+            event_seq: int,
+            round_: int,
+            content_hash: str,
+            extra: dict[str, Any] | None = None,
+            at: str | None = None,
+        ) -> AuditEvent:
+            return AuditEvent(
+                run_id=cp.run_id,
+                tenant_id=cp.tenant_id,
+                event_type=event_type,
+                event_seq=event_seq,
+                round=max(0, int(round_)),
+                at=at or cp.updated_at,
+                workflow_class=wf_class,
+                executor_model=cp.pinned_executor_model,
+                reviewer_model=cp.pinned_reviewer_model,
+                content_hash=content_hash,
+                workflow_version_hash=cp.workflow_version_hash,
+                extra=extra or {},
+            )
+
+        events: list[AuditEvent] = [
+            mk("run_started", 0, 0, EMPTY_CONTENT_HASH, at=cp.created_at)
+        ]
+        for i, entry in enumerate(cp.rounds_history):
+            if not isinstance(entry, dict):
+                continue
+            event_type, extra = _classify_entry(entry)
+            raw_round = entry.get("round", cp.round)
+            rnd = (
+                int(raw_round)
+                if isinstance(raw_round, int) and not isinstance(raw_round, bool)
+                else cp.round
+            )
+            content_hash = _content_hash_from_entry(entry, event_type)
+            events.append(mk(event_type, i + 1, rnd, content_hash, extra))
+        n = len(cp.rounds_history)
+        if cp.status in ("completed", "vetoed"):
+            events.append(
+                mk("run_completed", n + 1, cp.round, EMPTY_CONTENT_HASH,
+                   {"vetoed": cp.status == "vetoed"})
+            )
+        elif cp.status == "failed":
+            events.append(mk("run_failed", n + 1, cp.round, EMPTY_CONTENT_HASH))
+        return events
 
     def _compute_workflow_version_hash(self) -> str:
         """Compute identity hash for this workflow's code + prompt surface.
@@ -347,7 +512,7 @@ class DurableWorkflow:
                 wake_at=None,
                 workflow_version_hash=self._compute_workflow_version_hash(),
             )
-            await self._store.write(cp)
+            await self._write(cp)
 
             ctx = PauseContext()
             prior_state: dict[str, Any] | None = None
@@ -360,10 +525,15 @@ class DurableWorkflow:
             try:
                 if not has_run_round:
                     final_result = await self._inner.run(request=request)
-                    rounds_history.append({
+                    _entry: dict[str, Any] = {
                         "round": final_result.rounds,
                         "score": final_result.final_score,
-                    })
+                        "converged": final_result.converged,
+                    }
+                    _entry["content_hash"] = _content_hash_for(
+                        final_result.output, _entry
+                    )
+                    rounds_history.append(_entry)
                 else:
                     import time as _time_mod  # local; histogram timing only
                     for round_num in range(1, self._config.max_review_rounds + 1):
@@ -413,7 +583,7 @@ class DurableWorkflow:
                             cp.updated_at = _now_iso()
                             if self._budget is not None:
                                 cp.budget_used = self._budget.snapshot().to_dict()
-                            await self._store.write(cp)
+                            await self._write(cp)
                             paused_token = ResumeToken(
                                 run_id=run_id,
                                 workflow_class=token.workflow_class,
@@ -443,6 +613,13 @@ class DurableWorkflow:
 
                         entry = r.get("rounds_history_entry")
                         if entry is not None:
+                            if isinstance(entry, dict):
+                                entry = {
+                                    **entry,
+                                    "content_hash": _content_hash_for(
+                                        str(r.get("output", "")), entry
+                                    ),
+                                }
                             rounds_history.append(entry)
                         prior_state = r.get("next_state", prior_state)
 
@@ -470,7 +647,7 @@ class DurableWorkflow:
                                     float(_bs.usd_spent),
                                     tags=_btags,
                                 )
-                            await self._store.write(cp)
+                            await self._write(cp)
                             self._metrics.gauge(
                                 "durable.checkpoint.schema_version",
                                 float(cp.schema_version),
@@ -510,12 +687,12 @@ class DurableWorkflow:
                 cp.updated_at = _now_iso()
                 if self._budget is not None:
                     cp.budget_used = self._budget.snapshot().to_dict()
-                await self._store.write(cp)
+                await self._write(cp)
                 return RunOutcome(status="budget_exceeded", token=token, error=str(exc))
             except Exception as exc:
                 cp.status = "failed"
                 cp.updated_at = _now_iso()
-                await self._store.write(cp)
+                await self._write(cp)
                 return RunOutcome(status="failed", token=token, error=str(exc))
 
             assert final_result is not None
@@ -525,7 +702,7 @@ class DurableWorkflow:
             cp.updated_at = _now_iso()
             if self._budget is not None:
                 cp.budget_used = self._budget.snapshot().to_dict()
-            await self._store.write(cp)
+            await self._write(cp)
             return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
         finally:
             if handle is not None:
@@ -652,7 +829,7 @@ class DurableWorkflow:
                     ),
                 })
                 cp.workflow_version_hash = expected_hash
-                await self._store.write(cp)
+                await self._write(cp)
             elif cp.workflow_version_hash != expected_hash:
                 if force_workflow_upgrade:
                     cp.rounds_history.append({
@@ -663,7 +840,7 @@ class DurableWorkflow:
                         "at": _now_iso(),
                     })
                     cp.workflow_version_hash = expected_hash
-                    await self._store.write(cp)
+                    await self._write(cp)
                 else:
                     cp.status = "paused"
                     cp.pause_reason = "WORKFLOW_VERSION_DRIFT"
@@ -678,7 +855,7 @@ class DurableWorkflow:
                         ),
                     }
                     cp.updated_at = _now_iso()
-                    await self._store.write(cp)
+                    await self._write(cp)
                     return RunOutcome(
                         status="paused",
                         token=token,
@@ -753,7 +930,7 @@ class DurableWorkflow:
                         cp.wake_at = ps.wake_at
                         cp.rounds_history = rounds_history
                         cp.updated_at = _now_iso()
-                        await self._store.write(cp)
+                        await self._write(cp)
                         self._metrics.gauge(
                             "durable.checkpoint.schema_version",
                             float(cp.schema_version),
@@ -779,6 +956,13 @@ class DurableWorkflow:
 
                     entry = r.get("rounds_history_entry")
                     if entry is not None:
+                        if isinstance(entry, dict):
+                            entry = {
+                                **entry,
+                                "content_hash": _content_hash_for(
+                                    str(r.get("output", "")), entry
+                                ),
+                            }
                         rounds_history.append(entry)
                     prior_state = r.get("next_state", prior_state)
                     if r.get("converged"):
@@ -805,14 +989,14 @@ class DurableWorkflow:
                 cp.status = "budget_exceeded"
                 cp.rounds_history = rounds_history
                 cp.updated_at = _now_iso()
-                await self._store.write(cp)
+                await self._write(cp)
                 return RunOutcome(status="budget_exceeded", token=token, error=str(exc))
 
             cp.status = "vetoed" if final_result.metadata.get("vetoed") else "completed"
             cp.round = final_result.rounds
             cp.rounds_history = rounds_history
             cp.updated_at = _now_iso()
-            await self._store.write(cp)
+            await self._write(cp)
             return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
         finally:
             await self._lock.release(handle)
@@ -858,7 +1042,7 @@ class DurableWorkflow:
             "budget_used_at_ack": dict(cp.budget_used),
         })
         cp.updated_at = ack_ts
-        await self._store.write(cp)
+        await self._write(cp)
 
     async def cancel(self, token: ResumeToken, reason: str) -> None:
         """Mark the run as failed with the given reason. Idempotent: calling
@@ -875,4 +1059,4 @@ class DurableWorkflow:
             cp.rounds_history.append({
                 "event": "cancel", "reason": reason, "at": cp.updated_at,
             })
-        await self._store.write(cp)
+        await self._write(cp)
