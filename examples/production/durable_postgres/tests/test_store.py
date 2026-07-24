@@ -108,17 +108,21 @@ async def test_list_paused_filters_by_wake_at(pg_pool, fresh_checkpoints_table):
     assert "future-002" not in ids
 
 
-async def test_delete_idempotent(pg_pool, fresh_checkpoints_table):
+async def test_delete_then_redelete_raises_run_not_found(pg_pool, fresh_checkpoints_table):
+    """Tier 2.1b (Q6 follow-up): delete() is NOT idempotent. A second delete of
+    an already-removed run affects 0 rows and raises RunNotFound so operators get
+    a signal (silent 0-row no-op was the old behavior). Read after delete raises."""
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
     store = PostgresCheckpointStore(pg_pool)
     cp = _make_checkpoint()
     await store.write(cp)
-    await store.delete(cp.run_id)
-    # Second delete is no-op
-    await store.delete(cp.run_id)
+    await store.delete(cp.run_id, tenant_id="_default")
     with pytest.raises(RunNotFound):
         await store.read(cp.run_id)
+    # Second delete raises (0 rows affected) — the Q6 signal, not a no-op.
+    with pytest.raises(RunNotFound):
+        await store.delete(cp.run_id, tenant_id="_default")
 
 
 async def test_run_id_charset_constraint_at_db_layer(pg_pool, fresh_checkpoints_table):
@@ -135,8 +139,8 @@ async def test_run_id_charset_constraint_at_db_layer(pg_pool, fresh_checkpoints_
             await conn.execute(
                 """
                 INSERT INTO checkpoints
-                  (run_id, schema_version, status, workflow_class, payload)
-                VALUES ($1, 1, 'paused', 'X', $2)
+                  (run_id, tenant_id, schema_version, status, workflow_class, payload)
+                VALUES ($1, '_default', 1, 'paused', 'X', $2)
                 """,
                 "bad; DROP TABLE checkpoints;",
                 b"unused",
@@ -174,7 +178,7 @@ async def test_store_rejects_bad_run_id_before_touching_db(
     with pytest.raises(ValueError, match="invalid run_id"):
         await store.read("abc;DROP TABLE")
     with pytest.raises(ValueError, match="invalid run_id"):
-        await store.delete("abc;DROP TABLE")
+        await store.delete("abc;DROP TABLE", tenant_id="_default")
 
 
 async def test_default_workflow_class_used_for_protocol_write(

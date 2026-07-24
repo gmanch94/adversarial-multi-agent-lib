@@ -63,6 +63,63 @@ async def pg_pool():
     await pool.close()
 
 
+_RLS_TEST_ROLE = "durable_rls_test"
+_RLS_TEST_PW = "rls_test_pw"  # test-only, localhost throwaway DB — not a secret
+
+
+@pytest.fixture
+async def nonsuper_pool(pg_pool, fresh_checkpoints_table):
+    """A NOSUPERUSER, non-owner pool with full DML grants on checkpoints +
+    quarantine, so the tenant-RLS policies actually bind.
+
+    Superusers bypass RLS by design (even FORCE RLS), and the throwaway
+    postgres image's connecting role is a superuser — so RLS-enforcement tests
+    run against `pg_pool` prove nothing (the WITH CHECK never fires). This
+    fixture provisions a real non-super, non-owner role — the same mechanism
+    test_audit_sink_pg uses — so the four RLS tests exercise the real layer-2
+    threat instead of a no-op.
+
+    Grant discipline (advisor 2026-07-24): each RLS test pairs a same-tenant
+    positive control with the cross-tenant negative on THIS role. An RLS
+    WITH-CHECK rejection and a missing table grant both surface as
+    InsufficientPrivilegeError (42501); only a passing positive control on the
+    same role proves the negative failed because of RLS, not a grant gap.
+
+    Depends on fresh_checkpoints_table so grants land on the freshly-created
+    tables; the pool closes in teardown BEFORE fresh_checkpoints_table drops
+    them CASCADE (fixture finalizers run in reverse setup order).
+    """
+    import asyncpg as ap
+    from urllib.parse import urlparse
+
+    async with pg_pool.acquire() as conn:
+        await conn.execute(
+            "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE "
+            f"rolname='{_RLS_TEST_ROLE}') THEN CREATE ROLE {_RLS_TEST_ROLE} "
+            f"LOGIN PASSWORD '{_RLS_TEST_PW}' NOSUPERUSER; END IF; END $$;"
+        )
+        await conn.execute(
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON checkpoints, quarantine "
+            f"TO {_RLS_TEST_ROLE}"
+        )
+    dsn = _dsn()
+    assert dsn is not None
+    u = urlparse(dsn)
+    pool = await ap.create_pool(
+        user=_RLS_TEST_ROLE,
+        password=_RLS_TEST_PW,
+        host=u.hostname,
+        port=u.port,
+        database=u.path.lstrip("/"),
+        min_size=1,
+        max_size=3,
+    )
+    try:
+        yield pool
+    finally:
+        await pool.close()
+
+
 @pytest.fixture
 async def fresh_checkpoints_table(pg_pool):
     """Drop + recreate checkpoints AND quarantine tables from schema.sql.

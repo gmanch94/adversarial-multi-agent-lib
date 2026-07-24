@@ -210,8 +210,8 @@ async def test_legacy_payload_without_keys_reads_with_none(
     async with pg_pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO checkpoints "
-            "(run_id, schema_version, status, workflow_class, payload) "
-            "VALUES ($1, 1, 'paused', $2, $3)",
+            "(run_id, tenant_id, schema_version, status, workflow_class, payload) "
+            "VALUES ($1, '_default', 1, 'paused', $2, $3)",
             "rt-legacy", _WF_CLASS, payload_bytes,
         )
     loaded = await _store(pg_pool).read("rt-legacy")
@@ -255,8 +255,8 @@ async def test_list_paused_token_legacy_payload_yields_none(
     async with pg_pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO checkpoints "
-            "(run_id, schema_version, status, workflow_class, payload) "
-            "VALUES ($1, 1, 'paused', $2, $3)",
+            "(run_id, tenant_id, schema_version, status, workflow_class, payload) "
+            "VALUES ($1, '_default', 1, 'paused', $2, $3)",
             "rt-tok-legacy", _WF_CLASS, payload_bytes,
         )
     tokens = await _store(pg_pool).list_paused(

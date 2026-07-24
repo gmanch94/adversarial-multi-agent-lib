@@ -158,26 +158,27 @@ def _make_checkpoint(run_id: str, tenant_id: str = "_default") -> Checkpoint:
 
 
 @needs_postgres
-async def test_rls_insert_requires_matching_guc(pg_pool, fresh_checkpoints_table):
-    """RLS INSERT policy rejects rows whose tenant_id != current_setting GUC."""
+async def test_rls_insert_requires_matching_guc(nonsuper_pool, fresh_checkpoints_table):
+    """RLS INSERT policy rejects rows whose tenant_id != current_setting GUC.
+
+    Runs on a provisioned NOSUPERUSER pool — superusers bypass RLS by design, so
+    the throwaway image's superuser role can't exercise this. The same-tenant
+    write below is the POSITIVE CONTROL: it proves the cross-tenant rejection is
+    RLS (WITH CHECK), not a missing INSERT grant — both surface as 42501.
+    """
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
-    store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("rls-a", tenant_id="tenant-a")
+    store = PostgresCheckpointStore(nonsuper_pool, default_workflow_class="W")
 
-    # Explicit tenant=A; INSERT should succeed.
-    await store.write(cp)
+    # Positive control: same-tenant write succeeds under the non-super role
+    # (GUC=A, row=A). If the INSERT grant were missing, THIS would fail too.
+    await store.write(_make_checkpoint("rls-a", tenant_id="tenant-a"))
 
-    # Now try to INSERT with tenant=B kwarg but row tenant=A — RLS WITH CHECK
-    # rejects because the GUC will be set to B but the row's tenant_id will
-    # also be B (we always write tenant_id = resolved GUC). So the test must
-    # construct the scenario where GUC != row's tenant. We do this by writing
-    # via raw SQL with a tenant override.
+    # Negative: GUC says A, but INSERT a tenant_id=B row — RLS WITH CHECK rejects.
     import asyncpg
     with pytest.raises(asyncpg.exceptions.PostgresError):
-        async with pg_pool.acquire() as conn:
+        async with nonsuper_pool.acquire() as conn:
             async with conn.transaction():
-                # GUC says A, but try to INSERT a tenant_id=B row.
                 await conn.execute(
                     "SELECT set_config('app.tenant_id', 'tenant-a', true)"
                 )
@@ -243,19 +244,24 @@ async def test_pool_connection_recycling_does_not_leak_guc(
 
 @needs_postgres
 async def test_rls_update_rejects_tenant_migration(
-    pg_pool, fresh_checkpoints_table,
+    nonsuper_pool, fresh_checkpoints_table,
 ):
-    """RLS UPDATE WITH CHECK rejects an UPDATE that migrates tenant_id."""
+    """RLS UPDATE WITH CHECK rejects an UPDATE that migrates tenant_id.
+
+    NOSUPERUSER pool (RLS binds only against a non-super role). The seed write
+    below is the POSITIVE CONTROL — a same-tenant write succeeding proves the
+    migration UPDATE is rejected by RLS, not by a missing UPDATE/INSERT grant.
+    """
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
-    store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("migrate-a", tenant_id="tenant-a")
-    await store.write(cp)
+    store = PostgresCheckpointStore(nonsuper_pool, default_workflow_class="W")
+    # Positive control: same-tenant seed succeeds under the non-super role.
+    await store.write(_make_checkpoint("migrate-a", tenant_id="tenant-a"))
 
-    # Try raw UPDATE: GUC=A, but UPDATE sets tenant_id=B. WITH CHECK fails.
+    # Negative: GUC=A, but UPDATE sets tenant_id=B. WITH CHECK fails.
     import asyncpg
     with pytest.raises(asyncpg.exceptions.PostgresError):
-        async with pg_pool.acquire() as conn:
+        async with nonsuper_pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     "SELECT set_config('app.tenant_id', 'tenant-a', true)"
@@ -268,16 +274,33 @@ async def test_rls_update_rejects_tenant_migration(
 
 @needs_postgres
 async def test_rls_quarantine_insert_rejects_cross_tenant(
-    pg_pool, fresh_checkpoints_table,
+    nonsuper_pool, fresh_checkpoints_table,
 ):
     """Audit 2026-05-18 Q7 follow-up: quarantine table RLS WITH CHECK rejects
     cross-tenant INSERT (parallel to test_rls_insert_requires_matching_guc
-    which covered checkpoints only)."""
+    which covered checkpoints only).
+
+    NOSUPERUSER pool. The same-tenant INSERT below is the POSITIVE CONTROL —
+    proving the cross-tenant rejection is RLS, not a missing quarantine grant.
+    """
     import asyncpg
+    # Positive control: GUC=B, row=B — succeeds under the non-super role.
+    async with nonsuper_pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.tenant_id', 'tenant-b', true)"
+            )
+            await conn.execute(
+                "INSERT INTO quarantine "
+                "(run_id, tenant_id, failure_count, reason) "
+                "VALUES ($1, $2, $3, $4)",
+                "q-ok", "tenant-b", 3, "manual",
+            )
+
+    # Negative: GUC says A, INSERT tries to land tenant_id=B — RLS rejects.
     with pytest.raises(asyncpg.exceptions.PostgresError):
-        async with pg_pool.acquire() as conn:
+        async with nonsuper_pool.acquire() as conn:
             async with conn.transaction():
-                # GUC says A, INSERT tries to land tenant_id=B.
                 await conn.execute(
                     "SELECT set_config('app.tenant_id', 'tenant-a', true)"
                 )
@@ -338,23 +361,27 @@ async def test_read_after_write_preserves_tenant_id(
 
 @needs_postgres
 async def test_delete_with_wrong_tenant_raises_run_not_found(
-    pg_pool, fresh_checkpoints_table,
+    nonsuper_pool, fresh_checkpoints_table,
 ):
     """Audit 2026-05-18 Q6 follow-up: delete() with mismatched tenant_id
     no longer silently affects 0 rows — it raises RunNotFound so operators
-    get a signal when their --tenant flag is wrong."""
+    get a signal when their --tenant flag is wrong.
+
+    NOSUPERUSER pool so the RLS DELETE policy actually hides the row (superusers
+    bypass it). The right-tenant delete succeeding is the POSITIVE CONTROL —
+    proving the wrong-tenant RunNotFound came from RLS, not a missing row/grant.
+    """
     from adv_multi_agent.core.durable.checkpoint import RunNotFound
     from examples.production.durable_postgres.store import PostgresCheckpointStore
 
-    store = PostgresCheckpointStore(pg_pool, default_workflow_class="W")
-    cp = _make_checkpoint("delete-1", tenant_id="tenant-real")
-    await store.write(cp)
+    store = PostgresCheckpointStore(nonsuper_pool, default_workflow_class="W")
+    await store.write(_make_checkpoint("delete-1", tenant_id="tenant-real"))
 
     # Wrong tenant — RLS hides the row from DELETE. delete() now raises.
     with pytest.raises(RunNotFound, match="tenant_id mismatch"):
         await store.delete("delete-1", tenant_id="tenant-wrong")
 
-    # Right tenant — succeeds.
+    # Positive control: right tenant succeeds (proves the row existed + grant OK).
     await store.delete("delete-1", tenant_id="tenant-real")
 
 
