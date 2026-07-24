@@ -106,8 +106,10 @@ class PostgresAuditSink:
                 )
                 # Per-tenant serialization for the read-head -> INSERT window.
                 # Held for the whole txn; different tenants never contend.
+                # Explicit ::bigint — hashtext returns int4; the cast removes any
+                # ambiguity in resolving pg_advisory_xact_lock(bigint).
                 await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtext($1))", lock_key
+                    "SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", lock_key
                 )
                 head = await conn.fetchrow(
                     "SELECT seq, row_hash FROM audit_log "

@@ -9,8 +9,10 @@ would be the M-PC-1/H-IND-1 drift class):
   persisted checkpoint and re-emits idempotently, closing any gap on resume.
 - TERMINAL runs (completed/vetoed/failed) CANNOT resume (`resume` refuses
   non-paused rows), so their un-emitted `run_completed`/`run_failed` events are
-  recovered via `DurableWorkflow.reemit_audit(token)` — the daemon reconcile
-  (which holds the workflow factory) calls it per flagged run.
+  recovered via `DurableWorkflow.reemit_audit(token)`. There is NO automated
+  caller yet — an operator invokes `reemit_audit` for a flagged run once the
+  sink is healthy; auto-wiring it into the daemon poll loop (which holds the
+  workflow factory) is a documented follow-up.
 
 This script is the SQL-only DETECTOR: it flags terminal checkpoints missing
 their terminal audit row so the operator can trigger `reemit_audit` and alert on
