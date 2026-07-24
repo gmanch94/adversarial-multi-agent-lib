@@ -73,9 +73,11 @@ async def fresh_checkpoints_table(pg_pool):
     async with pg_pool.acquire() as conn:
         await conn.execute("DROP TABLE IF EXISTS checkpoints CASCADE;")
         await conn.execute("DROP TABLE IF EXISTS quarantine CASCADE;")
+        await conn.execute("DROP TABLE IF EXISTS audit_log CASCADE;")
         schema_sql = SCHEMA_FILE.read_text(encoding="utf-8")
         await conn.execute(schema_sql)
     yield
     async with pg_pool.acquire() as conn:
         await conn.execute("DROP TABLE IF EXISTS checkpoints CASCADE;")
         await conn.execute("DROP TABLE IF EXISTS quarantine CASCADE;")
+        await conn.execute("DROP TABLE IF EXISTS audit_log CASCADE;")

@@ -8,6 +8,8 @@
 --   0004 = scripts/0004_add_tenant_id.sql           (Tier 2.1a / tenant_id nullable + CHECK)
 --   0005 = scripts/0005_enable_tenant_rls.sql       (Tier 2.1a / RLS policies; apply AFTER backfill)
 --   0006 = scripts/0006_tenant_id_not_null.sql      (Tier 2.1a / NOT NULL flip; apply AFTER backfill)
+--   0007 = scripts/0007_force_tenant_rls.sql        (Tier 2.1d / FORCE RLS)
+--   0008 = scripts/0008_add_audit_log.sql           (Tier 3.1 / append-only hash-chained audit log)
 --
 -- Fresh installs run this file once; it includes every column from every
 -- migration so a clean DB never needs the 000N_*.sql files.
@@ -151,15 +153,75 @@ CREATE POLICY tenant_delete_scoped_quarantine ON quarantine
     FOR DELETE TO PUBLIC
     USING (tenant_id = current_setting('app.tenant_id', true));
 
+-- =========================================================================
+-- Tier 3.1 (D-AUDIT-1..8): append-only, hash-chained, per-tenant audit log.
+-- See scripts/0008_add_audit_log.sql for the full rationale. Hash-bound fields
+-- (`at`, `extra_canonical`, `hash_input`) are app-owned TEXT by design — do NOT
+-- convert to JSONB/TIMESTAMPTZ (would false-positive the tamper walker, H2).
+-- APPEND-ONLY: SELECT+INSERT grants only, no UPDATE/DELETE policy; the daemon
+-- role MUST be a non-owner for that + FORCE RLS to hold.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS audit_log (
+    tenant_id             VARCHAR(64)  NOT NULL,
+    seq                   BIGINT       NOT NULL,
+    run_id                VARCHAR(64)  NOT NULL,
+    event_type            VARCHAR(48)  NOT NULL,
+    event_seq             INTEGER      NOT NULL,
+    round                 INTEGER,
+    at                    TEXT         NOT NULL,
+    workflow_class        TEXT         NOT NULL,
+    workflow_version_hash VARCHAR(16),
+    executor_model        VARCHAR(128) NOT NULL,
+    reviewer_model        VARCHAR(128) NOT NULL,
+    content_hash          CHAR(64)     NOT NULL,
+    extra_canonical       TEXT         NOT NULL DEFAULT '{}',
+    prev_hash             CHAR(64)     NOT NULL,
+    hash_input            TEXT         NOT NULL,
+    row_hash              CHAR(64)     NOT NULL,
+    PRIMARY KEY (tenant_id, seq),
+    CONSTRAINT audit_run_id_charset    CHECK (run_id    ~ '^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$'),
+    CONSTRAINT audit_tenant_id_charset CHECK (tenant_id ~ '^[a-zA-Z0-9_][a-zA-Z0-9_-]{0,63}$'),
+    CONSTRAINT audit_seq_positive      CHECK (seq >= 1),
+    CONSTRAINT audit_event_seq_bounds  CHECK (event_seq >= 0),
+    CONSTRAINT audit_content_hash_hex  CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT audit_prev_hash_hex     CHECK (prev_hash    ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT audit_row_hash_hex      CHECK (row_hash     ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT audit_round_bounds      CHECK (round IS NULL OR (round >= 0 AND round <= 10000)),
+    CONSTRAINT audit_event_type_enum   CHECK (event_type IN (
+        'round_completed','round_converged','veto','force_accept',
+        'model_upgrade','workflow_version_backfill','workflow_version_upgrade',
+        'budget_cap_acknowledged','run_cancelled',
+        'run_started','run_completed','run_failed')),
+    CONSTRAINT audit_idempotent        UNIQUE (tenant_id, run_id, event_seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_tenant_seq ON audit_log (tenant_id, seq DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_run ON audit_log (tenant_id, run_id, seq);
+
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log FORCE  ROW LEVEL SECURITY;
+
+CREATE POLICY audit_select_all ON audit_log
+    FOR SELECT TO PUBLIC USING (true);
+CREATE POLICY audit_insert_scoped ON audit_log
+    FOR INSERT TO PUBLIC
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+-- No UPDATE policy. No DELETE policy. Absence = denied under RLS (append-only).
+
 -- Least-privilege role pattern. Replace 'daemon_user' with your role name.
 -- The daemon connection MUST NOT use a superuser.
 --
 -- Run after table creation (commented to keep schema.sql idempotent on init):
 --   GRANT SELECT, INSERT, UPDATE, DELETE ON checkpoints TO daemon_user;
 --   GRANT SELECT, INSERT, UPDATE, DELETE ON quarantine TO daemon_user;
+--   -- Tier 3.1 audit log is APPEND-ONLY: SELECT + INSERT only, never UPDATE/DELETE.
+--   GRANT SELECT, INSERT ON audit_log TO daemon_user;
 --   -- No GRANT TRUNCATE; no DDL; no other tables.
+--   -- daemon_user MUST NOT own audit_log (append-only + FORCE RLS rely on non-owner).
 --
 -- For operator scripts (list_quarantined.py / requeue.py), prefer a separate
 -- role with narrower grants:
 --   GRANT SELECT ON quarantine, checkpoints TO operator_ro;
 --   GRANT UPDATE (requeued_at) ON quarantine TO operator_rw;
+--   -- Audit walker / compliance read (verify_audit_chain.py, reconcile_audit.py):
+--   GRANT SELECT ON audit_log TO auditor_ro;
