@@ -110,6 +110,11 @@ class AuditEvent:
             v = getattr(self, name)
             if not isinstance(v, str) or not v:
                 raise ValueError(f"{name} must be a non-empty str, got {v!r}")
+        # Mirror the DB VARCHAR(128) caps so an over-long model string surfaces
+        # as a loud construction error, not a silent fail-open INSERT drop.
+        for name in ("executor_model", "reviewer_model"):
+            if len(getattr(self, name)) > 128:
+                raise ValueError(f"{name} exceeds 128 chars (DB VARCHAR(128) cap)")
         if not _HEX64_RE.fullmatch(self.content_hash):
             raise ValueError(
                 f"content_hash must be 64 lowercase hex chars, got {self.content_hash!r}"
@@ -124,8 +129,11 @@ class AuditEvent:
         # bool is a subclass of int — reject it for the integer fields explicitly.
         if not isinstance(self.event_seq, int) or isinstance(self.event_seq, bool) or self.event_seq < 0:
             raise ValueError(f"event_seq must be a non-negative int, got {self.event_seq!r}")
-        if not isinstance(self.round, int) or isinstance(self.round, bool) or self.round < 0:
-            raise ValueError(f"round must be a non-negative int, got {self.round!r}")
+        if (not isinstance(self.round, int) or isinstance(self.round, bool)
+                or self.round < 0 or self.round > 10000):
+            raise ValueError(
+                f"round must be an int in [0, 10000] (DB CHECK), got {self.round!r}"
+            )
         if not isinstance(self.extra, Mapping):
             raise ValueError(f"extra must be a mapping, got {type(self.extra).__name__}")
         for k, v in self.extra.items():

@@ -136,7 +136,12 @@ def _content_hash_for(output: str, entry: dict[str, Any]) -> str:
     ``review`` excludes any pre-existing ``content_hash`` so the hash is a pure
     function of the decision content (idempotent under re-derivation).
     """
-    review = {k: v for k, v in entry.items() if k != "content_hash"}
+    review = {k: v for k, v in entry.items() if k not in ("content_hash", "at")}
+    # `default=str` is INTENTIONAL here (unlike the strict `_serialize_request`,
+    # M-DUR-4): this runs on the hot decision path before the checkpoint write,
+    # so it must NEVER raise on an unusual entry value and break the run. A lossy
+    # stringification still yields a stable, non-PHI digest. `at` is excluded so
+    # content_hash binds the decision content, not the wall-clock time.
     payload = (
         _nfc(output).encode("utf-8")
         + b"\x00"
@@ -375,7 +380,16 @@ class DurableWorkflow:
                 else cp.round
             )
             content_hash = _content_hash_from_entry(entry, event_type)
-            events.append(mk(event_type, i + 1, rnd, content_hash, extra))
+            # Immutable per-entry `at` (D-AUDIT-2): round entries carry it from
+            # the append site, event entries (model_upgrade/backfill/cancel/
+            # budget_ack) from their own writes; legacy entries fall back to
+            # cp.updated_at. Never the mutable current cp.updated_at for a
+            # historical decision — that would drift under outbox lag.
+            entry_at = entry.get("at")
+            events.append(
+                mk(event_type, i + 1, rnd, content_hash, extra,
+                   at=entry_at if isinstance(entry_at, str) and entry_at else None)
+            )
         n = len(cp.rounds_history)
         if cp.status in ("completed", "vetoed"):
             events.append(
@@ -533,6 +547,7 @@ class DurableWorkflow:
                     _entry["content_hash"] = _content_hash_for(
                         final_result.output, _entry
                     )
+                    _entry["at"] = _now_iso()  # immutable event time (D-AUDIT-2)
                     rounds_history.append(_entry)
                 else:
                     import time as _time_mod  # local; histogram timing only
@@ -619,6 +634,7 @@ class DurableWorkflow:
                                     "content_hash": _content_hash_for(
                                         str(r.get("output", "")), entry
                                     ),
+                                    "at": _now_iso(),  # immutable event time (D-AUDIT-2)
                                 }
                             rounds_history.append(entry)
                         prior_state = r.get("next_state", prior_state)
@@ -962,6 +978,7 @@ class DurableWorkflow:
                                 "content_hash": _content_hash_for(
                                     str(r.get("output", "")), entry
                                 ),
+                                "at": _now_iso(),  # immutable event time (D-AUDIT-2)
                             }
                         rounds_history.append(entry)
                     prior_state = r.get("next_state", prior_state)
@@ -1000,6 +1017,27 @@ class DurableWorkflow:
             return RunOutcome(status=cp.status, token=token, result=final_result)  # type: ignore[arg-type]
         finally:
             await self._lock.release(handle)
+
+    async def reemit_audit(self, token: ResumeToken) -> None:
+        """Outbox recovery for the audit ledger (D-AUDIT-7).
+
+        Re-derives + re-emits this run's FULL audit-event list from the
+        persisted checkpoint, for ANY status. Idempotent — the sink dedupes on
+        (tenant_id, run_id, event_seq), so already-emitted events are no-ops.
+
+        This is the ONLY path that closes an audit gap for a TERMINAL run:
+        `resume()` refuses non-paused runs, so `run_completed` / `run_failed`
+        events that failed to emit at the terminal `_write` (sink transiently
+        down) cannot be recovered by a resume. The daemon reconcile sweep and
+        operators call this per run flagged by
+        `examples/production/durable_postgres/scripts/reconcile_audit.py`.
+
+        No-op when `audit` is the default `NoopAuditSink`. Emit failure here is
+        swallowed (best-effort) exactly like the hot path — the operator re-runs
+        the sweep once the sink is healthy.
+        """
+        cp = await self._store.read(token.run_id)  # raises RunNotFound
+        await self._emit_audit(cp)
 
     async def acknowledge_budget_exceeded(self, token: ResumeToken) -> None:
         """Tier 2.3 (D-BUDGET-1): operator-action to recover a run in

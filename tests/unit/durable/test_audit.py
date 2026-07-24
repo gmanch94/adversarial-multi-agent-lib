@@ -397,3 +397,74 @@ async def test_reconcile_is_idempotent(cfg):
     cp = await dw._store.read(outcome.token.run_id)
     await dw._emit_audit(cp)  # simulate an outbox reconcile sweep
     assert len(rb.events) == n_after_run
+
+
+class _ToggleSink:
+    """Fails every emit until `.fail` is cleared — models a sink that was down
+    during the run and comes back for the reconcile."""
+
+    def __init__(self) -> None:
+        self.events: list[AuditEvent] = []
+        self._seen: set[tuple[str, str, int]] = set()
+        self.fail = True
+
+    async def emit(self, event: AuditEvent) -> None:
+        if self.fail:
+            raise RuntimeError("sink down")
+        key = (event.tenant_id, event.run_id, event.event_seq)
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        self.events.append(event)
+
+
+@pytest.mark.asyncio
+async def test_reemit_audit_closes_terminal_gap(cfg):
+    """HIGH review finding: a terminal run cannot resume, so run_completed lost
+    at the terminal write is recoverable ONLY via reemit_audit."""
+    sink = _ToggleSink()
+    store = MemoryCheckpointStore()
+    dw = DurableWorkflow(inner=_RoundWF(config=cfg), config=cfg,
+                         checkpoint_store=store, run_lock=MemoryRunLock(), audit=sink)
+    with pytest.warns(UserWarning, match="audit emit failed"):
+        outcome = await dw.start(request={}, tenant_id="t-test")
+    assert outcome.status == "completed"
+    assert sink.events == []  # sink was down for the whole run
+    # Sink recovers; reconcile re-emits from the durable (terminal) checkpoint.
+    sink.fail = False
+    await dw.reemit_audit(outcome.token)
+    types = [e.event_type for e in sink.events]
+    assert "run_started" in types
+    assert "run_completed" in types
+
+
+@pytest.mark.asyncio
+async def test_reemit_audit_is_idempotent(cfg):
+    rb = RecordingAuditSink()
+    dw = _dw(cfg, audit=rb)
+    outcome = await dw.start(request={}, tenant_id="t-test")
+    n = len(rb.events)
+    await dw.reemit_audit(outcome.token)
+    assert len(rb.events) == n
+
+
+def test_derived_at_is_immutable_not_current_updated_at(cfg):
+    """MEDIUM review finding: a round event's `at` is the entry's frozen
+    timestamp, never the mutable cp.updated_at (which drifts under outbox lag)."""
+    dw = _dw(cfg)
+    cp = _make_cp(
+        status="completed", round=1, updated_at="2099-12-31T23:59:59+00:00",
+        rounds_history=[{
+            "round": 1, "score": 0.9, "converged": True,
+            "content_hash": "b" * 64, "at": "2020-01-01T00:00:00+00:00",
+        }],
+    )
+    round_ev = next(e for e in dw._derive_audit_events(cp) if e.event_type == "round_converged")
+    assert round_ev.at == "2020-01-01T00:00:00+00:00"
+
+
+def test_audit_event_round_upper_bound_and_model_len():
+    with pytest.raises(ValueError):
+        AuditEvent(**_valid_event(round=10001))
+    with pytest.raises(ValueError):
+        AuditEvent(**_valid_event(executor_model="m" * 129))

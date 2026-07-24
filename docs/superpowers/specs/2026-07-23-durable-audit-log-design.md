@@ -139,10 +139,13 @@ The checkpoint is written before emit (D-AUDIT-3, §5.1). A crash after checkpoi
 
 `emit` failing (Postgres unreachable, lock timeout, INSERT rejected) is **not** fatal and does **not** pause the run: the checkpoint is already durable (§5.1), so the decision is safe. The un-emitted event is simply an outbox gap. It is closed by:
 
-1. **Every resume**, the durable layer reconciles the run's persisted `rounds_history` (+ status) against `audit_log` and emits any missing events (idempotent, D-AUDIT-6).
-2. **A periodic reconcile sweep** (`scripts/reconcile_audit.py`, cron) does the same across all runs, so a run that never resumes (completed then idle) still converges.
+1. **Every resume** (paused runs), the durable layer reconciles the run's persisted `rounds_history` (+ status) against `audit_log` and emits any missing events (idempotent, D-AUDIT-6).
+2. **`DurableWorkflow.reemit_audit(token)`** for **terminal** runs — `resume()` refuses non-paused rows, so a `run_completed`/`run_failed` event lost at the single terminal write (sink down then) can be recovered ONLY here. It reads the checkpoint at any status and re-emits (idempotent). The daemon reconcile (which holds the workflow factory) calls it per run flagged by the sweep. *(Added in the implementation-review pass — the code review caught that terminal events had no working outbox path: the sweep only reports, and resume can't touch a terminal run.)*
+3. **A periodic reconcile sweep** (`scripts/reconcile_audit.py`, cron) is the SQL-only detector that flags terminal runs missing their terminal event, so an operator triggers `reemit_audit`.
 
-This replaces v1's pause (which the review proved was a lost-row/duplicate trilemma). Availability is preserved; faithfulness is preserved because re-derivation reads the durable entry. A negative test asserts: kill emit mid-run → checkpoint intact → resume closes the gap with the identical `content_hash`.
+This replaces v1's pause (which the review proved was a lost-row/duplicate trilemma). Availability is preserved; faithfulness is preserved because re-derivation reads the durable entry. A negative test asserts: kill emit mid-run → checkpoint intact → `reemit_audit` closes the gap incl. `run_completed`, with the identical `content_hash`.
+
+**Immutable event `at` (implementation-review MEDIUM):** each `rounds_history` entry is stamped with its own `at` at append time; `_derive_audit_events` reads `entry["at"]`, never the mutable current `cp.updated_at` — otherwise every un-emitted round event would collapse to the resume-write time under outbox lag, corrupting the compliance timestamps. `content_hash` excludes `at` so it binds the decision, not the clock.
 
 **Ordering guarantee (H3):** append (in-memory) → **checkpoint write (durable)** → emit. A crash anywhere leaves the durable checkpoint as the source of truth and the ledger as a re-derivable projection of it. The ledger can lag the checkpoint (outbox gap) but can never diverge from it.
 

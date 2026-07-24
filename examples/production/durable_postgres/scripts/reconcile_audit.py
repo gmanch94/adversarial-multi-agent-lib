@@ -2,17 +2,21 @@
 
 Design: docs/superpowers/specs/2026-07-23-durable-audit-log-design.md §5 / D-AUDIT-7.
 
-The PRIMARY reconcile path is `resume`: the durable layer re-derives every event
-from the persisted checkpoint and re-emits idempotently on each resume, so a
-run that resumes after an emit failure closes its own gap automatically (no
-duplication of the library deriver — that would be the M-PC-1/H-IND-1 drift
-class). This script is the SECONDARY net for runs that reached a terminal status
-and then went idle with an un-emitted terminal event.
+Two recovery paths, both driven by the library deriver (no duplication — that
+would be the M-PC-1/H-IND-1 drift class):
 
-It is intentionally SQL-only: it does NOT re-derive events (that logic lives in
-the library, single source of truth). It flags terminal checkpoints missing
-their terminal audit row so an operator can trigger a re-emit (re-run the daemon
-factory's reconcile, or a one-off resume) and alert on a growing lag.
+- PAUSED runs self-heal: `DurableWorkflow.resume` re-derives every event from the
+  persisted checkpoint and re-emits idempotently, closing any gap on resume.
+- TERMINAL runs (completed/vetoed/failed) CANNOT resume (`resume` refuses
+  non-paused rows), so their un-emitted `run_completed`/`run_failed` events are
+  recovered via `DurableWorkflow.reemit_audit(token)` — the daemon reconcile
+  (which holds the workflow factory) calls it per flagged run.
+
+This script is the SQL-only DETECTOR: it flags terminal checkpoints missing
+their terminal audit row so the operator can trigger `reemit_audit` and alert on
+a growing lag. It does NOT itself re-derive events (the library owns that).
+Remediation for a flagged run: call `DurableWorkflow(...).reemit_audit(token)`
+against it once the sink is healthy — NOT `resume` (which rejects terminal runs).
 
 `find_terminal_gaps` is pure (takes rows) so it is unit-testable without a DB.
 Exit non-zero if any gap is found.

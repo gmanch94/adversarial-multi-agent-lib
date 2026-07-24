@@ -1,8 +1,11 @@
 -- Migration 0008 — Tier 3.1 audit log (append-only, hash-chained, per-tenant).
 -- Design: docs/superpowers/specs/2026-07-23-durable-audit-log-design.md (D-AUDIT-1..8).
 --
--- Apply on existing deployments AFTER 0007. Fresh installs get this folded into
--- schema.sql. Idempotent (IF NOT EXISTS / CREATE POLICY guarded by the caller).
+-- Apply on existing deployments AFTER 0007, ONCE. Fresh installs get this
+-- folded into schema.sql. The CREATE TABLE + indexes are IF NOT EXISTS, but
+-- CREATE POLICY has no IF NOT EXISTS (same as the 0004-0007 pattern) — a second
+-- apply errors on the duplicate policy. Do NOT also run this on a DB that
+-- already ran the folded schema.sql block.
 --
 -- ADVERSARY MODEL (D-AUDIT-2 §2): defends against a DB admin / superuser via
 -- three layers — (1) hash chain, (2) append-only grants, (3) external WORM
