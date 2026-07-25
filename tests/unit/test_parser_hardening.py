@@ -68,8 +68,15 @@ class TestA11M1MissingHeaderIsDistinguishable:
         assert missing_flag_headers("**SCOPE FLAGS:** None detected\n", [_H]) == []
 
 
-class TestA11M4LastMatchWins:
-    """A11-M4 — an earlier quoted no-flag/no-veto line must not shadow the real one."""
+class TestA11M4EchoedFooterCannotShadow:
+    """A11-M4 + D-A11-5 — NEITHER an earlier nor a later echo may shadow the real block.
+
+    A11-M4 fixed the earlier-echo direction by switching first-wins to
+    last-wins. D-A11-5 found the symmetric hole that created — a LATER quoted
+    clean footer shadowed the real block — and replaced occurrence *selection*
+    with union (flags) / first-non-empty (veto). Both directions are guarded
+    here; a future author must not re-solve one by re-opening the other.
+    """
 
     def test_earlier_empty_marker_does_not_shadow_real_section(self) -> None:
         critique = f"SCOPE FLAGS: None detected\nSCOPE FLAGS:\n- {_FLAG}\n"
@@ -82,6 +89,69 @@ class TestA11M4LastMatchWins:
             "REVIEWER VETO: Halt, expand the recall.\n"
         )
         assert extract_veto_directive(critique) == "Halt, expand the recall."
+
+
+class TestA11D5TrailingEchoCannotShadow:
+    """D-A11-5 — the reverse of A11-M4: a LATER clean footer must not erase a real one.
+
+    Reproduces the CGT ship-audit CRITICAL (2026-07-25). Every criteria
+    template instructs the reviewer to *"End your review with exactly these
+    lines"*, which puts a trailing quote of the draft or the rubric in exactly
+    the slot last-wins treated as authoritative.
+    """
+
+    _ECHOED = (
+        f"SCOPE FLAGS:\n- {_FLAG}\n"
+        "REVIEWER VETO: This is a 351 biologic; do not assert the 361 tier.\n"
+        "\n"
+        "For reference, the draft under review contained the following text:\n"
+        "SCOPE FLAGS: None detected\n"
+        "REVIEWER VETO: None\n"
+    )
+
+    def test_later_clean_echo_does_not_erase_real_flags(self) -> None:
+        assert extract_flags(self._ECHOED, _H) == [_FLAG]
+
+    def test_later_none_veto_does_not_suppress_real_veto(self) -> None:
+        assert extract_veto_directive(self._ECHOED) == (
+            "This is a 351 biologic; do not assert the 361 tier."
+        )
+
+    def test_exact_duplicate_echo_does_not_duplicate_flags(self) -> None:
+        block = f"SCOPE FLAGS:\n- {_FLAG}\n"
+        assert extract_flags(block + "Overall score: 9/10\n" + block, _H) == [_FLAG]
+
+    def test_flags_from_both_blocks_are_unioned_in_order(self) -> None:
+        critique = f"SCOPE FLAGS:\n- {_FLAG}\nSCOPE FLAGS:\n- second finding\n"
+        assert extract_flags(critique, _H) == [_FLAG, "second finding"]
+
+    def test_all_occurrences_empty_is_still_empty(self) -> None:
+        critique = "SCOPE FLAGS: None detected\nprose\nSCOPE FLAGS: None detected\n"
+        assert extract_flags(critique, _H) == []
+        assert missing_flag_headers(critique, [_H]) == []
+
+    def test_union_respects_max_flags_per_header(self) -> None:
+        block = "SCOPE FLAGS:\n" + "".join(f"- finding {i}\n" for i in range(40))
+        assert len(extract_flags(block + block.replace("finding", "other"), _H)) == 64
+
+    def test_section_does_not_slurp_the_next_occurrence(self) -> None:
+        # Without per-occurrence bounding the first (empty-marker) block would
+        # collect the interleaved prose AND run into the second block, and M2's
+        # keep-continuation-after-None rule would surface that as the directive.
+        critique = (
+            "REVIEWER VETO: None\n"
+            "REVIEWER VETO: Halt, the donor is ineligible.\n"
+        )
+        assert extract_veto_directive(critique) == "Halt, the donor is ineligible."
+
+    def test_echo_only_anchor_residual_is_documented_not_fixed(self) -> None:
+        # D-A11-5 RESIDUAL, asserted so it is visible rather than absent: when
+        # the reviewer emits NO real section and only quoted text carries the
+        # anchor, the pair still reads clean. No genuine finding is destroyed
+        # (there is none); closing it needs provenance the parser lacks.
+        critique = "For reference the draft footer read:\nSCOPE FLAGS: None detected\n"
+        assert extract_flags(critique, _H) == []
+        assert missing_flag_headers(critique, [_H]) == []
 
 
 class TestA11M5VetoMarkerTolerance:

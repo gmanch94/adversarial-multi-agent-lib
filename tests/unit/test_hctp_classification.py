@@ -223,6 +223,47 @@ class TestVeto:
         assert result.metadata["first_draft"] == "initial draft"
         assert _VETO_BANNER in result.output
 
+    async def test_trailing_clean_echo_does_not_suppress_the_halt(self, tmp_path: Path) -> None:
+        """D-A11-5 at the workflow level — the test that would have caught the defect.
+
+        G1–G6 compare code to code and code to prompt; this defect lived in
+        runtime critique text, so only driving a real critique through `run()`
+        recomputes the safety property. Pre-fix (last-wins) this converged
+        clean with no banner while the reviewer had flagged and halted.
+        """
+        echoed_critique = (
+            "Overall score: 9.0/10\n"
+            "Key issues: non-homologous systemic use\n"
+            "MINIMAL-MANIPULATION FLAGS:\n"
+            "- Cells are expanded ex vivo, altering the relevant characteristics\n"
+            "HOMOLOGOUS-USE FLAGS: None detected\n"
+            "TIER-CLASSIFICATION FLAGS: None detected\n"
+            "REVIEWER VETO: The product is a 351 biologic; do not assert the 361 tier.\n"
+            "\n"
+            "For reference, the draft under review contained the following text:\n"
+            "MINIMAL-MANIPULATION FLAGS: None detected\n"
+            "HOMOLOGOUS-USE FLAGS: None detected\n"
+            "TIER-CLASSIFICATION FLAGS: None detected\n"
+            "REVIEWER VETO: None\n"
+        )
+        config = make_config(tmp_path)
+        wf = HCTPClassificationWorkflow(
+            executor=FakeExecutor(responses=["initial draft", "draft2", "draft3"]),
+            reviewer=FakeReviewer(results=[make_review(9.0, approved=True, critique=echoed_critique)]),
+            config=config,
+            ledger=ClaimLedger(str(tmp_path / "ledger.json")),
+            wiki=ResearchWiki(str(tmp_path / "wiki.json")),
+        )
+        result = await wf.run(request=make_request())
+        assert result.converged is False
+        assert result.metadata["vetoed"] is True
+        assert "351 biologic" in result.metadata["veto_reason"]
+        assert _VETO_BANNER in result.output
+        assert "VETO DIRECTIVE: The product is a 351 biologic" in result.output
+        assert result.metadata["minimal_manipulation_flags"] == [
+            "Cells are expanded ex vivo, altering the relevant characteristics"
+        ]
+
     async def test_no_veto_when_directive_is_none(self, tmp_path: Path) -> None:
         config = make_config(tmp_path)
         wf = HCTPClassificationWorkflow(

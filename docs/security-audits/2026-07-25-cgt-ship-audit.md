@@ -79,6 +79,9 @@ Comment only — the output string is unchanged. Adding a *caveat line to the ou
 
 #### C-1 — Fail-OPEN flag + veto parse via a later line-anchored duplicate header block
 
+> **STATUS: FIXED** (2026-07-25, after this report was filed) — occurrence *selection* replaced with union (`extract_flags`) / first-non-empty (`extract_veto_directive`) + per-occurrence section bounding. Locked as **D-A11-5**, which supersedes A11-M4. Guarded by `TestA11D5TrailingEchoCannotShadow` in `tests/unit/test_parser_hardening.py` and by a workflow-level regression in `tests/unit/test_hctp_classification.py::TestVeto::test_trailing_clean_echo_does_not_suppress_the_halt`. The `missing_flag_headers` echo-only residual is documented in that function's docstring and asserted by a test rather than left invisible. The original finding is preserved below unedited.
+
+
 `src/adv_multi_agent/core/_internal.py:369-372` (`extract_flags`), `:480-484` (`extract_veto_directive`), `:338` (`missing_flag_headers`); `core/workflow.py:78-80` (`_flag_classes_unresolved`). Reaches all 8 CGT call sites: `hctp:319,328` · `potency:310,319` · `comparability:306,315` · `donor:302,311` · `durability:301,310` · `rmat:267` · `vector:284` · `lotrelease:276`.
 
 Header-occurrence selection is **last-wins** (`matches[-1]`). A reviewer critique that contains a genuine findings block **followed later** by a filled clean footer — e.g. quoting the draft, or restating the example footer — has its real findings and its real veto silently replaced by the trailing copy.

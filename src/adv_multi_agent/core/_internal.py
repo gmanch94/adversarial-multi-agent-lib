@@ -334,6 +334,16 @@ def missing_flag_headers(critique: str, headers: Iterable[str]) -> list[str]:
 
     A workflow must treat a missing header as "this class was not assessed"
     and refuse to converge, NOT as "this class is clean".
+
+    RESIDUAL (D-A11-5, deliberately not closed here): this answers "does the
+    anchor appear ANYWHERE", so an anchor occurring only inside quoted text —
+    the reviewer restating the criteria block, or echoing caller-supplied
+    content back — counts the class as assessed. If the reviewer additionally
+    emits no real section, `extract_flags` returns `[]` and this returns `[]`,
+    and the pair reads clean. Narrower than the shadowing defect D-A11-5 fixes
+    (no genuine finding is destroyed — there is none), and closing it needs
+    provenance the parser does not have: nothing in the critique text marks a
+    line as quoted rather than authored.
     """
     return [h for h in headers if _header_anchor_re(h).search(critique) is None]
 
@@ -357,19 +367,50 @@ def extract_flags(critique: str, header: str) -> list[str]:
     this section". Callers whose convergence gate depends on emptiness MUST
     additionally consult `missing_flag_headers` (A11-M1).
 
-    When the header occurs more than once at line start, the LAST occurrence
-    wins (A11-M4): every criteria template says *"End your review with exactly
-    these lines"*, so the final block is authoritative. Taking the first match
-    let an earlier quoted `SCOPE FLAGS: None detected` — e.g. the reviewer
-    echoing caller-supplied text — shadow the real section.
+    When the header occurs more than once at line start, EVERY occurrence is
+    parsed and the results are unioned (order-preserving dedup, capped at
+    `_MAX_FLAGS_PER_HEADER`). `[]` is returned only when every occurrence is
+    empty. D-A11-5 supersedes A11-M4's last-wins rule.
 
-    Used by every flag-gated workflow across all 7 domains; single-flag-class
-    callers simply pass their one header.
+    Occurrence *selection* is unsafe in both directions, so this selects none:
+
+    • first-wins — an EARLIER quoted `SCOPE FLAGS: None detected` (the reviewer
+      restating the criteria block, or echoing caller-supplied text) shadows
+      the real section emitted later. This is what A11-M4 fixed.
+    • last-wins — a LATER quoted clean footer shadows the real section emitted
+      first. Symmetric, and the more likely shape in practice: every criteria
+      template says *"End your review with exactly these lines"*, which puts a
+      trailing quote of the draft or the rubric in exactly the winning slot.
+
+    Union is a strict superset of the last-wins result, so this change cannot
+    open a new fail-open path: the only possible delta is MORE flags, which
+    blocks convergence (fail-safe, per D-A11-2's stated bias). An exact
+    duplicate echo — the common case — dedups to zero added noise.
+    """
+    collected: list[str] = []
+    for section in _sections_for(critique, header):
+        collected.extend(_flags_from_section(section))
+    return list(dict.fromkeys(collected))[:_MAX_FLAGS_PER_HEADER]
+
+
+def _sections_for(critique: str, header: str) -> list[str]:
+    """One slice per line-anchored occurrence of `header`, colon to next occurrence.
+
+    Bounding each slice at the START of the next occurrence keeps a section
+    from running into its own repeat: without it, an occurrence whose marker
+    line is empty would collect the NEXT occurrence's content as its own
+    (`extract_veto_directive`'s M2 rule keeps continuation lines after a
+    `None` marker line, so the slurp would surface as a wrong directive).
     """
     matches = list(_header_anchor_re(header).finditer(critique))
     if not matches:
         return []
-    section = critique[matches[-1].end():]
+    bounds = [m.start() for m in matches[1:]] + [len(critique)]
+    return [critique[m.end():end] for m, end in zip(matches, bounds, strict=True)]
+
+
+def _flags_from_section(section: str) -> list[str]:
+    """Parse the flag bullets of ONE header occurrence, from just past its colon."""
     flags: list[str] = []
     seen_bullet = False
     for raw_line in section.splitlines():
@@ -467,21 +508,35 @@ def extract_veto_directive(
     `- REVIEWER VETO:`, `1. REVIEWER VETO:` and `REVIEWER VETO :` all used to
     yield None against a genuine veto — a silently dropped halt directive.
 
-    When the marker occurs more than once at line start the LAST occurrence
-    wins (A11-M4). Taking the first let an earlier `REVIEWER VETO: None` —
-    e.g. the reviewer quoting the criteria block or echoing caller text —
-    suppress a real veto emitted later.
+    When the marker occurs more than once at line start, EVERY occurrence is
+    parsed and the FIRST non-empty directive is returned. D-A11-5 supersedes
+    A11-M4's last-wins rule: marker *selection* suppresses a real halt in both
+    directions — first-wins loses to an earlier quoted `REVIEWER VETO: None`
+    (what A11-M4 fixed), last-wins loses to a later one (the trailing-echo
+    shape, which the "end your review with exactly these lines" instruction
+    makes the more likely of the two).
+
+    This is monotone on halt-presence: if any occurrence yields a directive,
+    one is returned, so a halt can only become MORE likely, never less. Only
+    the reason STRING can differ when two occurrences both carry text — the
+    earliest is returned rather than merged, because the directive is rendered
+    verbatim into `WorkflowResult.output` by 30 veto workflows and a composed
+    or annotated form would ripple through all of them.
 
     The returned directive is control-char-stripped and bounded via
     `sanitize_for_prompt` (A11-M8): it is rendered verbatim into the
     operator-facing `WorkflowResult.output` by every veto workflow, so raw
     model text must not carry terminal escapes into that surface.
     """
-    matches = list(_header_anchor_re(marker).finditer(critique))
-    if not matches:
-        return None
+    for section in _sections_for(critique, marker):
+        directive = _veto_from_section(section, max_chars)
+        if directive is not None:
+            return directive
+    return None
 
-    rest = critique[matches[-1].end():]
+
+def _veto_from_section(rest: str, max_chars: int) -> str | None:
+    """Parse ONE veto-marker occurrence, from just past its colon."""
     # A11-L2: split the marker line off explicitly. The previous form captured
     # it with `(.*)$` and left `rest` starting with "\n", so `splitlines()[0]`
     # was "" and the blank-line rule broke immediately — every continuation
