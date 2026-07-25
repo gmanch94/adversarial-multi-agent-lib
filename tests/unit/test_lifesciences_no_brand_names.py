@@ -87,6 +87,16 @@ def _lifesciences_files() -> list[Path]:
         "test_bioequivalence.py",
         "test_medical_information_response.py",
         "test_ccds_label_change.py",
+        # CGT/ATMP segment (#28-35, D-LIFESCI-5) — same .exists() guard, so
+        # listing before the files exist is harmless.
+        "test_vector_safety.py",
+        "test_cgt_lot_release_spec.py",
+        "test_rmat_designation.py",
+        "test_cgt_potency_assay.py",
+        "test_hctp_classification.py",
+        "test_cgt_comparability.py",
+        "test_cgt_durability_claim.py",
+        "test_donor_eligibility.py",
     }
     files.extend(tests_dir / name for name in lifesci_modules if (tests_dir / name).exists())
     return files
