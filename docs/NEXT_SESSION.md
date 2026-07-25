@@ -1,10 +1,10 @@
 # NEXT_SESSION.md
 
-2026-07-25 (PM) — HEAD `13d095c` on `main`, tree clean, in sync with origin. Deep pre-2026-07-25 history in `git log` / `decisions.md` / `LESSONS_LEARNED.md` / `docs/security-audits/`.
+2026-07-25 (PM) — HEAD `0a0af80` on `main`, tree clean, in sync with origin. M-1 + VETO sweep + architecture-doc refresh (arch + deployment-arch synced to current state) all pushed. Deep pre-2026-07-25 history in `git log` / `decisions.md` / `LESSONS_LEARNED.md` / `docs/security-audits/`.
 
-**Scale:** 7 domains · 71 workflows (30 veto) · 1942 lib + 207 sibling tests · 288 templates · ruff+mypy clean (120 src). research 4+assurance · parole 1 · retail 8 · pc 7 · industrial 8 · healthcare 8 · lifesciences 35. Durable subpackage + 5 prod siblings.
+**Scale:** 7 domains · 71 workflows (30 veto) · 2059 lib + 207 sibling tests · 288 templates · ruff+mypy clean (120 src). research 4+assurance · parole 1 · retail 8 · pc 7 · industrial 8 · healthcare 8 · lifesciences 35. Durable subpackage + 5 prod siblings.
 
-## Last landed — M-1 flag-header prose sweep (D-A11-7, committed, NOT pushed yet)
+## Last landed — M-1 flag-header prose sweep (D-A11-7) + arch-doc refresh (all pushed)
 - Colon-suffixed flag headers retired from criteria PROSE repo-wide (44 flag-gated workflows + 36 `*_review.md` templates; 100 exact-case + 4 retail lowercase-slash-format misses). Colon-form now lives ONLY in the emission block, so no echoed rubric can shadow real findings. Cross-refs `Flag under X FLAGS.`; scoring `zero X FLAGS, then ready`. Bytes-level codemod preserved retail CRLF.
 - Guard **G9** ([test_workflow_conventions.py](../tests/unit/test_workflow_conventions.py), modules + templates, all prongs mutation-tested): 2 prongs matching the two runtime matchers — generic case-sensitive `[A-Z…] FLAGS:` (non-tuple, fail-OPEN) + declared case-insensitive (`_header_anchor_re` is `(?mi)`; caught 4 live retail misses). Gate: ruff · mypy 120 · 2059 tests. Independent review SHIP-WITH-FOLDIN.
 - **VETO follow-up LANDED (user-confirmed, 2nd commit `c768994`):** `REVIEWER VETO:` marker swept from prose across all 53 veto files (30 workflows + 23 templates, 106 occurrences: `REVIEWER VETO: line` → `REVIEWER VETO line`, `"REVIEWER VETO: None"` → `"None"`). Emission `REVIEWER VETO: <verbatim…>` line + `extract_veto_directive` code marker unchanged. G9 gained a `REVIEWER VETO:` prong (mutation-tested). The whole FLAGS+VETO section-header-echo class is now retired from criteria prose.

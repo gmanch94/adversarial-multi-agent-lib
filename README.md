@@ -10,7 +10,7 @@ Pair an **executor** (Claude Opus 4.7 or Gemini 2.5 Pro) with a **reviewer from 
 
 **5 production sibling deployments** under `examples/production/`: `durable_postgres` (compose + Fernet + advisory lock + Postgres store + RLS + scheduler + quarantine), `durable_postgres_k8s` (kustomize + RBAC + network policies), `durable_postgres_otel` (OTel collector + Prometheus + Grafana + 8 alerts — 4 fleet + 4 tenant-aware), `cipher_gcp_kms` and `cipher_aws_kms` (envelope encryption with per-tenant DEK isolation, DEK cache, IMDSv2 / IRSA hardening on AWS). Operator smoke gate `verify_multi_tenant.py` validates RLS isolation + `UnknownTenantError` fail-closed + per-tenant `BudgetExceeded`.
 
-**1649 library tests + 185 sibling tests** passing (1834 total; +346 cross-domain convention guards + 46 parser-hardening regressions from the 2026-07-23 depth review and security audit); ruff + mypy strict clean. **8 audit cycles** on the durable surface (7 single-axis + 1 four-axis code/security/perf/ops review) — `CRITICAL / HIGH / MEDIUM / LOW = 0 / 0 / 0 / 0` after each cycle.
+**2059 library tests + 207 sibling tests** passing (2266 total); ruff + mypy strict clean. **8 audit cycles** on the durable surface (7 single-axis + 1 four-axis code/security/perf/ops review) — `CRITICAL / HIGH / MEDIUM / LOW = 0 / 0 / 0 / 0` after each cycle.
 
 ```
 Task → Executor generates → Reviewer scores + critiques
@@ -50,7 +50,7 @@ src/adv_multi_agent/
   retail/                       # retail decision-support domain (8 workflows)
     workflows/                  #   demand · labor · recall (veto) · loyalty · promo
                                 #   supplier · inventory · private_label
-    skills/templates/           #   25 bundled retail skill templates
+    skills/templates/           #   34 bundled retail skill templates
   pc/                           # B2B P&C insurance domain (7 workflows · 2 tracks)
     workflows/                  #   Foundational: claims_reserve (veto) · coverage_decision (veto)
                                 #     commercial_underwriting · cyber_underwriting
@@ -350,7 +350,7 @@ Pluggable storage (`CheckpointStore`), locking (`RunLock`), and scheduling (`Sch
 - **Claim ledger** — append-only JSON, persisted after each mutation. 3-stage verifier resolves `PENDING → SUPPORTED / DISPUTED / RETRACTED`.
 - **Wiki** — shared knowledge store across workflow runs. Self-improvement proposals require explicit human approval: `wiki.approve_improvement(id, human_reviewer_id="alice")` (M1: name persisted as audit trail).
 - **Skills** — `.md` files with YAML frontmatter (`name`, `description`, `inputs`). **288 bundled templates** (15 research + 6 parole + 34 retail + 29 pc + 32 industrial + 32 healthcare + 140 lifesciences). Drop `.md` files into any directory and point `Config(skills_dir=...)` at it.
-- **Convergence patterns** — `BaseWorkflow` subclasses use one of three patterns: (1) score-only (`research/*` early workflows), (2) score + domain FLAGS conjunction gate (most retail / pc / industrial), (3) score + FLAGS + reviewer-veto (16 workflows where decisions are irreversible-class). Shared helpers in `core/_internal.py`: `extract_flags` (M1 line-anchored + H-IND-1 hyphen-tolerant sibling-stop), `extract_veto_directive` (M-PC-1 line-anchored + M2/L5/H-IND-1), `truncate_flag_display` (L-PC-5 re-injection cap of 16), `sanitize_for_prompt` (control-char strip + length cap), `_is_sibling_header_lhs` (shared sibling-stop helper).
+- **Convergence patterns** — `BaseWorkflow` subclasses use one of three patterns: (1) score-only (`research/*` early workflows), (2) score + domain FLAGS conjunction gate (most retail / pc / industrial), (3) score + FLAGS + reviewer-veto (30 workflows where decisions are irreversible-class). Shared helpers in `core/_internal.py`: `extract_flags` (M1 line-anchored + H-IND-1 hyphen-tolerant sibling-stop), `extract_veto_directive` (M-PC-1 line-anchored + M2/L5/H-IND-1), `truncate_flag_display` (L-PC-5 re-injection cap of 16), `sanitize_for_prompt` (control-char strip + length cap), `sanitize_request_text` (D-A11-6 request-text boundary, per-field 1500 + 60K field-count backstop), `_is_sibling_header_lhs` (shared sibling-stop helper).
 - **Security model** — see [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md). 5 audit cycles completed (2026-05-12 / 13 / 14 AM / 14 PM); zero CRIT/HIGH currently open. Latest closure: H-IND-1 (shared-parser hyphen-tolerant sibling-stop).
 
 ---
@@ -381,7 +381,7 @@ class MyWorkflow(BaseWorkflow):
 ## Tests
 
 ```bash
-python -m pytest tests/          # 1649 library tests
+python -m pytest tests/          # 2059 library tests
 python -m mypy src/ tests/ --strict
 python -m ruff check src/ tests/
 ```
