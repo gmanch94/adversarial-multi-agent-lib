@@ -49,7 +49,7 @@ All 12 lifesciences conventions apply unchanged (see the domain design doc §"Co
 - `_DISCLAIMER` injected in code (convention #10), not from prompt; approver role printed as the checklist's first line.
 - Block-form template frontmatter (post-`c1a7414` registry fix) so all 8 templates are discoverable.
 
-**Flag-header safety (H-IND-1) — verified for all 24 MVP-8 headers + 12 Phase-2 hint headers:** every header is uppercase **letters + spaces + hyphens only**. Zero digit-, slash-, or paren-containing headers. The shared `_is_sibling_header_lhs` regex covers all of them; **no `core/_internal.py` change required.** Numeric regulatory tokens (361, 351, 1271, 803) appear only in prose, field names, and criteria — **never** as a flag header.
+**Flag-header safety (H-IND-1) — verified for all 24 MVP-8 headers + 12 Phase-2 hint headers:** every header is uppercase **letters + spaces + hyphens only**. Zero digit-, slash-, or paren-containing headers. The shared `_is_sibling_header_lhs` regex covers all of them; **no `core/_internal.py` change required.** Numeric regulatory tokens (361, 351, 1271, 1394) appear only in prose, field names, and criteria — **never** as a flag header. Build carries a per-header hygiene assertion; watch `RCR-RCL-RISK FLAGS:` (#7) specifically — its prose form is `RCR/RCL` with a slash, and a builder mirroring the prose into a slash header would fail the regex and permanently empty that flag class (fail-open, `any(...)`-invisible).
 
 ## Package structure (additive only)
 
@@ -78,7 +78,7 @@ Legend: **[veto]** uses the reviewer-veto halt pattern. All gates additionally r
 
 ### 1. `HCTPClassificationWorkflow` [veto] — Advanced therapies
 
-Classify a human cell/tissue product as a **361 HCT/P** (minimal manipulation + homologous use → no premarket approval) versus a **351 biologic** (requires a BLA). The executor argues the lower-burden 361 tier; the reviewer flags the manipulation, use, or systemic-effect facts that force 351. This is the canonical motivated-under-classification case in CGT.
+Classify a human cell/tissue product as a **361 HCT/P** versus a **351 biologic** (requires a BLA). A 361 HCT/P must satisfy **all four** 21 CFR 1271.10(a) prongs conjunctively: (1) minimal manipulation, (2) homologous use, (3) not combined with another article (except water / crystalloids / a sterilizing-preserving-storage agent), and (4) no systemic effect and not dependent on the metabolic activity of living cells — unless autologous / first-or-second-degree-relative / reproductive use. The executor argues the lower-burden 361 tier; the reviewer flags the manipulation, use, combination, or systemic-effect facts that force 351. This is the canonical motivated-under-classification case in CGT. **Scenario scoping (state in docstring):** the 361 argument is only live for *minimally-manipulated cellular/tissue products* (e.g. a stromal-vascular-fraction preparation, a minimally-processed structural tissue) — genetically-modified cells and viral-vector gene therapies are categorically 351 and must not be authored as 361-candidate test cases.
 
 - **`HCTPClassificationRequest` fields:** `product_description`, `cellular_tissue_source` (autologous / allogeneic; tissue type), `manufacturing_steps`, `minimal_manipulation_rationale`, `intended_use_homology` (homologous vs non-homologous), `combination_with_another_article`, `systemic_effect_or_metabolic_dependence`, `proposed_regulatory_tier`, `precedent_determinations`.
 - **Flag classes:**
@@ -86,7 +86,8 @@ Classify a human cell/tissue product as a **361 HCT/P** (minimal manipulation + 
   - `HOMOLOGOUS-USE FLAGS:` — the intended use is not homologous to the tissue's original basic function.
   - `TIER-CLASSIFICATION FLAGS:` — the 361-vs-351 determination is inconsistent with the manipulation, use, combination, or systemic-effect facts.
 - **Gate:** `approved AND zero MINIMAL-MANIPULATION AND zero HOMOLOGOUS-USE AND zero TIER-CLASSIFICATION AND no veto`.
-- **Veto trigger:** a 351 biologic asserted as a 361 HCT/P (more-than-minimal manipulation or non-homologous use present) — a classification that would bypass the BLA and misrepresent the product's regulatory status.
+- **Criteria emission (load-bearing):** the executor + reviewer-criteria blocks enumerate all four 1271.10(a)(1)–(4) prongs explicitly, so the combination (prong 3) and systemic-effect / metabolic-dependence (prong 4) tests get forced reviewer attention rather than being buried inside the `TIER-CLASSIFICATION` catch-all. (Kept at 3 flag classes — prongs 3–4 map into `TIER-CLASSIFICATION`; the criteria text is what surfaces them.)
+- **Veto trigger:** a 351 biologic asserted as a 361 HCT/P (more-than-minimal manipulation, non-homologous use, disqualifying combination, or systemic effect present) — a classification that would bypass the BLA and misrepresent the product's regulatory status.
 - **Approver:** Regulatory Affairs lead (CBER pathway) sign-off.
 - **PRODUCTION_GAPS:** cell/tissue-processing manufacturing-execution system, 21 CFR 1271 tissue-reference / decision-tree engine, regulatory-precedent (Request-for-Designation / untitled-letter) database.
 
@@ -171,6 +172,7 @@ Assess the genome-safety characterization of a vector-based product: replication
   - `ONCOGENICITY FLAGS:` — tumorigenicity / oncogenicity evidence or long-term-follow-up plan inadequate for the risk profile.
 - **Gate:** `approved AND zero of each` (advisory safety-analysis — no veto).
 - **Approver:** Biosafety + Nonclinical Safety sign-off.
+- **No-veto rationale (state in docstring):** this audits whether the vector-safety *characterization strategy* is adequate — it is not the release gate. A positive RCR/RCL or an oncogenicity signal is a QC lot-release / disposition failure against specification (see #8), not an adversarial-review halt. No-veto here does not dismiss vector risk; it scopes the workflow to characterization-adequacy gap-finding.
 - **PRODUCTION_GAPS:** vector-characterization LIMS, RCR/RCL + integration-site-sequencing data, nonclinical biodistribution / tumorigenicity study database, long-term-follow-up registry.
 
 ### 8. `CGTLotReleaseSpecWorkflow` [no veto] — Advanced therapies
@@ -184,6 +186,7 @@ Audit proposed lot-release specifications for a small-lot, short-shelf-life prod
   - `SHELF-LIFE FLAGS:` — the rapid / real-time-release strategy for the short shelf life is inadequately justified (sterility / mycoplasma released before results).
 - **Gate:** `approved AND zero of each` (advisory spec-adequacy audit — no veto).
 - **Approver:** Quality Control + Quality Engineering sign-off.
+- **Cross-ref (state in docstring):** potency-as-release-attribute *adequacy* (MoA-linkage) is #2's veto call; #8 audits whole-spec-set coverage only — do not duplicate the potency-linkage logic here.
 - **PRODUCTION_GAPS:** QC LIMS, specification-management system, stability database, rapid-microbial-method validation records.
 
 ---
@@ -202,7 +205,7 @@ Recorded so a later build is fill-in, not re-design. Flag hints illustrative; th
 Phase-2 notes for the future builder:
 - **#10 `ChainOfIdentityCustodyWorkflow` is veto** — an autologous chain-of-identity break (wrong-patient product) is a halt-worthy release exposure — and carries the **L-HEALTH-1 PHI caveat** (echoes an individual patient's identity linkage). It states a D-LIFESCI-2 boundary vs #1 `HCTPClassificationWorkflow` (regulatory tier vs per-lot identity chain).
 - **#9 `ViralVectorSheddingWorkflow`** states a boundary vs `SterilityAssuranceWorkflow` (biosafety/environmental shedding, not product sterility).
-- #11 / #12 are analytical/aggregate — no PHI caveat.
+- #11 `StartingMaterialQualificationWorkflow` touches autologous patient-derived apheresis material; the L-HEALTH-1 caveat is dropped as qualification-criteria-not-identifiable-history — **re-confirm at build** that its Request fields carry no individually-identifiable donor/patient data before finalizing the drop. #12 is analytical/aggregate — no PHI caveat.
 
 ---
 
@@ -231,6 +234,7 @@ All in-repo doc updates — no secrets, env vars, infra, or migrations. Folded i
 
 - Add rows **D-LIFESCI-5** and **D-LIFESCI-6** to [`docs/decisions.md`](../../decisions.md).
 - Extend the D-LIFESCI-3 tripwire denylist with base64-encoded CGT product / tooling brand seeds in `tests/unit/test_lifesciences_no_brand_names.py`.
+- **Register the 8 CGT `test_*.py` module names** in that test's hand-maintained `lifesci_modules` set (guarded by `.exists()`) — it is an explicit enumeration, **not** a glob (the `_SCAN_TESTS_GLOB` constant is unused), so new test files carrying scenario Request fixtures silently escape the brand scan otherwise. Or convert the enumeration to a `test_*.py` glob. **Fail-open coverage gap if skipped** (Reviewer-B MEDIUM).
 - Update the project [`CLAUDE.md`](../../../CLAUDE.md) domain line: lifesciences **27 → 35** workflows, segment count **4 → 5**; refresh the total workflow + library-test counts.
 - Update [`docs/NEXT_SESSION.md`](../../NEXT_SESSION.md) resume bookmark and the [`README.md`](../../../README.md) index.
 
