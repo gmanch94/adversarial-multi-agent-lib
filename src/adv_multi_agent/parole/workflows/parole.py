@@ -44,7 +44,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
+from ...core._internal import extract_flags, sanitize_for_prompt, sanitize_request_text, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # ---------------------------------------------------------------------------
@@ -131,13 +131,14 @@ class ParoleCase:
     def to_prompt_text(self) -> str:
         """Format case fields as structured text for prompt injection.
 
-        A11-L6: the per-field cap is load-bearing here, not cosmetic. Without
-        it this was the only `to_prompt_text` of 59 relying solely on the
-        post-concat `sanitize_for_prompt(max_chars=...)` cap, so one oversized
-        field (an offense narrative pasted whole) silently evicted every later
-        field — `psychological_assessment`, `reentry_plan`, `victim_statement`
-        — and the executor produced a parole-risk brief on partial data with
-        no signal to the caller.
+        A11-L6: the per-field cap is load-bearing here, not cosmetic. It keeps
+        every field within the sanitize_request_text field-count backstop
+        (H-1 / D-A11-6), so no single oversized field (an offense narrative
+        pasted whole) can push `psychological_assessment`, `reentry_plan`, or
+        `victim_statement` past the boundary. Before H-1 the post-concat cap was
+        6000-8000 chars and an oversized early field silently evicted every
+        later one, producing a parole-risk brief on partial data with no signal
+        to the caller.
         """
         cap = _MAX_FIELD_CHARS
         parts = [
@@ -343,7 +344,7 @@ class ParoleAssessmentWorkflow(BaseWorkflow):
                                board_checklist, disclaimer, ledger_summary.
         """
         config = self.config
-        case_text = sanitize_for_prompt(case.to_prompt_text(), max_chars=8000)
+        case_text = sanitize_request_text(case)
 
         output = ""
         score = 0.0

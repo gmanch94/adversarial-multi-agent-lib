@@ -129,6 +129,50 @@ class TestRequestToPromptText:
 
 
 @pytest.mark.asyncio
+class TestH1FullRequestReachesExecutor:
+    """H-1 / D-A11-6: the whole request must reach the round-1 executor prompt.
+
+    9 fields x ~1.4k = ~12.6k, far above the retired 6000-char post-concat cap.
+    Under that guillotine the trailing fields (here the 9th, carrying the
+    1271.10(a) prongs / precedent) were cut off the executor prompt entirely,
+    and since the reviewer only sees the executor draft, that evidence left the
+    whole adversarial loop. This drives a real `run()` — G7 catches a call site
+    that keeps the old cap statically; this catches it behaviourally.
+    """
+
+    async def test_trailing_field_survives_to_executor_prompt(self, tmp_path: Path) -> None:
+        filler = "x" * 1400
+        tail = "PRECEDENT_SENTINEL_H1"
+        big = dict(
+            product_description="PD " + filler,
+            cellular_tissue_source="CT " + filler,
+            manufacturing_steps="MS " + filler,
+            minimal_manipulation_rationale="MM " + filler,
+            intended_use_homology="IU " + filler,
+            combination_with_another_article="CB " + filler,
+            systemic_effect_or_metabolic_dependence="SE " + filler,
+            proposed_regulatory_tier="PT " + filler,
+            precedent_determinations=tail + " " + filler,
+        )
+        executor = FakeExecutor(responses=[_GOOD_OUTPUT])
+        wf = HCTPClassificationWorkflow(
+            executor=executor,
+            reviewer=FakeReviewer(
+                results=[make_review(8.5, approved=True, critique=clean_critique())]
+            ),
+            config=make_config(tmp_path),
+            ledger=ClaimLedger(str(tmp_path / "ledger.json")),
+            wiki=ResearchWiki(str(tmp_path / "wiki.json")),
+        )
+        await wf.run(request=make_request(**big))
+        assert executor.prompts, "executor was never called"
+        assert tail in executor.prompts[0], (
+            "the last request field was cut off the round-1 executor prompt — the "
+            "H-1 6000-char post-concat guillotine has returned (D-A11-6)."
+        )
+
+
+@pytest.mark.asyncio
 class TestConvergence:
     async def test_converges_clean(self, tmp_path: Path) -> None:
         config = make_config(tmp_path)

@@ -49,7 +49,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
+from ...core._internal import extract_flags, sanitize_for_prompt, sanitize_request_text, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # L-PC-3: per-field cap — prevents a single oversized field crowding out
@@ -273,7 +273,7 @@ class PrivateLabelWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         """Run the adversarial private-label launch loop."""
         config = self.config
-        request_text = sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)
+        request_text = sanitize_request_text(request)
         output = ""
         score = 0.0
         converged = False

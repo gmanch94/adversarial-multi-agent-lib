@@ -59,13 +59,16 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    sanitize_request_text,
     truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # L-PC-3: per-field cap on Request.to_prompt_text. Bounds any single
-# caller-supplied field from starving later fields out of the 6000-char
-# concatenated-prompt budget enforced at the workflow boundary.
+# caller-supplied field so the rendered request stays within the
+# sanitize_request_text field-count backstop (H-1 / D-A11-6); the retired
+# 6000-char post-concat cap used to drop trailing fields off the executor
+# prompt when an earlier field ran long.
 _MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
@@ -334,7 +337,7 @@ class ClaimsReserveWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         """Run the adversarial reserve-estimation loop."""
         config = self.config
-        request_text = sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)
+        request_text = sanitize_request_text(request)
         output = ""
         score = 0.0
         converged = False

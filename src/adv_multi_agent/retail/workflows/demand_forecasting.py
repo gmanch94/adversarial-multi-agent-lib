@@ -35,12 +35,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ...core._internal import extract_flags, sanitize_for_prompt, truncate_flag_display
+from ...core._internal import extract_flags, sanitize_for_prompt, sanitize_request_text, truncate_flag_display
 from ...core.workflow import BaseWorkflow, WorkflowResult
 
 # L-PC-3: per-field cap on Request.to_prompt_text. Bounds any single
-# free-text field so one oversized field cannot crowd out later fields
-# when the concatenated prompt is trimmed by sanitize_for_prompt(max_chars=6000).
+# free-text field so the rendered request stays within the
+# sanitize_request_text field-count backstop (H-1 / D-A11-6); the retired
+# post-concat sanitize_for_prompt(max_chars=6000) cap used to trim trailing
+# fields off the executor prompt when an earlier field ran long.
 _MAX_FIELD_CHARS = 1500
 
 _DISCLAIMER = (
@@ -216,7 +218,7 @@ class DemandForecastWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         """Run the adversarial forecast loop."""
         config = self.config
-        request_text = sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)
+        request_text = sanitize_request_text(request)
         output = ""
         score = 0.0
         converged = False

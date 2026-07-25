@@ -29,6 +29,15 @@ Guards:
   G6 — every string literal used to index `current` / `accumulated` must be a
        member of `_FLAG_HEADERS`, so key drift fails at author time rather
        than silently yielding an empty checklist section via `.get(k, [])`.
+  G7 — no workflow calls `<request>.to_prompt_text()` directly; the request-text
+       boundary must route through `core._internal.sanitize_request_text`. The
+       retired `sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)`
+       cut a long request's trailing fields off the executor prompt below
+       n_fields x _MAX_FIELD_CHARS, and the reviewer only sees the executor
+       draft, so the dropped evidence left the whole adversarial loop (H-1).
+
+  (G8 is reserved for the L-1 gate-uses-`_flag_classes_unresolved` guard from
+  the 2026-07-25 CGT ship-audit, not yet built.)
 """
 from __future__ import annotations
 
@@ -438,4 +447,42 @@ def test_metadata_scalars_are_sanitized(path: Path) -> None:
         f"{path.name} puts unsanitized request field(s) into metadata: {raw}. "
         "Wrap with sanitize_for_prompt(..., max_chars=200) so control "
         "characters are stripped and the value is bounded (L-HEALTH-2)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# G7 — request text bounded via sanitize_request_text, never a bespoke
+#      post-concat sanitize_for_prompt cap  (H-1 / D-A11-6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_FILES, ids=_IDS)
+def test_request_text_routes_through_shared_helper(path: Path) -> None:
+    """No workflow may call `<request>.to_prompt_text()` directly.
+
+    The request-text boundary is `core._internal.sanitize_request_text`, which
+    renders `to_prompt_text()` and applies only the control-char / NFC pass plus
+    a field-count backstop. The retired convention wrapped it in
+    `sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)`; 6000 sits
+    below n_fields x _MAX_FIELD_CHARS for any workflow with more than four
+    fields, so a long request had its trailing fields — the veto/flag evidence —
+    hard-cut off the executor prompt. Because the reviewer only ever sees the
+    executor draft (`reviewer.review(output, ...)`), evidence dropped there
+    leaves the whole adversarial loop (H-1). The shared helper is now the ONLY
+    caller of `to_prompt_text()`, so a direct call in a workflow module is
+    either the old guillotine or an unbounded raw embed.
+    """
+    tree = _parse(path)
+    hits = sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "to_prompt_text"
+    )
+    assert not hits, (
+        f"{path.name} calls .to_prompt_text() directly at line(s) {hits}. Route "
+        "the request through sanitize_request_text(request) instead — a bespoke "
+        "sanitize_for_prompt(..., max_chars=N) cap silently guillotines the "
+        "trailing request fields off the executor prompt (H-1 / D-A11-6)."
     )

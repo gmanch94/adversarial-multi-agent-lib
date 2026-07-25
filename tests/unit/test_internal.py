@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from adv_multi_agent.core._internal import (
+    _MAX_REQUEST_PROMPT_CHARS,
     atomic_write_text,
     coerce_score,
     parse_first_json,
@@ -14,6 +15,7 @@ from adv_multi_agent.core._internal import (
     redact_secret,
     safe_resolve_path,
     sanitize_for_prompt,
+    sanitize_request_text,
 )
 
 
@@ -166,6 +168,41 @@ class TestSanitizeForPrompt:
     def test_non_string_coerced(self) -> None:
         result = sanitize_for_prompt(42)  # type: ignore[arg-type]
         assert result == "42"
+
+
+# ---------------------------------------------------------------------------
+# sanitize_request_text  (H-1 / D-A11-6)
+# ---------------------------------------------------------------------------
+
+
+class _FakeRequest:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def to_prompt_text(self) -> str:
+        return self._text
+
+
+class TestSanitizeRequestText:
+    def test_does_not_guillotine_multi_field_request(self) -> None:
+        # ~13.5k of rendered fields (9 x ~1.5k) must survive whole; the retired
+        # 6000-char post-concat cap dropped everything past ~char 6000, taking
+        # the trailing fields (the veto/flag evidence) with it.
+        body = "\n".join(f"Field {i}: " + "x" * 1490 for i in range(9))
+        tail = "TAIL_SENTINEL"
+        out = sanitize_request_text(_FakeRequest(body + "\n" + tail))
+        assert tail in out
+        assert "...[truncated]" not in out
+
+    def test_strips_control_chars(self) -> None:
+        out = sanitize_request_text(_FakeRequest("a\x00b\x07c"))
+        assert "\x00" not in out
+        assert "\x07" not in out
+        assert "abc" in out
+
+    def test_backstop_bounds_pathological_length(self) -> None:
+        out = sanitize_request_text(_FakeRequest("x" * 200_000))
+        assert len(out) <= _MAX_REQUEST_PROMPT_CHARS
 
 
 # ---------------------------------------------------------------------------

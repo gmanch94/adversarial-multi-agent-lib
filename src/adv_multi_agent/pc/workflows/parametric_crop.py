@@ -54,6 +54,7 @@ from typing import Any
 from ...core._internal import (
     extract_flags,
     sanitize_for_prompt,
+    sanitize_request_text,
     truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
@@ -285,7 +286,7 @@ class ParametricCropWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         """Run the adversarial parametric / crop design loop."""
         config = self.config
-        request_text = sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)
+        request_text = sanitize_request_text(request)
         output = ""
         score = 0.0
         converged = False

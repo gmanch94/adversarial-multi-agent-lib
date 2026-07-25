@@ -49,6 +49,7 @@ from ...core._internal import (
     extract_flags,
     extract_veto_directive,
     sanitize_for_prompt,
+    sanitize_request_text,
     truncate_flag_display,
 )
 from ...core.workflow import BaseWorkflow, WorkflowResult
@@ -272,7 +273,7 @@ class CoverageDecisionWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         """Run the adversarial coverage-decision loop."""
         config = self.config
-        request_text = sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)
+        request_text = sanitize_request_text(request)
         output = ""
         score = 0.0
         converged = False

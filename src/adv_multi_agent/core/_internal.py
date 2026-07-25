@@ -21,7 +21,7 @@ import tempfile
 import unicodedata
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +219,42 @@ def sanitize_for_prompt(text: str, max_chars: int = 2000) -> str:
         else:
             text = text[: max_chars - len(_TRUNCATION_MARKER)] + _TRUNCATION_MARKER
     return text
+
+
+class _PromptTextRequest(Protocol):
+    """Any `*Request` value object with a `to_prompt_text()` renderer."""
+
+    def to_prompt_text(self) -> str: ...
+
+
+# H-1: backstop cap on the whole rendered request. The REAL length bound is the
+# per-field `[:_MAX_FIELD_CHARS]` (1500) slice inside every `*Request`.to_prompt_text,
+# so a request is already bounded to ~n_fields x 1500. This ceiling only guards a
+# pathological field COUNT and MUST stay above max_fields x _MAX_FIELD_CHARS for
+# every workflow (largest today ~15 fields => ~22.5k; 60k leaves >2x headroom).
+#
+# It replaces the prior convention `sanitize_for_prompt(request.to_prompt_text(),
+# max_chars=6000)`, whose 6000 sat BELOW n_fields x 1500 for any workflow with
+# more than four fields: a long request had its trailing fields hard-cut off the
+# executor prompt with a single generic marker at the very end. Because the
+# reviewer only ever sees the executor's draft (`reviewer.review(output, ...)`),
+# evidence dropped from the executor prompt is dropped from the whole adversarial
+# loop — the veto/flag gate can never test the fields that fell off the tail.
+_MAX_REQUEST_PROMPT_CHARS = 60_000
+
+
+def sanitize_request_text(request: _PromptTextRequest) -> str:
+    """Render + control-char-strip a `*Request` for embedding in the executor prompt.
+
+    Single convention for the request-text boundary across every domain workflow
+    (D-A11-6). Delegates length bounding to the per-field caps in `to_prompt_text`
+    and applies only the control-char / NFC pass plus the `_MAX_REQUEST_PROMPT_CHARS`
+    field-count backstop. Do NOT re-wrap the result (or the raw `to_prompt_text()`)
+    in a second, smaller `sanitize_for_prompt` cap — that is exactly the H-1
+    whole-field guillotine this helper exists to retire; the G7 convention guard
+    fails any workflow that calls `to_prompt_text()` outside this helper.
+    """
+    return sanitize_for_prompt(request.to_prompt_text(), max_chars=_MAX_REQUEST_PROMPT_CHARS)
 
 
 # H-IND-1: sibling-header detection. Accepts uppercase letters, spaces, and
