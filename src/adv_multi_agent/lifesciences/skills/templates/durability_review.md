@@ -1,6 +1,6 @@
 ---
 name: durability_review
-description: Reviewer criteria for a CGT durability / curative claim substantiation review; five-dimension scoring with D-LIFESCI-6 veto for a claim unsupported by the follow-up data
+description: Reviewer criteria for a CGT durability / curative claim substantiation review; five-dimension scoring with D-LIFESCI-8 veto for a claim unsupported by the follow-up data
 inputs:
   - output
 ---

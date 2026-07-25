@@ -1,6 +1,6 @@
 """Unit tests for VectorSafetyWorkflow (Lifesciences CGT · no-veto) — no live API.
 
-Triple-flag no-veto (D-LIFESCI-6). Mirrors the design-control no-veto shape:
+Triple-flag no-veto (D-LIFESCI-8). Mirrors the design-control no-veto shape:
 - to_prompt_text renders all fields + per-field cap
 - convergence on clean input
 - non-convergence when RCR-RCL-RISK flags present (exact == assertion)

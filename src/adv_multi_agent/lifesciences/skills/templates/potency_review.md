@@ -1,6 +1,6 @@
 ---
 name: potency_review
-description: Reviewer criteria for a CGT potency-assay lot-release adequacy review; five-dimension scoring with D-LIFESCI-6 veto criteria for an assay inadequate to support release
+description: Reviewer criteria for a CGT potency-assay lot-release adequacy review; five-dimension scoring with D-LIFESCI-8 veto criteria for an assay inadequate to support release
 inputs:
   - output
 ---

@@ -387,6 +387,10 @@ class DonorEligibilityWorkflow(BaseWorkflow):
 
     @staticmethod
     def _compose_output(draft: str, veto_reason: str | None) -> str:
+        # L-HEALTH-1: `draft` carries the same donor screening / testing narrative
+        # flagged on metadata['first_draft'] and is embedded verbatim in the
+        # returned output on both the clean and the vetoed path. Callers must
+        # apply downstream PHI handling before logging, printing, or sharing it.
         if veto_reason is None:
             return f"{draft}\n\n---\n\n{_DISCLAIMER}"
         return (

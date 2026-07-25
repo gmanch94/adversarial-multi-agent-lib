@@ -1,6 +1,6 @@
 """Unit tests for CGTLotReleaseSpecWorkflow (Lifesciences CGT · no-veto) — no live API.
 
-Triple-flag no-veto (D-LIFESCI-6). Mirrors the no-veto shape.
+Triple-flag no-veto (D-LIFESCI-8). Mirrors the no-veto shape.
 """
 from __future__ import annotations
 from pathlib import Path

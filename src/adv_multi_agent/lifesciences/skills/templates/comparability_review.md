@@ -1,6 +1,6 @@
 ---
 name: comparability_review
-description: Reviewer criteria for a CGT post-change comparability review; five-dimension scoring with D-LIFESCI-6 veto for a materially different product argued as comparable
+description: Reviewer criteria for a CGT post-change comparability review; five-dimension scoring with D-LIFESCI-8 veto for a materially different product argued as comparable
 inputs:
   - output
 ---

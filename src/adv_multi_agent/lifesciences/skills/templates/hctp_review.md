@@ -1,6 +1,6 @@
 ---
 name: hctp_review
-description: Reviewer criteria for an HCT/P regulatory-tier classification; five-dimension scoring across all four 1271.10(a) prongs with D-LIFESCI-6 veto for a 351 biologic asserted as 361
+description: Reviewer criteria for an HCT/P regulatory-tier classification; five-dimension scoring across all four 1271.10(a) prongs with D-LIFESCI-8 veto for a 351 biologic asserted as 361
 inputs:
   - output
 ---

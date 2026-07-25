@@ -1,6 +1,6 @@
 """Unit tests for DonorEligibilityWorkflow (Lifesciences CGT · veto) — no live API.
 
-Veto + triple-flag (D-LIFESCI-6) + L-HEALTH-1 first_draft preservation.
+Veto + triple-flag (D-LIFESCI-8) + L-HEALTH-1 first_draft preservation.
 Mirrors the se510k veto shape.
 """
 from __future__ import annotations

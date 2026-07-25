@@ -1,6 +1,6 @@
 ---
 name: donor_review
-description: Reviewer criteria for a donor-eligibility determination review (1271 Subpart C); five-dimension scoring with D-LIFESCI-6 veto for an ineligible / inadequately screened-tested donor
+description: Reviewer criteria for a donor-eligibility determination review (1271 Subpart C); five-dimension scoring with D-LIFESCI-8 veto for an ineligible / inadequately screened-tested donor
 inputs:
   - output
 ---

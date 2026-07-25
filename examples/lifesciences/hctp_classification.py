@@ -7,7 +7,7 @@ expands and formulates the cells for a metabolic systemic effect and a
 non-homologous use — which makes it a 351 biologic requiring a BLA. Asserting the
 361 tier would bypass the BLA and misrepresent regulatory status.
 
-(Per D-LIFESCI-5 scenario scoping, the 361 argument is only live for
+(Per D-LIFESCI-7 scenario scoping, the 361 argument is only live for
 minimally-manipulated cellular / structural-tissue products; genetically-modified
 and viral-vector products are categorically 351 and are not used here.)
 

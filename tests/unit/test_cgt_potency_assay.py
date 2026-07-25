@@ -1,6 +1,6 @@
 """Unit tests for CGTPotencyAssayWorkflow (Lifesciences CGT · veto) — no live API.
 
-Veto + triple-flag (D-LIFESCI-6). Mirrors the se510k veto shape.
+Veto + triple-flag (D-LIFESCI-8). Mirrors the se510k veto shape.
 """
 from __future__ import annotations
 from pathlib import Path
