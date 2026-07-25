@@ -1,6 +1,23 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-25 — **Lifesciences CGT/ATMP 5th segment SHIPPED (D-LIFESCI-7/8):** 8 workflows (5 veto + 3 no-veto) built as additive siblings, 4 Phase-2 designs locked; full local gate green (ruff + mypy 120 files + 1857 tests/unit). See 2026-07-25 section. Prior: needs_postgres test-hygiene (2026-07-24); **Tier 3.1 audit log SHIPPED (D-AUDIT-1..8).**
+Last updated: 2026-07-25 (PM) — **CGT ship-audit ran + C-1 spine fix landed.** HEAD `fca3c5a`, tree clean, **nothing pushed**. CGT per-module surface SHIP-CLEAN (all a–j pass); the two findings that matter are **shared-spine**, both reproduced live. **C-1 FIXED** (D-A11-5, `fca3c5a`); **H-1 still OPEN** (top of morning backlog). Prior: CGT/ATMP 5th segment SHIPPED (D-LIFESCI-7/8, 8 workflows); needs_postgres hygiene; Tier 3.1 audit log (D-AUDIT-1..8).
+
+## 2026-07-25 (PM) — CGT ship-audit outcome + open findings
+
+Scheduled 3:30 AM audit ran unattended (report-only + safe-fix policy). Full report: [`docs/security-audits/2026-07-25-cgt-ship-audit.md`](security-audits/2026-07-25-cgt-ship-audit.md). **Verdict: per-module CGT = SHIP-CLEAN; spine = FIX-BEFORE-SHIP.** Gate green throughout (ruff · mypy 120 · 1857 tests).
+
+**Landed:**
+- `e1d9f71` — mechanical fixes (auto-applied by the audit session): decision-ID drift (14 sites where `8c76bce` renumber missed tests/templates/example — D-LIFESCI-6→8, 5→7); donor `_compose_output` L-HEALTH-1 PHI comment. Docstring/comment only, zero behaviour change.
+- `8ef315b` — the audit report.
+- `fca3c5a` — **C-1 FIX (D-A11-5), spine.** Retired header-occurrence *selection* in `core/_internal.py`: `extract_flags` now **unions** every occurrence, `extract_veto_directive` returns the **first non-empty**, `_sections_for` bounds each slice at the next occurrence. Supersedes A11-M4 (last-wins). Guarded by `TestA11D5TrailingEchoCannotShadow` (`test_parser_hardening.py`) + `test_hctp_classification.py::TestVeto::test_trailing_clean_echo_does_not_suppress_the_halt`. Now a documented convention in CLAUDE.md.
+
+**OPEN — morning backlog (in order):**
+1. **H-1 (HIGH, spine, reproduced live):** the 6000-char post-concat cap in `sanitize_for_prompt` silently drops veto-relevant Request fields — `hctp` raw 13759→6000 kept 4/9 fields, dropped 1271.10(a) prongs 2/3/4. The reviewer never sees the request (only the executor draft), so dropped evidence leaves the whole adversarial loop. Not adversarial-only (~666 chars/field). Fix the **convention** across all 71 workflows: budget the cap per-field (`6000 // n_fields`) or raise the concat cap above `n_fields × 1500`, and emit a per-field truncation marker. Report §H-1.
+2. **M-1 (MEDIUM):** flag headers line-anchored inside reviewer-criteria prose (8 modules + `lotrelease_review.md`) — a restated rubric can shadow real findings (same root class as C-1, but fail-CLOSED on the gate; damages finding integrity). Re-wrap so no header sits at line start outside the emission block. Prompt change → deliberate review.
+3. **L-1:** add G7 to `test_workflow_conventions.py` — assert no gate uses a bare `not any(...)` over flag values (retires the D-A11-1 class at author-time; the durable win).
+4. **M-2 / M-3:** example+spine hygiene — `core/wiki.py` `context_for_round` scopes on round only (cross-case wiki bleed; donor PHI); predictable `/tmp` example workspaces (symlink pre-creation). L-2..L-8 backlog (see report table).
+
+**Things NOT to do next:** don't push without the user (nothing has been pushed). Don't "fix H-1 per-module" — that's the third instance of the compounding pattern already logged twice (M-PC-1, H-IND-1); fix the convention. Don't reintroduce occurrence-selection in the parser (C-1/D-A11-5 — selection is unsafe first-wins AND last-wins; union/first-non-empty is the fix). Don't reuse D-LIFESCI-1..8 (all taken; next CGT Phase-2 batch = D-LIFESCI-9+).
 
 ## 2026-07-25 — Lifesciences CGT/ATMP 5th segment (D-LIFESCI-7/8)
 
