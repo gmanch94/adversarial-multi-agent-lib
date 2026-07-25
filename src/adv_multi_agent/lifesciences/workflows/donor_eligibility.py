@@ -15,7 +15,7 @@ Boundary (D-LIFESCI-2): distinct from healthcare AdverseEventTriageWorkflow, whi
 grades clinical severity / causality for a provider. This is the manufacturer's
 regulatory eligibility determination under 21 CFR 1271 Subpart C.
 
-Veto gate (D-LIFESCI-6): fires when releasing an allogeneic product from an
+Veto gate (D-LIFESCI-8): fires when releasing an allogeneic product from an
 ineligible or inadequately screened / tested donor — a communicable-disease
 transmission risk.
 
@@ -238,7 +238,7 @@ class DonorEligibilityWorkflow(BaseWorkflow):
     donor eligible → reviewer challenges incomplete screening, missing testing, and
     an unsupported eligible call, with the power to VETO → iterate.
 
-    Convergence gate (D-LIFESCI-6):
+    Convergence gate (D-LIFESCI-8):
         score ≥ threshold (8.0)
         AND zero SCREENING-GAP FLAGS
         AND zero TESTING-GAP FLAGS

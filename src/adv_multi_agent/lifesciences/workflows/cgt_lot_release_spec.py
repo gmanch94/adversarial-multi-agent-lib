@@ -10,7 +10,7 @@ summarises the proposed release specifications; reviewer (cross-model per ARIS
 sampling / test-consumption impractical for the lot size, and a rapid / real-time
 release strategy inadequately justified for the short shelf life.
 
-No reviewer veto (D-LIFESCI-6): this is an advisory spec-adequacy audit.
+No reviewer veto (D-LIFESCI-8): this is an advisory spec-adequacy audit.
 
 Cross-reference: potency-as-release-attribute *adequacy* (mechanism-of-action
 linkage) is CGTPotencyAssayWorkflow's veto call; this workflow audits whole-

@@ -12,7 +12,7 @@ integration/clonality assessment insufficient to characterise insertional-
 mutagenesis risk, and an oncogenicity case or long-term-follow-up plan inadequate
 for the risk profile.
 
-No reviewer veto (D-LIFESCI-6): this audits whether the vector-safety
+No reviewer veto (D-LIFESCI-8): this audits whether the vector-safety
 CHARACTERISATION STRATEGY is adequate — it is not the release gate. A positive
 RCR/RCL result or an oncogenicity signal is a QC lot-release / disposition
 failure against specification (see CGTLotReleaseSpecWorkflow), not an adversarial-

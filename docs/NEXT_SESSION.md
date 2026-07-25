@@ -1,6 +1,26 @@
 # NEXT_SESSION.md
 
-Last updated: 2026-07-24 — needs_postgres test-hygiene: 9 pre-existing durable_postgres failures fixed (suite now 167 passed / 0 failed live); see 2026-07-24 section. Prior: **Tier 3.1 audit log SHIPPED (D-AUDIT-1..8).** Append-only, per-tenant hash-chained, WORM-anchored decision ledger defending the DB-admin/superuser threat. Library `AuditSink` seam + sibling `PostgresAuditSink` + anchor/walker/reconcile scripts. Independent spec review returned REDESIGN (4 architectural findings) — folded into v2 before code. 3 commits: `f3ad28e` library · `26e3332` sibling · docs pending. See section below.
+Last updated: 2026-07-25 — **Lifesciences CGT/ATMP 5th segment SHIPPED (D-LIFESCI-7/8):** 8 workflows (5 veto + 3 no-veto) built as additive siblings, 4 Phase-2 designs locked; full local gate green (ruff + mypy 120 files + 1857 tests/unit). See 2026-07-25 section. Prior: needs_postgres test-hygiene (2026-07-24); **Tier 3.1 audit log SHIPPED (D-AUDIT-1..8).**
+
+## 2026-07-25 — Lifesciences CGT/ATMP 5th segment (D-LIFESCI-7/8)
+
+**What shipped:** a 5th lifesciences segment — advanced therapies (cell & gene / ATMP) — 8 workflows as additive siblings, per [spec](superpowers/specs/2026-07-24-lifesciences-cgt-segment-design.md) + [plan](superpowers/plans/2026-07-24-lifesciences-cgt-mvp8.md). Lifesciences now 35 workflows (27-catalog COMPLETE + CGT MVP-8); library total 71.
+
+- **Veto (5):** `HCTPClassificationWorkflow` (361-vs-351, all four 1271.10(a) prongs in criteria), `CGTPotencyAssayWorkflow` (MoA-linked lot-release), `CGTComparabilityWorkflow` (post-change), `CGTDurabilityClaimWorkflow` (curative-overclaim), `DonorEligibilityWorkflow` (1271 Subpart C, L-HEALTH-1 PHI caveat). **No-veto (3):** `RMATDesignationWorkflow`, `VectorSafetyWorkflow`, `CGTLotReleaseSpecWorkflow`.
+- **Per workflow:** module + test (8–10 tests, exact `==` assertions) + 4 templates + runnable example. Each commit `feat(lifesciences): CGT #n …` (`99b4d7b` #7, `13d70f5` #8, `f613e4c` #6, `7a03830` #2, `118518d` #1, `9e57ae7` #3, `a1de6cb` #5, `04db3d5` #4).
+- **Additive-only:** no `core/` change, no new package/MCP string/pyproject row (`lifesciences` already registers all three). Inherited (not re-solved): M-PC-1 veto anchor · H-IND-1 sibling-stop (all 24 MVP headers letters+hyphens only, incl. `RCR-RCL-RISK`) · D-A11-1 gate · D-DEPTH-2 veto output · L-HEALTH-2 metadata sanitize · `_MAX_FIELD_CHARS=1500`.
+- **Two review passes before code:** independent spec review (2 lenses, FIX-BEFORE-SHIP → 2 MEDIUMs fixed: 1271.10(a) four-prong criteria; brand-scan test-registration). Ship-audit on the 8 modules landed post-build.
+- **Numbering-collision caught pre-ship:** spec/plan/code first used `D-LIFESCI-5/6`, but those were already taken by Phase-2 batches A/B — renumbered to **D-LIFESCI-7** (segment) / **D-LIFESCI-8** (veto split) across all artifacts before commit.
+- **Census guard:** `test_workflow_conventions.py` veto count 25→30 (the 5 new veto workflows all render `veto_reason` into `.output`, covered by the parametrized D-DEPTH-2 test).
+- **Docs refreshed:** decisions.md (D-LIFESCI-7/8), CLAUDE.md + README (71 workflows · 288 templates · 1857 tests · lifesciences 35), this file.
+
+**Phase-2 locked (design-only, 4):** `ViralVectorSheddingWorkflow`, `ChainOfIdentityCustodyWorkflow` (veto + PHI), `StartingMaterialQualificationWorkflow`, `CellBankCharacterizationWorkflow` — fill-in-not-redesign per the CGT spec §Phase-2.
+
+**Things NOT to do next:** don't reuse D-LIFESCI-1..8 (all taken); the next CGT Phase-2 batch is D-LIFESCI-9+. Don't add a `361`/`351`/`1271` digit-containing flag HEADER (prose only — H-IND-1). Don't author a genetically-modified/vector product as an HCT/P 361-candidate test case (categorically 351, per the scenario-scoping docstring).
+
+---
+
+Prior sections: Append-only, per-tenant hash-chained, WORM-anchored decision ledger defending the DB-admin/superuser threat. Library `AuditSink` seam + sibling `PostgresAuditSink` + anchor/walker/reconcile scripts. Independent spec review returned REDESIGN (4 architectural findings) — folded into v2 before code. 3 commits: `f3ad28e` library · `26e3332` sibling · docs pending. See section below.
 
 ## 2026-07-23 (PM2) — Tier 3.1 audit log (D-AUDIT-1..8)
 

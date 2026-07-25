@@ -320,12 +320,14 @@ _VETO_IDS = [f"{p.parent.parent.name}/{p.name}" for p in _VETO_FILES]
 
 
 def test_veto_workflow_census_is_stable() -> None:
-    """25 veto workflows as of the 2026-07-23 depth review.
+    """30 veto workflows as of the 2026-07-24 CGT/ATMP segment (D-LIFESCI-7/6).
 
     Recomputed from source, not hardcoded in prose — adding a veto workflow
-    fails here and forces a re-read of the guards below.
+    fails here and forces a re-read of the guards below. (25 at the 2026-07-23
+    depth review + 5 CGT veto workflows: potency, HCT/P classification,
+    comparability, durability-claim, donor-eligibility.)
     """
-    assert len(_VETO_FILES) == 25, (
+    assert len(_VETO_FILES) == 30, (
         f"veto-workflow count changed to {len(_VETO_FILES)}; confirm the new "
         "workflow renders its veto directive into output (D-DEPTH-2) and "
         "update this count."

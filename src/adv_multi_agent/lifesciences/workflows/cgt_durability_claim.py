@@ -15,7 +15,7 @@ Boundary (D-LIFESCI-2): distinct from PromotionalOffLabelReviewWorkflow, which
 reviews marketing copy against an already-approved label. This substantiates a
 pre-approval clinical / labeling claim against long-term follow-up data.
 
-Veto gate (D-LIFESCI-6): fires when the durability / curative claim is unsupported
+Veto gate (D-LIFESCI-8): fires when the durability / curative claim is unsupported
 by the follow-up duration and data — an overstatement with patient-harm /
 misbranding exposure.
 
@@ -237,7 +237,7 @@ class CGTDurabilityClaimWorkflow(BaseWorkflow):
     insufficient follow-up evidence, and unsupported curative language, with the
     power to VETO → iterate.
 
-    Convergence gate (D-LIFESCI-6):
+    Convergence gate (D-LIFESCI-8):
         score ≥ threshold (8.0)
         AND zero DURABILITY-CLAIM FLAGS
         AND zero FOLLOWUP-EVIDENCE FLAGS

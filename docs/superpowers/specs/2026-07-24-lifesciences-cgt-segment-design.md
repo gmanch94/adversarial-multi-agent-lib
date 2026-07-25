@@ -34,8 +34,8 @@ Boundary vs the already-shipped lifesciences workflows (stated in each new modul
 
 | # | Decision |
 |---|----------|
-| D-LIFESCI-5 | 5th lifesciences segment = advanced therapies (cell & gene / ATMP). FDA **CBER-primary** (21 CFR 1271, 600-series, BLA, expedited programs); EMA ATMP (Reg 1394/2007) is a docstring/criteria **parallel only**, not a separate EU workflow set. MVP-8 cut + 4 Phase-2 designs locked here for fill-in-not-redesign. Same no-domain-base-class rule (D-IND-1 / D-RETAIL-7 lineage). |
-| D-LIFESCI-6 | Reviewer-veto on the 5 halt-worthy CGT regulatory-integrity workflows (#1 HCT/P classification, #2 potency, #3 comparability, #4 donor-eligibility, #5 durability-claim); no-veto on the 3 advisory-analysis workflows (#6 RMAT, #7 vector-safety, #8 lot-release-spec). Same split logic as D-LIFESCI-4. |
+| D-LIFESCI-7 | 5th lifesciences segment = advanced therapies (cell & gene / ATMP). FDA **CBER-primary** (21 CFR 1271, 600-series, BLA, expedited programs); EMA ATMP (Reg 1394/2007) is a docstring/criteria **parallel only**, not a separate EU workflow set. MVP-8 cut + 4 Phase-2 designs locked here for fill-in-not-redesign. Same no-domain-base-class rule (D-IND-1 / D-RETAIL-7 lineage). |
+| D-LIFESCI-8 | Reviewer-veto on the 5 halt-worthy CGT regulatory-integrity workflows (#1 HCT/P classification, #2 potency, #3 comparability, #4 donor-eligibility, #5 durability-claim); no-veto on the 3 advisory-analysis workflows (#6 RMAT, #7 vector-safety, #8 lot-release-spec). Same split logic as D-LIFESCI-4. |
 | D-LIFESCI-3 (extended) | The no-brand rule is unchanged and now also guards CGT: the tripwire denylist (`tests/unit/test_lifesciences_no_brand_names.py`) gains **base64-encoded seeds for currently-approved CAR-T / gene-therapy product trade names and common cell-processing platform / instrument brand names**. No plaintext brand string enters any artifact (code, prompt, example, test, or this spec). Scenarios use generic categories only: "an autologous CAR-T", "an AAV-vectored gene therapy", "an allogeneic iPSC-derived cell therapy", "a lentiviral ex-vivo gene-modified product". |
 
 ## Convention inheritance (verbatim, not re-solved)
@@ -232,7 +232,7 @@ Ship-audit after the sweep per the domain-ship cadence: focused `security-audit`
 
 All in-repo doc updates — no secrets, env vars, infra, or migrations. Folded into the build, surfaced in commit bodies:
 
-- Add rows **D-LIFESCI-5** and **D-LIFESCI-6** to [`docs/decisions.md`](../../decisions.md).
+- Add rows **D-LIFESCI-7** and **D-LIFESCI-8** to [`docs/decisions.md`](../../decisions.md).
 - Extend the D-LIFESCI-3 tripwire denylist with base64-encoded CGT product / tooling brand seeds in `tests/unit/test_lifesciences_no_brand_names.py`.
 - **Register the 8 CGT `test_*.py` module names** in that test's hand-maintained `lifesci_modules` set (guarded by `.exists()`) — it is an explicit enumeration, **not** a glob (the `_SCAN_TESTS_GLOB` constant is unused), so new test files carrying scenario Request fixtures silently escape the brand scan otherwise. Or convert the enumeration to a `test_*.py` glob. **Fail-open coverage gap if skipped** (Reviewer-B MEDIUM).
 - Update the project [`CLAUDE.md`](../../../CLAUDE.md) domain line: lifesciences **27 → 35** workflows, segment count **4 → 5**; refresh the total workflow + library-test counts.

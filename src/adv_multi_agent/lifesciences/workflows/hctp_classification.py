@@ -16,12 +16,12 @@ article (except water / crystalloids / a sterilizing-preserving-storage agent),
 and (4) no systemic effect and not dependent on the metabolic activity of living
 cells — unless autologous / first-or-second-degree-relative / reproductive use.
 
-Scenario scoping (D-LIFESCI-5): the 361 argument is only live for
+Scenario scoping (D-LIFESCI-7): the 361 argument is only live for
 minimally-manipulated cellular / structural-tissue products; genetically-modified
 cells and viral-vector gene therapies are categorically 351 and must not be
 authored as 361-candidate scenarios.
 
-Veto gate (D-LIFESCI-6): fires when a 351 biologic is asserted as a 361 HCT/P
+Veto gate (D-LIFESCI-8): fires when a 351 biologic is asserted as a 361 HCT/P
 (more-than-minimal manipulation, non-homologous use, disqualifying combination, or
 systemic effect present) — a classification that would bypass the BLA and
 misrepresent the product's regulatory status.
@@ -255,7 +255,7 @@ class HCTPClassificationWorkflow(BaseWorkflow):
     disqualifying combination, or a systemic effect that forces 351, with the
     power to VETO → iterate.
 
-    Convergence gate (D-LIFESCI-6):
+    Convergence gate (D-LIFESCI-8):
         score ≥ threshold (8.0)
         AND zero MINIMAL-MANIPULATION FLAGS
         AND zero HOMOLOGOUS-USE FLAGS

@@ -17,7 +17,7 @@ assesses a well-characterised recombinant-protein analytical-similarity exercise
 This assesses a living cell / viral-vector product with small patient-specific
 autologous lots.
 
-Veto gate (D-LIFESCI-6): fires when the post-change product is not demonstrably
+Veto gate (D-LIFESCI-8): fires when the post-change product is not demonstrably
 comparable — the change affects a critical quality attribute the package does not
 cover — such that treating it as comparable would ship a materially different
 product without the required new clinical data.
@@ -242,7 +242,7 @@ class CGTComparabilityWorkflow(BaseWorkflow):
     package, and residual uncertainty needing clinical bridging, with the power to
     VETO → iterate.
 
-    Convergence gate (D-LIFESCI-6):
+    Convergence gate (D-LIFESCI-8):
         score ≥ threshold (8.0)
         AND zero PROCESS-DELTA FLAGS
         AND zero ANALYTICAL-GAP FLAGS

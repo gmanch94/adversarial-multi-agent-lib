@@ -15,7 +15,7 @@ Boundary (D-LIFESCI-2): distinct from AssayPerformanceClaimWorkflow, which revie
 an in-vitro-diagnostic analytical/clinical performance claim. This reviews a
 therapeutic mechanism-of-action-linked biological-activity lot-release assay.
 
-Veto gate (D-LIFESCI-6): fires when the potency assay is inadequate to support
+Veto gate (D-LIFESCI-8): fires when the potency assay is inadequate to support
 lot release — the readout is not linked to clinical activity, or validation is
 insufficient for a release-critical method — such that releasing on it risks
 releasing product without demonstrated activity.
@@ -246,7 +246,7 @@ class CGTPotencyAssayWorkflow(BaseWorkflow):
     linked to activity, an unsupported release claim, and inadequate validation,
     with the power to VETO → iterate.
 
-    Convergence gate (D-LIFESCI-6):
+    Convergence gate (D-LIFESCI-8):
         score ≥ threshold (8.0)
         AND zero MOA-LINKAGE FLAGS
         AND zero LOT-RELEASE-CLAIM FLAGS

@@ -11,7 +11,7 @@ to address an unmet need); reviewer (cross-model per ARIS §2.1) challenges
 preliminary-clinical-evidence stretch, an overstated condition seriousness, and an
 overstated unmet-need / available-therapy analysis.
 
-No reviewer veto (D-LIFESCI-6): this is an advisory eligibility analysis.
+No reviewer veto (D-LIFESCI-8): this is an advisory eligibility analysis.
 
 If you use this workflow, cite the ARIS paper — see CITATION.cff in the
 repo root.

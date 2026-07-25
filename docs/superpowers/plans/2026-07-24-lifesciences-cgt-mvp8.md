@@ -182,7 +182,7 @@ Task 1 → #7 VectorSafety · Task 2 → #8 LotReleaseSpec · Task 3 → #6 RMAT
 
 **Files:** Modify `docs/decisions.md`, `CLAUDE.md`, `README.md`, `docs/NEXT_SESSION.md`, `docs/production-readiness-gaps.md`. Verify `tests/unit/test_registry.py` + any count assertions.
 
-- [ ] **Step 1:** Append rows **D-LIFESCI-5** and **D-LIFESCI-6** to `docs/decisions.md` (text from spec §"Segment decisions").
+- [ ] **Step 1:** Append rows **D-LIFESCI-7** and **D-LIFESCI-8** to `docs/decisions.md` (text from spec §"Segment decisions").
 - [ ] **Step 2:** Confirm all 8 `test_*.py` names were added to `lifesci_modules` (Steps F). Run `python -m pytest tests/unit/test_lifesciences_no_brand_names.py -v`.
 - [ ] **Step 3:** Run `python -m pytest tests/unit/test_registry.py -v` — the files-on-disk == discovered guard must still pass with +32 templates. If it hardcodes a per-domain count, update the lifesciences number.
 - [ ] **Step 4:** Update `CLAUDE.md`: lifesciences `27 → 35` workflows + segment `4 → 5` (add "advanced therapies (CGT/ATMP)"); refresh the workflow total (`63 → 71`), library-test count, and skill-template count (`256 → 288`).
