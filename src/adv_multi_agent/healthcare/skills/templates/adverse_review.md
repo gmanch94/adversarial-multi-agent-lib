@@ -34,7 +34,7 @@ Evaluate this adverse-event triage on five dimensions. Score each 0–10.
    ("report as required") should be flagged.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Serious unexpected ADR (not in current product labeling per prior_reports)
     with causality ≥ possible → mandatory FDA 21 CFR 312 / EMA EudraVigilance
@@ -44,7 +44,7 @@ if and only if at least one of the following holds:
     labeling → 7-day expedited reporting clock.
   • Life-threatening outcome with causality ≥ probable → 7-day expedited
     reporting clock.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those

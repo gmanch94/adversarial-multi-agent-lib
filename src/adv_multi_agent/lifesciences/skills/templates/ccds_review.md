@@ -31,10 +31,10 @@ Evaluate this CCDS safety label-change review on five dimensions. Score each 0â€
    clock)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the plan omits or materially understates an established serious
 safety signal in the safety labeling, OR misses a mandatory regulatory
-notification clock for a safety change. Otherwise: "REVIEWER VETO: None".
+notification clock for a safety change. Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header â€” the parser uses those as

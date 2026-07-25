@@ -124,7 +124,7 @@ Evaluate this reserve recommendation on five dimensions. Score each 0–10.
    to execute?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Catastrophic-injury signal (paraplegia, traumatic brain injury, wrongful
     death, severe burn) but the proposed indemnity reserve is below
@@ -138,7 +138,7 @@ if and only if at least one of the following holds:
   • Proposed reserve would, if booked, fall below the company's
     reserve-authority floor for the applicable approving authority
     (i.e. the draft routes to the wrong sign-off level).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate

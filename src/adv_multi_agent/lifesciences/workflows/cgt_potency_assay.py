@@ -102,12 +102,12 @@ Evaluate this potency-assay adequacy review on five dimensions. Score each 0–1
    criterion, which validation element)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the potency assay is inadequate to support lot release — the
 readout is not linked to clinical activity, or validation is insufficient for a
 release-critical method — such that releasing on it risks releasing product
 without demonstrated activity.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

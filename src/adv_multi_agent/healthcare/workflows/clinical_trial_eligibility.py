@@ -114,7 +114,7 @@ Evaluate this clinical-trial eligibility assessment on five dimensions. Score ea
    Ambiguous determinations must be flagged.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Patient meets a life-threatening exclusion criterion (organ dysfunction
     per protocol thresholds, prohibited concomitant medication, active
@@ -130,7 +130,7 @@ if and only if at least one of the following holds:
   • Eligibility determination contradicts primary evidence in
     protocol_summary or biomarker_status (e.g. patient marked eligible
     despite biomarker-status mismatch with inclusion criteria).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those

@@ -30,12 +30,12 @@ Evaluate this post-change comparability review on five dimensions. Score each 0�
    method, which study)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the post-change product is not demonstrably comparable — the change
 affects a critical quality attribute the package does not cover — such that
 treating it as comparable would ship a materially different product without the
 required new clinical data.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

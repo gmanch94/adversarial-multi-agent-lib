@@ -29,10 +29,10 @@ Evaluate this promotional-material review on five dimensions. Score each 0–10.
    which risk, which reference)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the material would likely draw an FDA enforcement or untitled
 letter — clear off-label promotion, or omission of material risk information.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

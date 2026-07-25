@@ -99,10 +99,10 @@ Evaluate this bioequivalence assessment on five dimensions. Score each 0–10.
    element, which criterion)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a bioequivalence conclusion is asserted while a PK parameter's 90%
 confidence interval falls outside the applicable limits (or a required study /
-tightened limit is absent). Otherwise: "REVIEWER VETO: None".
+tightened limit is absent). Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

@@ -104,7 +104,7 @@ Evaluate this recall plan on five dimensions. Score each 0–10.
    specific enough for a safety officer to execute? Are owners named?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Life-safety pathogen signal (E. coli O157:H7, Listeria, Salmonella with
     severity, botulism, undeclared major allergen) but no regulatory
@@ -114,7 +114,7 @@ if and only if at least one of the following holds:
     proposed.
   • Recall plan proposes downgrading scope below primary evidence (e.g.
     plan recalls one lot when lab match covers multiple).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those

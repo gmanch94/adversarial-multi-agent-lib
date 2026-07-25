@@ -31,10 +31,10 @@ Evaluate this cold-chain excursion disposition on five dimensions. Score each 0â
    disposition)? Penalise vague dispositions.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a 'release' disposition is proposed for product whose cumulative
 excursion exceeds the stability budget (or has no supporting stability data).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header â€” the parser uses those as

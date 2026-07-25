@@ -31,10 +31,10 @@ Evaluate this field-action classification on five dimensions. Score each 0–10.
    scope)? Penalise vague classification.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a recall-class downgrade or a 'not reportable' call would leave
 patients exposed to a hazard that the correct class/reportability would address.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

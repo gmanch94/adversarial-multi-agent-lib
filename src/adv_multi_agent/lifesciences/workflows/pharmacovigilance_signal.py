@@ -102,10 +102,10 @@ Evaluate this pharmacovigilance signal evaluation on five dimensions. Score each
    vague evaluations.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a signal meeting the threshold for regulatory action / label
 change is characterized as no-action / routine.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

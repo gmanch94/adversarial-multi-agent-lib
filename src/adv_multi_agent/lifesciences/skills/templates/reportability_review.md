@@ -31,10 +31,10 @@ Evaluate this device-reportability determination on five dimensions. Score each 
    basis)? Penalise vague determinations.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a 'non-reportable' determination is actually reportable under
 the applicable regulation (21 CFR 803 / regional vigilance).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

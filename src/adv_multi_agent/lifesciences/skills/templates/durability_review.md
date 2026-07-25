@@ -31,10 +31,10 @@ Score each 0–10.
    claim, which follow-up window, which endpoint)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the durability / curative claim is unsupported by the follow-up
 duration and data — an overstatement with patient-harm / misbranding exposure.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

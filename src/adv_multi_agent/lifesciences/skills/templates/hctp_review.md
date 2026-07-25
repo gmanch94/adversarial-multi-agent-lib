@@ -35,12 +35,12 @@ A 361 HCT/P must satisfy ALL FOUR 21 CFR 1271.10(a) prongs; assess each.
    processing step, which use)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a 351 biologic is asserted as a 361 HCT/P — more-than-minimal
 manipulation, non-homologous use, a disqualifying combination, or a systemic
 effect is present — such that the 361 call would bypass the BLA and misrepresent
 regulatory status.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

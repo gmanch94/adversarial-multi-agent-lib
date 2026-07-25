@@ -30,11 +30,11 @@ Evaluate this assay performance-claim review on five dimensions. Score each 0–
    which interferent)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a performance claim is overstated enough that releasing it would
 create a misdiagnosis risk or an adulteration/misbranding exposure (a claim the
 data cannot support in the claimed intended-use population).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

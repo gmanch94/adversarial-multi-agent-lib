@@ -104,7 +104,7 @@ Evaluate this environmental analysis on four dimensions. Score each 0–10.
    handler or underwriter to execute?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • The site_history reveals a documented prior environmental event,
     regulator filing, or recognized environmental condition (REC) that
@@ -118,7 +118,7 @@ if and only if at least one of the following holds:
     coverage in the governing state.
   • Co-insurer notification is required AND analysis treats the matter as
     single-policy.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate

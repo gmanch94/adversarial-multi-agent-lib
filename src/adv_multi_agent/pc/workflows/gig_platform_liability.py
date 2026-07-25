@@ -112,7 +112,7 @@ Score each 0–10.
    execution?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Proposed bind would only survive a worker-classification audit by
     accident (the platform's operating model does NOT match the
@@ -127,7 +127,7 @@ if and only if at least one of the following holds:
   • Occupational-accident benefit structure substitutes for state-
     mandated workers' comp AND state law does not permit the
     substitution.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate

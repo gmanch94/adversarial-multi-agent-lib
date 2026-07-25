@@ -36,7 +36,7 @@ Evaluate this treatment-plan review on five dimensions. Score each 0–10.
    criterion must be flagged.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Absolute drug-allergy contraindication present in patient_summary or
     contraindication_context (e.g. documented anaphylaxis to penicillin,
@@ -48,7 +48,7 @@ if and only if at least one of the following holds:
     comorbidity or medication (e.g. contrast-enhanced procedure in CKD3
     without prophylaxis; elective surgery on anticoagulated patient
     without bridging plan).
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those

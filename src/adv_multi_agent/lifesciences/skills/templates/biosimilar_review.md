@@ -32,11 +32,11 @@ Evaluate this biosimilar comparability assessment on five dimensions. Score each
    indication)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if a biosimilarity conclusion (or indication extrapolation) is
 asserted while a critical quality attribute is not demonstrated analytically
 similar and the residual uncertainty is unresolved.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

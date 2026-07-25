@@ -7,15 +7,14 @@
 ## Last landed — M-1 flag-header prose sweep (D-A11-7, committed, NOT pushed yet)
 - Colon-suffixed flag headers retired from criteria PROSE repo-wide (44 flag-gated workflows + 36 `*_review.md` templates; 100 exact-case + 4 retail lowercase-slash-format misses). Colon-form now lives ONLY in the emission block, so no echoed rubric can shadow real findings. Cross-refs `Flag under X FLAGS.`; scoring `zero X FLAGS, then ready`. Bytes-level codemod preserved retail CRLF.
 - Guard **G9** ([test_workflow_conventions.py](../tests/unit/test_workflow_conventions.py), modules + templates, all prongs mutation-tested): 2 prongs matching the two runtime matchers — generic case-sensitive `[A-Z…] FLAGS:` (non-tuple, fail-OPEN) + declared case-insensitive (`_header_anchor_re` is `(?mi)`; caught 4 live retail misses). Gate: ruff · mypy 120 · 2059 tests. Independent review SHIP-WITH-FOLDIN.
-- **RESIDUAL / next (confirm first):** `REVIEWER VETO:` marker is the SAME class on the higher-consequence halt marker, still mid-line in ~30 veto workflows' prose. Sweeping it + extending G9 to the veto marker is the obvious follow-up — deferred because it touches the veto/halt surface (fold-in rule → confirm before folding).
+- **VETO follow-up LANDED (user-confirmed, 2nd commit):** `REVIEWER VETO:` marker swept from prose across all 53 veto files (30 workflows + 23 templates, 106 occurrences: `REVIEWER VETO: line` → `REVIEWER VETO line`, `"REVIEWER VETO: None"` → `"None"`). Emission `REVIEWER VETO: <verbatim…>` line + `extract_veto_directive` code marker unchanged. G9 gained a `REVIEWER VETO:` prong (mutation-tested). The whole FLAGS+VETO section-header-echo class is now retired from criteria prose.
 
 ## Last landed — CGT ship-audit spine fixes (pushed)
 - **H-1 / D-A11-6** (`e4463ca`): retired per-call-site `sanitize_for_prompt(request.to_prompt_text(), max_chars=6000)` (< n_fields×1500 → dropped trailing fields off executor prompt → evidence left the loop). Now shared `sanitize_request_text` in `core/_internal.py` (control-char/NFC + `_MAX_REQUEST_PROMPT_CHARS=60_000` backstop) at all 67 call sites. Guard **G7** + regression. Report: [audit §H-1](security-audits/2026-07-25-cgt-ship-audit.md).
 - **C-1 / D-A11-5** (`fca3c5a`): parser unions every header occurrence / `extract_veto_directive` first-non-empty.
 
 ## Backlog (none blocking)
-- **M-1 VETO residual (next):** sweep `REVIEWER VETO:` colon-marker from criteria prose (same class as D-A11-7, ~30 veto workflows + veto templates) + extend G9's generic prong to the veto marker. Confirm first (veto/halt surface).
-- **L-1:** add **G8** (no bare `not any(...)` gate; G7 = H-1, G9 = M-1, both taken).
+- **L-1:** add **G8** (no bare `not any(...)` gate; G7 = H-1, G9 = M-1/VETO, both taken).
 - **M-2/M-3, L-2..L-8:** wiki cross-case bleed + `/tmp` example workspaces + backlog — see audit table.
 - Longer: PyPI publish; 19 industrial + 19 healthcare + 4 CGT Phase-2 designs locked-not-built (D-LIFESCI-9+); L-HEALTH-4.
 

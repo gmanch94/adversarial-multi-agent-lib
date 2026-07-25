@@ -102,7 +102,7 @@ Evaluate this drug-interaction review on five dimensions. Score each 0–10.
    flagged.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Absolute contraindication between new_medication and any drug in
     medication_list per formulary or standard interaction reference.
@@ -111,7 +111,7 @@ if and only if at least one of the following holds:
   • Narrow-therapeutic-index interaction (warfarin + NSAID, lithium +
     thiazide, etc.) without a documented dose-adjustment plan.
   • Cross-allergy with a documented allergy in allergy_history.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
 "Overall", "Key issues", or a "#" markdown header — the parser uses those

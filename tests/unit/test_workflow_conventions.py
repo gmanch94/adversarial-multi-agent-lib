@@ -124,6 +124,14 @@ _GENERIC_FLAG_HEADER_RE = re.compile(
     r"[A-Z][A-Z0-9\-]*(?:[ \t]+[A-Z0-9\-]+)*[ \t]+FLAGS[ \t]*:"
 )
 
+# The veto marker is the SAME terminator class on the higher-consequence halt
+# marker (`_is_section_header` fires on `… VETO:` too). An echoed `REVIEWER
+# VETO:` line in prose lets `extract_veto_directive` (first-non-empty) return
+# the rubric text as the directive — a spurious veto with a destroyed reason.
+# Retired from prose alongside the flag headers (D-A11-7 follow-up); the colon-
+# form lives only in the emission block and the code marker.
+_VETO_MARKER_RE = re.compile(r"REVIEWER[ \t]+VETO[ \t]*:")
+
 
 def _declared_header_re(header: str) -> re.Pattern[str]:
     """Case-insensitive, whitespace-flexible matcher for one declared header.
@@ -572,6 +580,8 @@ def _prose_header_offenders(prose: str, declared: tuple[str, ...]) -> list[str]:
     for header in declared:
         if _declared_header_re(header).search(prose):
             hits.add(header)
+    if _VETO_MARKER_RE.search(prose):
+        hits.add("REVIEWER VETO:")
     return sorted(hits)
 
 

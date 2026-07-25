@@ -32,11 +32,11 @@ Evaluate this clinical protocol design review on five dimensions. Score each 0â€
    which stopping rule)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the protocol exposes subjects to undue risk (inadequate safety
 monitoring / stopping rules for a known serious risk) or is scientifically
 invalid such that it cannot support its primary objective.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header â€” the parser uses those as

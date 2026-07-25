@@ -101,7 +101,7 @@ Evaluate this coverage decision on four dimensions. Score each 0–10.
    execute within the state-mandated response window?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Proposed decision is a denial AND a reasonable interpretation of the
     policy wording supports coverage (ambiguity in favour of insured).
@@ -114,7 +114,7 @@ if and only if at least one of the following holds:
     factor.
   • Reasonable-expectations doctrine clearly applies AND analysis ignores
     it.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate

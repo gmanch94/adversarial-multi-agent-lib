@@ -112,7 +112,7 @@ Score each 0–10.
    counsel engagement) specific enough for the safety committee to execute?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Draft attributes to operator-error but telematics / video / similar-unit
     field-failure evidence supports a design-defect signal.
@@ -126,7 +126,7 @@ if and only if at least one of the following holds:
   • Confirmed injury severity is catastrophic (fatality, permanent
     disability, severe burn) AND no parallel CPSC § 15(b) substantial-
     product-hazard analysis is proposed.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate

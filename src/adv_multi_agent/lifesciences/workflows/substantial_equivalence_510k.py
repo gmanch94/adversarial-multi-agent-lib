@@ -98,12 +98,12 @@ Evaluate this substantial-equivalence rationale on five dimensions. Score each 0
    indication, which characteristic)? Penalise vague findings.
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if the substantial-equivalence claim is fundamentally unsupportable
 (near-certain NSE — no valid predicate, or a technological difference that
 plainly raises a new question of safety/effectiveness) such that asserting SE
 would misrepresent equivalence to FDA.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto-directive continuation line with
   "Overall", "Key issues", or a "#" markdown header — the parser uses those as

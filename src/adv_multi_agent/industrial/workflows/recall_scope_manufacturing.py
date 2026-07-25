@@ -112,7 +112,7 @@ Evaluate this recall scope on four dimensions. Score each 0–10.
    to execute?
 
 VETO CRITERIA (independent of score)
-End your review with a REVIEWER VETO: line containing a verbatim directive
+End your review with a REVIEWER VETO line containing a verbatim directive
 if and only if at least one of the following holds:
   • Substantial-product-hazard signal is present (death / serious injury
     or risk of either, OR violation of mandatory safety standard) but
@@ -125,7 +125,7 @@ if and only if at least one of the following holds:
     notification is not in the next-actions list.
   • CPSC § 15(b) "becomes aware" trigger is met but the 5-business-day
     reporting clock is not addressed.
-Otherwise: "REVIEWER VETO: None".
+Otherwise: "None".
 
 FORMAT NOTE (L-PC-2): do not begin a veto directive continuation line with
 "Overall", "Key issues", or a markdown header (#) — those markers terminate
