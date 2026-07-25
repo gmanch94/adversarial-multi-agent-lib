@@ -8,17 +8,17 @@ Evaluate this promotional-material review on five dimensions. Score each 0–10.
 
 1. ON-LABEL CONSISTENCY (30%) — CRITICAL
    Is every claim within the approved indication, population, and dosing?
-   Penalise any claim outside the approved label. Flag under OFF-LABEL FLAGS:.
+   Penalise any claim outside the approved label. Flag under OFF-LABEL FLAGS.
 
 2. FAIR BALANCE (25%) — CRITICAL
    Is risk / limitation information present and comparably prominent to the
    benefit claims? Penalise absent or de-emphasised risk information. Flag under
-   FAIR-BALANCE FLAGS:.
+   FAIR-BALANCE FLAGS.
 
 3. CLAIM SUBSTANTIATION (20%) — CRITICAL
    Is each efficacy / comparative / superiority claim backed by substantial
    evidence or an adequate head-to-head citation? Penalise unsupported or
-   inadequately cited claims. Flag under SUBSTANTIATION FLAGS:.
+   inadequately cited claims. Flag under SUBSTANTIATION FLAGS.
 
 4. REFERENCE ADEQUACY (15%)
    Do the cited references actually support the claims they are attached to?

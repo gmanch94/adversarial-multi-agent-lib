@@ -79,17 +79,17 @@ Score each 0–10.
 1. DURABILITY vs FOLLOW-UP DURATION (30%) — CRITICAL
    Does the durability claim stay within the observed follow-up duration and
    censoring? Penalise a claim that extends beyond the data. Flag under
-   DURABILITY-CLAIM FLAGS:.
+   DURABILITY-CLAIM FLAGS.
 
 2. FOLLOW-UP EVIDENCE SUFFICIENCY (25%) — CRITICAL
    Are the n, median follow-up, and loss-of-response data sufficient to support
    the claimed persistence of effect? Penalise insufficient follow-up evidence.
-   Flag under FOLLOWUP-EVIDENCE FLAGS:.
+   Flag under FOLLOWUP-EVIDENCE FLAGS.
 
 3. CURATIVE LANGUAGE (20%) — CRITICAL
    Is any "cure" / permanent-benefit language supported by the endpoint and data?
    Penalise curative language the endpoint cannot support. Flag under
-   CURATIVE-LANGUAGE FLAGS:.
+   CURATIVE-LANGUAGE FLAGS.
 
 4. COMPARATOR / NATURAL-HISTORY CONTEXT (15%)
    Is the claim contextualised against a comparator or natural history? Penalise a

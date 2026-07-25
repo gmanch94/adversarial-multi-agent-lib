@@ -72,17 +72,17 @@ Evaluate this sterility assurance review on five dimensions. Score each 0–10.
 1. SAL DEMONSTRATION (30%) — CRITICAL
    Is the claimed sterility assurance level demonstrated by the validation and
    routine-control data? Penalise a SAL claim not supported by the data. Flag
-   under SAL FLAGS:.
+   under SAL FLAGS.
 
 2. BIOBURDEN CONTROL (25%) — CRITICAL
    Is routine bioburden within the validated limit, and is monitoring adequate to
    support the cycle? Penalise bioburden trending above the validated limit or
-   inadequate monitoring. Flag under BIOBURDEN FLAGS:.
+   inadequate monitoring. Flag under BIOBURDEN FLAGS.
 
 3. VALIDATION COMPLETENESS (20%) — CRITICAL
    Is every sterilization-validation element and sterile-barrier element present
    and current for the claimed SAL? Penalise a missing or expired validation
-   element. Flag under VALIDATION-GAP FLAGS:.
+   element. Flag under VALIDATION-GAP FLAGS.
 
 4. ROUTINE-CONTROL / REVALIDATION RIGOR (15%)
    Are routine release controls (biological indicators, dosimetry) and the

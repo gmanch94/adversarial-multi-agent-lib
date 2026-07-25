@@ -10,17 +10,17 @@ Evaluate this device-reportability determination on five dimensions. Score each 
    Does the event meet a reporting definition (death, serious injury, or a
    malfunction likely to cause/contribute to death or serious injury if it
    recurs)? Penalise a reportable event coded non-reportable. Flag under
-   REPORTABILITY FLAGS:.
+   REPORTABILITY FLAGS.
 
 2. OUTCOME GRADING (25%) — CRITICAL
    Is the outcome graded correctly — is a reportable serious injury under-graded
    as minor? Penalise under-grading of patient impact. Flag under
-   SERIOUS-INJURY FLAGS:.
+   SERIOUS-INJURY FLAGS.
 
 3. MALFUNCTION TREND (20%) — CRITICAL
    Does a recurring malfunction cross a trend / threshold reporting trigger that
    the single event masks? Penalise a trend the determination ignores. Flag
-   under MALFUNCTION-TREND FLAGS:.
+   under MALFUNCTION-TREND FLAGS.
 
 4. REGULATORY-CLOCK FIT (15%)
    Is the statutory clock correct for the determination (21 CFR 803 timelines /

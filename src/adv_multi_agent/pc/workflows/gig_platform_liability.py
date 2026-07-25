@@ -89,7 +89,7 @@ Score each 0–10.
    guidance; IRS 20-factor; state-specific TNC frameworks)? Are
    classification-dependent coverage components (occupational-accident
    vs WC, NLRB joint-employer, employment-practices) correctly routed?
-   Flag every classification gap under CLASSIFICATION FLAGS:.
+   Flag every classification gap under CLASSIFICATION FLAGS.
 
 2. COVERAGE-GAP COORDINATION (30%) — CRITICAL
    The platform-on / platform-off transition + worker's personal auto /
@@ -97,14 +97,14 @@ Score each 0–10.
    seams. Are the seams identified? Is "platform-on" defined consistently
    with platform-app telemetry? Are personal-policy commercial-use
    exclusions addressed? Flag every coverage-gap issue under
-   COVERAGE-GAP FLAGS:.
+   COVERAGE-GAP FLAGS.
 
 3. REGULATORY PATCHWORK (25%) — CRITICAL
    Does the analysis address the state-by-state regulatory mix (TNC
    statutes, gig-worker classification statutes, state AG positions,
    state DOL audit posture, NLRB joint-employer determinations)? Are
    multi-state operations addressed with state-specific routing? Flag
-   every regulatory-overlap miss under REGULATORY-PATCHWORK FLAGS:.
+   every regulatory-overlap miss under REGULATORY-PATCHWORK FLAGS.
 
 4. ACTIONABILITY (10%)
    Are next steps (platform-disclosure refresh, worker-onboarding

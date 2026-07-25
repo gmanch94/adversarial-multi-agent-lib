@@ -17,7 +17,7 @@ Evaluate the discharge plan assessment below on five dimensions (score each 0–
    medication reconciliation stated?
 5. CARE-TEAM ALIGNMENT (10%) — plan coherent with nursing, PT, OT, and SW notes?
 
-Flag deviations under: READMISSION FLAGS:, CARE-GAP FLAGS:, SOCIAL-DETERMINANT FLAGS:.
+Flag deviations under: READMISSION FLAGS, CARE-GAP FLAGS, SOCIAL-DETERMINANT FLAGS.
 
 End your review with:
   Overall score: X/10

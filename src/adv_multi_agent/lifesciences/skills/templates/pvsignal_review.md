@@ -10,17 +10,17 @@ Evaluate this pharmacovigilance signal evaluation on five dimensions. Score each
 1. SIGNAL STRENGTH (30%) — CRITICAL
    Is the signal strength correctly characterized against the disproportionality
    metrics and case evidence? Penalise a signal strength understated relative to
-   the evidence. Flag under SIGNAL-STRENGTH FLAGS:.
+   the evidence. Flag under SIGNAL-STRENGTH FLAGS.
 
 2. CAUSALITY ASSESSMENT (25%) — CRITICAL
    Is population-level causality assessed with an adequate basis (not dismissed)?
    Penalise causality dismissed without adequate justification. Flag under
-   CAUSALITY FLAGS:.
+   CAUSALITY FLAGS.
 
 3. LABELING/REGULATORY IMPACT (20%) — CRITICAL
    Does the proposed action reflect the labeling / regulatory implication of the
    signal? Penalise a labeling / regulatory-action implication the proposed
-   action does not reflect. Flag under LABELING-IMPACT FLAGS:.
+   action does not reflect. Flag under LABELING-IMPACT FLAGS.
 
 4. BENEFIT-RISK / DATA-SOURCE ADEQUACY (15%)
    Is the data source adequate for the conclusion and the benefit-risk framing

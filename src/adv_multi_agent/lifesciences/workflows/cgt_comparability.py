@@ -82,17 +82,17 @@ Evaluate this post-change comparability review on five dimensions. Score each 0�
 1. PROCESS-CHANGE IMPACT (30%) — CRITICAL
    Does the change (process, site, vector lot, scale) plausibly affect a critical
    quality attribute? Penalise a change whose impact on a CQA is not addressed.
-   Flag under PROCESS-DELTA FLAGS:.
+   Flag under PROCESS-DELTA FLAGS.
 
 2. ANALYTICAL COMPARABILITY COVERAGE (25%) — CRITICAL
    Is the analytical panel sufficient (right attributes, right stage, adequately
    powered) to conclude comparability? Penalise a panel that cannot support the
-   conclusion. Flag under ANALYTICAL-GAP FLAGS:.
+   conclusion. Flag under ANALYTICAL-GAP FLAGS.
 
 3. CLINICAL BRIDGING SUFFICIENCY (20%) — CRITICAL
    Where residual uncertainty remains, does the clinical bridging plan address it?
    Penalise residual uncertainty with no clinical bridge. Flag under
-   CLINICAL-BRIDGE FLAGS:.
+   CLINICAL-BRIDGE FLAGS.
 
 4. RISK ASSESSMENT (15%)
    Does the risk assessment identify and rank the change's quality risks

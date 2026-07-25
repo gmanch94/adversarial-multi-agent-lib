@@ -78,17 +78,17 @@ Evaluate this drug-interaction review on five dimensions. Score each 0–10.
    in the case, not against training-data severity assumptions? Are severity
    ratings consistent with the cited monograph or guideline? Penalise severity
    claims not anchored to the supplied formulary_reference. Flag gaps under
-   SEVERITY FLAGS:.
+   SEVERITY FLAGS.
 
 2. EVIDENCE-BASE CITATION (25%) — CRITICAL
    Does each interaction claim cite a specific monograph or guideline entry
    (e.g., "Lexicomp: warfarin + NSAID — major")? Penalise paraphrased severity
-   without source. Flag gaps under EVIDENCE FLAGS:.
+   without source. Flag gaps under EVIDENCE FLAGS.
 
 3. CONTRAINDICATION COMPLETENESS (20%) — CRITICAL
    Are drug-drug, drug-condition, AND drug-allergy contraindications checked?
    Is every drug in medication_list checked against new_medication? Flag every
-   gap under CONTRAINDICATION FLAGS:.
+   gap under CONTRAINDICATION FLAGS.
 
 4. ORGAN-FUNCTION DOSING (15%)
    For the patient's renal_function and hepatic_function values, are dose

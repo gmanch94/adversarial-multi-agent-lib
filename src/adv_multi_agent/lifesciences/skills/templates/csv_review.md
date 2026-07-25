@@ -11,17 +11,17 @@ Evaluate this computer system validation review on five dimensions. Score each 0
    Is the validation scope matched to the stated GxP intended use and GAMP 5
    category (effort proportionate to risk and configuration/customization)?
    Penalise scope that under- or over-shoots the intended use. Flag mismatches
-   under INTENDED-USE FLAGS:.
+   under INTENDED-USE FLAGS.
 
 2. REQUIREMENT-TEST TRACEABILITY (25%) — CRITICAL
    Does every requirement (URS/FS) trace to at least one executed test, and
    every test back to a requirement? Penalise orphan requirements and orphan
-   tests. Flag each broken link under TRACE-GAP FLAGS:.
+   tests. Flag each broken link under TRACE-GAP FLAGS.
 
 3. TEST EVIDENCE (20%) — CRITICAL
    Does every requirement asserted verified have cited IQ/OQ/PQ execution
    evidence? Penalise requirements marked verified without cited, approved
-   evidence. Flag gaps under TEST-EVIDENCE FLAGS:.
+   evidence. Flag gaps under TEST-EVIDENCE FLAGS.
 
 4. RISK-BASED VALIDATION RIGOR (15%)
    Is the depth of testing proportionate to the GAMP 5 category and patient/
@@ -34,7 +34,7 @@ Evaluate this computer system validation review on five dimensions. Score each 0
 
 Overall score = weighted average.
 Score >= 7.5 AND zero INTENDED-USE FLAGS AND zero TRACE-GAP FLAGS AND zero
-TEST-EVIDENCE FLAGS: ready for CSV / Quality IT sign-off. Otherwise: requires revision.
+TEST-EVIDENCE FLAGS, then ready for CSV / Quality IT sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

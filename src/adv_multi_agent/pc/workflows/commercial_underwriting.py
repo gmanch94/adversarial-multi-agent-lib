@@ -68,7 +68,7 @@ Evaluate this underwriting recommendation on four dimensions. Score each 0–10.
    LCM (loss-cost multiplier) for this class code and territory? Is the
    expense-ratio assumption inside the filed band? If the filing supports
    deviation, is the deviation justified? Flag every loss-cost gap under
-   LOSS-COST FLAGS:.
+   LOSS-COST FLAGS.
 
 2. EXCLUSION COMPLETENESS (30%) — CRITICAL
    For the stated hazard grade and operations, are the standard
@@ -76,13 +76,13 @@ Evaluate this underwriting recommendation on four dimensions. Score each 0–10.
    lead/asbestos for older premises; cyber / data for technology services;
    abuse/molestation for human-services classes; absolute pollution for
    contractors handling hazmat)? Do scheduled endorsements contradict the
-   main form? Flag every exclusion gap under EXCLUSION FLAGS:.
+   main form? Flag every exclusion gap under EXCLUSION FLAGS.
 
 3. CAPACITY DISCIPLINE (25%) — CRITICAL
    Would this bind exceed the line-of-business aggregate cap? Is treaty
    cession pre-cleared for the requested limits? Does the cat-zone
    concentration (named-storm, earthquake, wildfire) breach the territorial
-   cap? Flag every capacity issue under CAPACITY FLAGS:.
+   cap? Flag every capacity issue under CAPACITY FLAGS.
 
 4. ACTIONABILITY (10%)
    Are the bind terms (premium, retention, exclusions, sub-limits, scheduled
@@ -91,7 +91,7 @@ Evaluate this underwriting recommendation on four dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero LOSS-COST FLAGS AND zero EXCLUSION FLAGS AND zero
-CAPACITY FLAGS: recommendation is ready for senior-underwriter review.
+CAPACITY FLAGS, then recommendation is ready for senior-underwriter review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

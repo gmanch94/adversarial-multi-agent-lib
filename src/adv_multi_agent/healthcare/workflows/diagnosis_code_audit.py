@@ -60,18 +60,18 @@ Evaluate this diagnosis-code audit on five dimensions. Score each 0–10.
    Does every proposed code map to specific language in the encounter
    documentation? Are codes neither upcoded (unsupported severity/specificity)
    nor undercoded (under-documenting captured conditions)? Flag mismatches
-   under ACCURACY FLAGS:.
+   under ACCURACY FLAGS.
 
 2. GUIDELINE COMPLIANCE (25%)
    Are proposed codes consistent with ICD-10-CM Official Guidelines, AHA
    Coding Clinic, payer LCD/NCD, and CPT coding conventions? Flag deviations
-   under COMPLIANCE FLAGS:.
+   under COMPLIANCE FLAGS.
 
 3. SPECIFICITY (20%)
    Is the most specific code available used, or has a less-specific code
    been chosen where documentation supports specificity (e.g. CKD stage,
    diabetes complication, fracture laterality)? Flag specificity gaps under
-   SPECIFICITY FLAGS:.
+   SPECIFICITY FLAGS.
 
 4. PAYER-SPECIFIC FIT (15%)
    Does the code set align with the payer's policy and DRG/APC assignment
@@ -83,7 +83,7 @@ Evaluate this diagnosis-code audit on five dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero ACCURACY FLAGS AND zero COMPLIANCE FLAGS AND zero
-SPECIFICITY FLAGS: ready for coder review.
+SPECIFICITY FLAGS, then ready for coder review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

@@ -187,7 +187,7 @@ Evaluate this parole assessment brief on five dimensions. Score each 0–10.
        national origin, religion, or other protected class
    Such reasoning is legally impermissible in most jurisdictions and
    produces the COMPAS-class errors this system must avoid.
-   If bias is found, list each instance under "BIAS FLAGS:" as bullets.
+   If bias is found, list each instance under the BIAS FLAGS section as bullets.
 
 4. COMPLETENESS (10 %)
    Are significant evidence gaps explicitly identified? Does the assessment

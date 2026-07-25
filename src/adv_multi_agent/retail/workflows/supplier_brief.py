@@ -72,19 +72,19 @@ Evaluate this supplier negotiation brief on five dimensions. Score each 0–10.
    Does the brief name at least one credible alternative supplier from
    the alternatives input, with relative cost / capacity / lead-time
    stated? "We have other options" without specifics is NOT a BATNA.
-   Flag every unsupported or hand-waved alternative under BATNA FLAGS:.
+   Flag every unsupported or hand-waved alternative under BATNA FLAGS.
 
 2. COST-FLOOR INTEGRITY (25%) — CRITICAL
    Is the buyer's target_terms ask defensible against the cost_drivers
    input (commodity moves, freight, FX, supplier margin headroom)? An
    ask below a defensible cost floor will either be rejected or damage
-   the supplier. Flag every unsupported price ask under COST FLAGS:.
+   the supplier. Flag every unsupported price ask under COST FLAGS.
 
 3. RELATIONSHIP FIT (20%) — CRITICAL
    Given relationship_context (strategic vs preferred vs commodity), is
    the proposed tactic appropriate? Hardball tactics on a strategic
    supplier without explicit acknowledgement of the cost are a flag.
-   Surface under RELATIONSHIP FLAGS:.
+   Surface under RELATIONSHIP FLAGS.
 
 4. CONSTRAINT COVERAGE (15%)
    Does the brief account for every constraint in negotiation_constraints
@@ -96,7 +96,7 @@ Evaluate this supplier negotiation brief on five dimensions. Score each 0–10.
    point, concession order, talking points keyed to supplier objections?
 
 Overall score = weighted average.
-Score ≥ 7.5 AND zero BATNA / COST / RELATIONSHIP flags: brief is ready
+Score ≥ 7.5 AND zero BATNA / COST / RELATIONSHIP flags, then brief is ready
 for buyer + finance + legal review. Otherwise: requires revision.
 
 End your review with exactly these lines:

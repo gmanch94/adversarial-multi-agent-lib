@@ -62,7 +62,7 @@ Evaluate this demand forecast on five dimensions. Score each 0–10.
 2. ASSUMPTION AUDIT (25%)
    Are all adjustments (seasonality, promotions, weather, events) explicitly
    stated and justified with evidence from the inputs? Flag every unsubstantiated
-   assumption under ASSUMPTION FLAGS:. An assumption not present in the inputs
+   assumption under ASSUMPTION FLAGS. An assumption not present in the inputs
    is a flag even if plausible.
 
 3. RISK BALANCE (25%)

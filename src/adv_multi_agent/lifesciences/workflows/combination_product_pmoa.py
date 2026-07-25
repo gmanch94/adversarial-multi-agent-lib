@@ -61,17 +61,17 @@ Evaluate this combination-product PMOA analysis on five dimensions. Score each 0
    Is the primary mode of action consistent with the described therapeutic
    mechanism and each constituent's contribution? Penalise a PMOA that does not
    follow from the mechanism (e.g. a drug PMOA where the device provides the
-   primary therapeutic effect). Flag under PMOA FLAGS:.
+   primary therapeutic effect). Flag under PMOA FLAGS.
 
 2. LEAD-CENTER ASSIGNMENT (25%) — CRITICAL
    Does the proposed lead center (CDER / CBER / CDRH) follow from the PMOA?
    Penalise a center assignment inconsistent with the determined PMOA. Flag
-   under LEAD-CENTER FLAGS:.
+   under LEAD-CENTER FLAGS.
 
 3. PATHWAY CONSISTENCY (20%) — CRITICAL
    Is the proposed submission pathway (NDA / BLA / PMA / 510(k)) consistent with
    the center and PMOA? Penalise a pathway that does not match. Flag under
-   PATHWAY FLAGS:.
+   PATHWAY FLAGS.
 
 4. PRECEDENT ALIGNMENT (15%)
    Do cited precedent products / RFD determinations actually support the
@@ -83,7 +83,7 @@ Evaluate this combination-product PMOA analysis on five dimensions. Score each 0
 
 Overall score = weighted average.
 Score >= 7.5 AND zero PMOA FLAGS AND zero LEAD-CENTER FLAGS AND zero PATHWAY
-FLAGS: ready for Regulatory Strategy sign-off. Otherwise: requires revision.
+FLAGS, then ready for Regulatory Strategy sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

@@ -55,22 +55,22 @@ Evaluate this claims appeal review on five dimensions. Score each 0–10.
 1. EVIDENCE STRENGTH (30%)
    Does the clinical evidence directly support or contradict the original denial?
    Are labs, imaging, and treatment failure documented with specifics?
-   Flag unsupported or vague evidence claims under EVIDENCE FLAGS:.
+   Flag unsupported or vague evidence claims under EVIDENCE FLAGS.
 
 2. COVERAGE-POLICY ALIGNMENT (25%)
    Is the effective-date-versioned coverage policy cited correctly?
    Interpretation must be plain-language only — no extrapolation beyond what
-   the policy text states. Flag gaps or overreach under COVERAGE FLAGS:.
+   the policy text states. Flag gaps or overreach under COVERAGE FLAGS.
 
 3. PROCEDURAL COMPLIANCE (20%)
    Was the appeal received within the required timeline (72h urgent /
    30 days standard ERISA)? Were required notifications sent?
-   Flag timeline or notification gaps under PROCEDURE FLAGS:.
+   Flag timeline or notification gaps under PROCEDURE FLAGS.
 
 4. CONSISTENCY WITH ORIGINAL DENIAL (15%)
    Were the original review criteria (e.g., InterQual, MCG) applied correctly?
    Does the appeal identify a specific error in the original determination?
-   Flag inconsistencies under EVIDENCE FLAGS:.
+   Flag inconsistencies under EVIDENCE FLAGS.
 
 5. DECISION CLARITY (10%)
    Is the recommendation (overturn / uphold / route to external review)

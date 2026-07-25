@@ -85,11 +85,11 @@ A 361 HCT/P must satisfy ALL FOUR 21 CFR 1271.10(a) prongs; assess each.
    Does processing keep the cells/tissue minimally manipulated (relevant
    biological characteristics unaltered for structural tissue; relevant
    characteristics unaltered for cells)? Penalise processing that alters the
-   relevant characteristics. Flag under MINIMAL-MANIPULATION FLAGS:.
+   relevant characteristics. Flag under MINIMAL-MANIPULATION FLAGS.
 
 2. HOMOLOGOUS USE — prong (2) (25%) — CRITICAL
    Is the intended use homologous to the tissue's original basic function?
-   Penalise a non-homologous intended use. Flag under HOMOLOGOUS-USE FLAGS:.
+   Penalise a non-homologous intended use. Flag under HOMOLOGOUS-USE FLAGS.
 
 3. TIER CLASSIFICATION — prongs (3) and (4) plus the overall call (25%) — CRITICAL
    Prong (3): is the product NOT combined with another article (except water,
@@ -98,7 +98,7 @@ A 361 HCT/P must satisfy ALL FOUR 21 CFR 1271.10(a) prongs; assess each.
    cells (unless autologous / first- or second-degree relative / reproductive
    use)? Does the overall 361-vs-351 call follow from all four prongs? Penalise a
    disqualifying combination, a systemic effect, or a 361 call that ignores a
-   failed prong. Flag under TIER-CLASSIFICATION FLAGS:.
+   failed prong. Flag under TIER-CLASSIFICATION FLAGS.
 
 4. PRECEDENT CONSISTENCY (10%)
    Is the tier consistent with cited regulatory precedent for comparable products?

@@ -69,20 +69,20 @@ Evaluate this root-cause analysis on four dimensions. Score each 0–10.
    part teardown)? Does the chain reach a true root cause, not stop at a
    convenient proximal cause? Penalise "operator error" attribution that
    masks a design or process-control gap. Flag every weak link under
-   CAUSAL-CHAIN FLAGS:.
+   CAUSAL-CHAIN FLAGS.
 
 2. CONTAINMENT COMPLETENESS (30%) — CRITICAL
    Does the containment cover all serial numbers / batches at risk
    (in-plant WIP + finished goods + in-transit + customer-held +
    field-deployed)? Is the sort method credible (100% inspection / Cpk-
    bounded sample / measurement-system capable)? Penalise containment
-   scoped only to the failing unit. Flag every gap under CONTAINMENT FLAGS:.
+   scoped only to the failing unit. Flag every gap under CONTAINMENT FLAGS.
 
 3. SYSTEMIC IMPLICATIONS (25%) — CRITICAL
    Could this failure mode exist on adjacent products / platforms / shared
    tooling / shared supplier? Has the PFMEA RPN been re-evaluated? Are
    read-across actions for sister parts proposed? Penalise narrow
-   problem-statement scoping. Flag every miss under SYSTEMIC FLAGS:.
+   problem-statement scoping. Flag every miss under SYSTEMIC FLAGS.
 
 4. ACTIONABILITY (10%)
    Are corrective and preventive actions specific (owner, due date,
@@ -91,7 +91,7 @@ Evaluate this root-cause analysis on four dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero CAUSAL-CHAIN FLAGS AND zero CONTAINMENT FLAGS AND
-zero SYSTEMIC FLAGS: analysis is ready for quality-engineering review.
+zero SYSTEMIC FLAGS, then analysis is ready for quality-engineering review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

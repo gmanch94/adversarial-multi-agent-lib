@@ -13,7 +13,7 @@ Evaluate the diagnosis-code audit below on five dimensions (score each 0–10):
 4. PAYER-SPECIFIC FIT (15%) — DRG/APC alignment with payer policy.
 5. ACTIONABILITY (10%) — recommendations specific enough for the coder to apply.
 
-Flag deviations under: ACCURACY FLAGS:, COMPLIANCE FLAGS:, SPECIFICITY FLAGS:.
+Flag deviations under: ACCURACY FLAGS, COMPLIANCE FLAGS, SPECIFICITY FLAGS.
 
 End your review with:
   Overall score: X/10

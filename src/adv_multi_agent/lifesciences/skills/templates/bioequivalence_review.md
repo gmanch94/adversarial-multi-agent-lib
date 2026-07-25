@@ -10,17 +10,17 @@ Evaluate this bioequivalence assessment on five dimensions. Score each 0–10.
 1. PK-BOUNDARY CONFORMANCE (30%) — CRITICAL
    Does every pharmacokinetic parameter's 90% confidence interval fall within the
    applicable bioequivalence limits (typically 80.00-125.00%)? Penalise a CI
-   outside the limits treated as equivalent. Flag under PK-BOUNDARY FLAGS:.
+   outside the limits treated as equivalent. Flag under PK-BOUNDARY FLAGS.
 
 2. STUDY-DESIGN VALIDITY (25%) — CRITICAL
    Is the study design (condition, dosing, population, replicate design)
    appropriate to establish bioequivalence for this product? Penalise a design
-   element inappropriate for the product. Flag under STUDY-DESIGN FLAGS:.
+   element inappropriate for the product. Flag under STUDY-DESIGN FLAGS.
 
 3. WAIVER / LIMIT JUSTIFICATION (20%) — CRITICAL
    Is every biowaiver or tightened/widened limit justified by the applicable
    criteria (BCS class, narrow-therapeutic-index, highly-variable drug)? Penalise
-   an unjustified waiver or limit. Flag under WAIVER-JUSTIFICATION FLAGS:.
+   an unjustified waiver or limit. Flag under WAIVER-JUSTIFICATION FLAGS.
 
 4. STATISTICAL RIGOR (15%)
    Are the intra-subject CV, replicate design, and outlier handling sound?

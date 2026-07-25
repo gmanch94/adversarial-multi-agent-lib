@@ -95,14 +95,14 @@ Evaluate this reserve recommendation on five dimensions. Score each 0–10.
    Penalise reserves below the comparable-case median without justification,
    missing defence-cost reserve, missing IBNR uplift methodology, ignored
    sub-limits, or overlooked applicable coverage parts. Flag every gap
-   under RESERVE FLAGS:.
+   under RESERVE FLAGS.
 
 2. PRECEDENT QUALITY (25%) — CRITICAL
    Are cited comparable cases venue-appropriate (right state, right court
    level), recent (≤7 years for volatile lines), and selection-unbiased
    (not cherry-picked to favour low reserves)? Penalise comparables drawn
    from neutral venues when this matter sits in a plaintiff-friendly venue,
-   or vice versa. Flag every comparable-selection issue under PRECEDENT FLAGS:.
+   or vice versa. Flag every comparable-selection issue under PRECEDENT FLAGS.
 
 3. LITIGATION POSTURE (20%) — CRITICAL
    Does the reserve reflect the actual venue posture (jury propensity,
@@ -110,7 +110,7 @@ Evaluate this reserve recommendation on five dimensions. Score each 0–10.
    percentage, contributory negligence), and any class-action / multi-
    claimant / regulator-interest signals? Penalise reserves that assume
    neutral posture when the inputs show otherwise. Flag every
-   posture-vs-reserve mismatch under LITIGATION FLAGS:.
+   posture-vs-reserve mismatch under LITIGATION FLAGS.
 
 4. METHODOLOGICAL TRANSPARENCY (15%)
    Is the IBNR uplift basis stated (loss-development factor, percentage of

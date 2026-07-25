@@ -76,18 +76,18 @@ Evaluate this field-action classification on five dimensions. Score each 0–10.
 1. RECALL CLASSIFICATION (30%) — CRITICAL
    Is the proposed recall class consistent with the health hazard? Penalise a
    Class II proposed where a reasonable probability of serious adverse health
-   consequences indicates Class I. Flag under RECALL-CLASS FLAGS:.
+   consequences indicates Class I. Flag under RECALL-CLASS FLAGS.
 
 2. CORRECTION-REMOVAL REPORTABILITY (25%) — CRITICAL
    Is a 21 CFR 806 reportable correction/removal correctly characterised, and
    not mislabelled as a non-reportable enhancement or routine stock recovery?
    Penalise a reportable action characterised as non-reportable. Flag under
-   CORRECTION-REMOVAL FLAGS:.
+   CORRECTION-REMOVAL FLAGS.
 
 3. HEALTH-HAZARD EVALUATION (20%) — CRITICAL
    Does the health-hazard evaluation state probability, severity, and affected
    population without understating any? Penalise an evaluation that understates
-   the hazard. Flag under HEALTH-HAZARD FLAGS:.
+   the hazard. Flag under HEALTH-HAZARD FLAGS.
 
 4. SCOPE COMPLETENESS (15%)
    Are affected lots/serials and distribution scope complete for the root cause?

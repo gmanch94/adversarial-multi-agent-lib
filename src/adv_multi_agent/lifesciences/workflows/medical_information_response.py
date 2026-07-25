@@ -80,16 +80,16 @@ Evaluate this medical-information response on five dimensions. Score each 0–10
    Does every off-label statement stay within a truthful, non-promotional,
    evidence-based answer to the SPECIFIC unsolicited question? Penalise an
    off-label statement that exceeds the question and crosses into promotion. Flag
-   under OFF-LABEL FLAGS:.
+   under OFF-LABEL FLAGS.
 
 2. FAIR BALANCE (25%) — CRITICAL
    Is efficacy presented with fair balance of risk and limitation? Penalise
    efficacy stated without the corresponding risk/limitation. Flag under
-   BALANCE FLAGS:.
+   BALANCE FLAGS.
 
 3. EVIDENCE CALIBRATION (20%) — CRITICAL
    Is every claim stated no more strongly than its evidence level supports?
-   Penalise a claim stronger than its evidence. Flag under EVIDENCE-LEVEL FLAGS:.
+   Penalise a claim stronger than its evidence. Flag under EVIDENCE-LEVEL FLAGS.
 
 4. RESPONSIVENESS / NON-PROMOTIONAL TONE (15%)
    Does the response answer the actual question in a scientific, non-promotional

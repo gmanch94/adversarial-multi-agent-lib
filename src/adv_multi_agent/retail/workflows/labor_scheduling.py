@@ -58,12 +58,12 @@ Evaluate this labor schedule on five dimensions. Score each 0–10.
 
 2. COMPLIANCE (25%) — CRITICAL
    Check every shift against the stated labor law rules. Flag each violation
-   under COMPLIANCE FLAGS:. Examples to check:
+   under COMPLIANCE FLAGS. Examples to check:
      • Overtime: hours exceeding the stated weekly OT threshold
      • Break requirements: shifts exceeding the stated minimum without a break noted
      • Availability: staff scheduled on days they stated as unavailable
      • Any other rule explicitly stated in the labor_law_notes
-   If no violations: "COMPLIANCE FLAGS: None detected"
+   If no violations, report None detected under the COMPLIANCE FLAGS section.
 
 3. COST EFFICIENCY (20%)
    Is total estimated labor cost within the stated budget? Is overtime

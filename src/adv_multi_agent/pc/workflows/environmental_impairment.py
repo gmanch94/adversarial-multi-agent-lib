@@ -80,7 +80,7 @@ Evaluate this environmental analysis on four dimensions. Score each 0–10.
    known-condition / prior-knowledge exclusion? Are Phase I ESA
    recognized environmental conditions (RECs) addressed? Are CERCLA /
    state Superfund listings disclosed and properly characterised? Flag
-   every known-condition gap under KNOWN-CONDITION FLAGS:.
+   every known-condition gap under KNOWN-CONDITION FLAGS.
 
 2. TAIL & TRIGGER (30%) — CRITICAL
    Is the coverage-trigger doctrine for the governing state correctly
@@ -88,7 +88,7 @@ Evaluate this environmental analysis on four dimensions. Score each 0–10.
    fact)? Is the long-tail development (10–30 yrs) reflected in any
    reserve discussion? Is the policy-period attribution defensible
    against other carriers on the risk? Flag every tail / trigger gap
-   under TAIL FLAGS:.
+   under TAIL FLAGS.
 
 3. REGULATORY OVERLAP (25%) — CRITICAL
    Does the analysis address all applicable regulator regimes (EPA,
@@ -96,7 +96,7 @@ Evaluate this environmental analysis on four dimensions. Score each 0–10.
    statute, Brownfields agreements)? Are regulator-driven cost components
    (compelled investigation, oversight cost, natural-resource damages,
    mandated public participation) addressed? Flag every regulator-overlap
-   gap under REGULATORY-OVERLAP FLAGS:.
+   gap under REGULATORY-OVERLAP FLAGS.
 
 4. ACTIONABILITY (10%)
    Are next-step recommendations (Phase II scoping, regulator outreach

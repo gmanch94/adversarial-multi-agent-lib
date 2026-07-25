@@ -74,20 +74,20 @@ each 0–10.
    brand baseline AND adjacent SKUs in the same category? Does TOTAL
    category margin (incremental private-label margin minus lost
    national-brand margin) come out positive given cannibalization_
-   estimate? Flag every shortfall under CANNIBALIZATION FLAGS:.
+   estimate? Flag every shortfall under CANNIBALIZATION FLAGS.
 
 2. BRAND FIT (25%) — CRITICAL
    Does the proposed positioning in brand_positioning cohere with the
    house-brand identity (premium / value / specialty / good-better-
    best tier)? Does quality_assurance close the QA gap — testing
    protocol, recall readiness, regulatory compliance? Flag every
-   misfit or QA gap under BRAND FLAGS:.
+   misfit or QA gap under BRAND FLAGS.
 
 3. SUPPLY READINESS (20%) — CRITICAL
    Is co_manufacturer audited within an acceptable window (default:
    last 18 months)? Is stated capacity sufficient at launch volume
    AND scale-up volume? Flag every audit or capacity issue under
-   SUPPLY FLAGS:.
+   SUPPLY FLAGS.
 
 4. PRICING DEFENSIBILITY (15%)
    Given target_cost and category_margin, is target_price achievable
@@ -100,7 +100,7 @@ each 0–10.
    criteria?
 
 Overall score = weighted average.
-Score ≥ 7.5 AND zero CANNIBALIZATION / BRAND / SUPPLY flags:
+Score ≥ 7.5 AND zero CANNIBALIZATION / BRAND / SUPPLY flags, then
 recommendation is ready for category-management + brand + QA review.
 Otherwise: requires revision.
 

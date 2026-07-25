@@ -89,7 +89,7 @@ Score each 0–10.
    compared against the as-built configuration? Are similar field-failure
    patterns from other units of the same model considered? Penalise
    attributions that dismiss design as a cause without evidence. Flag
-   every gap under DESIGN-DEFECT FLAGS:.
+   every gap under DESIGN-DEFECT FLAGS.
 
 2. OPERATOR-ERROR INTEGRITY (30%) — CRITICAL
    If operator action is cited as a cause, is it supported by telematics /
@@ -97,14 +97,14 @@ Score each 0–10.
    reasonable design would prevent or tolerate? Is the operator-error
    attribution consistent with training-of-record and the operator
    manual? Penalise convenient operator-blame that ignores design
-   foreseeability. Flag every gap under OPERATOR-ERROR FLAGS:.
+   foreseeability. Flag every gap under OPERATOR-ERROR FLAGS.
 
 3. WARNING / TRAINING ADEQUACY (25%) — CRITICAL
    Was the warning / placard / operator-manual instruction adequate
    (legible, age-appropriate, in operator's language, conspicuous,
    present at point of risk)? Was the training-of-record applicable to
    the task being performed? Penalise warning hand-waving. Flag every
-   gap under WARNING-ADEQUACY FLAGS:.
+   gap under WARNING-ADEQUACY FLAGS.
 
 4. ACTIONABILITY (10%)
    Are the next actions (product-safety committee escalation, field-bulletin,

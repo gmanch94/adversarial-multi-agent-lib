@@ -72,21 +72,21 @@ Evaluate this telematics-anomaly triage on four dimensions. Score each 0–10.
    deviation-from-baseline, equipment-class detector threshold)? Are
    corroborating signals (multiple sensors, repeat occurrence, environmental
    context) cited? Penalise single-reading alerts framed as actionable.
-   Flag every gap under SIGNAL-EVIDENCE FLAGS:.
+   Flag every gap under SIGNAL-EVIDENCE FLAGS.
 
 2. FALSE-POSITIVE-COST DISCIPLINE (30%) — CRITICAL
    Is the false-positive base rate for this signal class stated? Is the
    cost of a wasted truck-roll / unnecessary parts swap / customer-trust
    hit balanced against the cost of inaction? Penalise actionability
    claims that ignore detector precision. Flag every gap under
-   FALSE-POSITIVE-COST FLAGS:.
+   FALSE-POSITIVE-COST FLAGS.
 
 3. ACTIONABILITY (25%) — CRITICAL
    Are the recommended actions specific (dispatch / customer-notify /
    continue-monitoring / escalate-to-engineering) with the trigger
    threshold for each? Are parts availability and service-network
    capacity verified? Penalise vague "investigate further" outputs that
-   create operational noise. Flag every gap under ACTIONABILITY FLAGS:.
+   create operational noise. Flag every gap under ACTIONABILITY FLAGS.
 
 4. CONTEXT INTEGRATION (10%)
    Are utilization, duty-cycle, customer-contract-SLA, equipment-age, and
@@ -94,7 +94,7 @@ Evaluate this telematics-anomaly triage on four dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero SIGNAL-EVIDENCE FLAGS AND zero FALSE-POSITIVE-COST
-FLAGS AND zero ACTIONABILITY FLAGS: triage is ready for service-
+FLAGS AND zero ACTIONABILITY FLAGS, then triage is ready for service-
 engineering review. Otherwise: requires revision.
 
 End your review with exactly these lines:

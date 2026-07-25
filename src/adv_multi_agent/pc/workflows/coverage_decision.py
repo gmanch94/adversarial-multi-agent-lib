@@ -80,14 +80,14 @@ Evaluate this coverage decision on four dimensions. Score each 0–10.
    policy_wording, not paraphrased? Is any ambiguity flagged for
    contra proferentem resolution? Does the analysis address reasonable
    expectations doctrine where applicable? Flag every wording gap under
-   WORDING FLAGS:.
+   WORDING FLAGS.
 
 2. CASE-LAW AUTHORITY (30%) — CRITICAL
    Are cited precedents in the correct jurisdiction (governing state, right
    court level)? Are they still good law (not overruled, distinguished, or
    abrogated)? Does the analysis address recent state-supreme-court
    decisions that could change the outcome? Flag every authority gap under
-   CASE-LAW FLAGS:.
+   CASE-LAW FLAGS.
 
 3. BAD-FAITH EXPOSURE (25%)
    Does the proposed decision create bad-faith exposure: pattern of delay,

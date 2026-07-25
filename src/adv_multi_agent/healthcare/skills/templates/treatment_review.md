@@ -10,7 +10,7 @@ Evaluate this treatment-plan review on five dimensions. Score each 0–10.
    Is every clinical claim grounded in a cited guideline? Citations must name
    the guideline document and section, not just summarise conclusions.
    Penalise claims not anchored to a named guideline with a section reference.
-   Flag gaps under GUIDELINE FLAGS:.
+   Flag gaps under GUIDELINE FLAGS.
 
 2. CONTRAINDICATION COMPLETENESS (25%) — CRITICAL
    Are drug-allergy, drug-organ-failure, and procedure-condition
@@ -18,13 +18,13 @@ Evaluate this treatment-plan review on five dimensions. Score each 0–10.
    (not just asserted)? Penalise reviews that assert "no contraindications"
    without checking allergy history, organ function (eGFR, liver function),
    and procedure-comorbidity pairs.
-   Flag gaps under CONTRAINDICATION FLAGS:.
+   Flag gaps under CONTRAINDICATION FLAGS.
 
 3. RISK STRATIFICATION (20%) — CRITICAL
    Is risk stratified against patient-specific factors (age, comorbidity, lab
    values) rather than baseline-population risk? Is the numeric basis cited
    (e.g. eGFR value, Child-Pugh score)?
-   Flag gaps under RISK FLAGS:.
+   Flag gaps under RISK FLAGS.
 
 4. DOSE/ROUTE/DURATION SPECIFICITY (15%)
    Are exact doses, routes, and durations specified? Vague recommendations

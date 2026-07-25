@@ -63,16 +63,16 @@ Evaluate this RMAT designation eligibility assessment on five dimensions. Score 
    Does the preliminary clinical evidence (n, design, endpoint, effect size)
    credibly indicate the therapy has the potential to address the condition?
    Penalise evidence that is underpowered, uncontrolled, or wrong-endpoint yet
-   argued as sufficient. Flag under EVIDENCE-STRETCH FLAGS:.
+   argued as sufficient. Flag under EVIDENCE-STRETCH FLAGS.
 
 2. SERIOUS OR LIFE-THREATENING CONDITION (25%) — CRITICAL
    Does the condition meet the serious-or-life-threatening bar as characterised?
-   Penalise an overstated seriousness. Flag under SERIOUS-CONDITION FLAGS:.
+   Penalise an overstated seriousness. Flag under SERIOUS-CONDITION FLAGS.
 
 3. UNMET MEDICAL NEED (20%) — CRITICAL
    Is the unmet-need claim supported against the available-therapy landscape?
    Penalise an overstated unmet need where adequate therapy exists. Flag under
-   UNMET-NEED FLAGS:.
+   UNMET-NEED FLAGS.
 
 4. REGENERATIVE-MEDICINE-THERAPY QUALIFICATION (15%)
    Does the product qualify as a regenerative-medicine therapy (cell therapy,
@@ -85,7 +85,7 @@ Evaluate this RMAT designation eligibility assessment on five dimensions. Score 
 
 Overall score = weighted average.
 Score >= 7.5 AND zero EVIDENCE-STRETCH FLAGS AND zero SERIOUS-CONDITION FLAGS AND
-zero UNMET-NEED FLAGS: ready for Regulatory Strategy sign-off. Otherwise: requires revision.
+zero UNMET-NEED FLAGS, then ready for Regulatory Strategy sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

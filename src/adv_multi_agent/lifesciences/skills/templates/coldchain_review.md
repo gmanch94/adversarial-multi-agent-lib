@@ -10,17 +10,17 @@ Evaluate this cold-chain excursion disposition on five dimensions. Score each 0�
 1. STABILITY-DATA JUSTIFICATION (30%) — CRITICAL
    Is the excursion's impact on potency/stability supported by stability data and
    the mean-kinetic-temperature (MKT) budget? Penalise an impact conclusion not
-   supported by data. Flag under STABILITY-IMPACT FLAGS:.
+   supported by data. Flag under STABILITY-IMPACT FLAGS.
 
 2. DISPOSITION CONSISTENCY (25%) — CRITICAL
    Is the proposed disposition consistent with the stability-budget conclusion?
    Penalise a disposition that contradicts the stability finding. Flag under
-   DISPOSITION FLAGS:.
+   DISPOSITION FLAGS.
 
 3. EXCURSION-SCOPE COMPLETENESS (20%) — CRITICAL
    Is the affected-units scope and the cumulative excursion fully traced? Penalise
    an understated scope or an unsummed cumulative excursion. Flag under
-   EXCURSION-SCOPE FLAGS:.
+   EXCURSION-SCOPE FLAGS.
 
 4. MKT / BUDGET RIGOR (15%)
    Is the cumulative excursion accounted for against the remaining stability

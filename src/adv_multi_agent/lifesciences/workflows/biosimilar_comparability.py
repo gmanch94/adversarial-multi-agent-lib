@@ -80,18 +80,18 @@ Evaluate this biosimilar comparability assessment on five dimensions. Score each
 1. ANALYTICAL SIMILARITY (30%) — CRITICAL
    Is every critical quality attribute (CQA) demonstrated analytically similar to
    the reference product within a justified range? Penalise a CQA not demonstrated
-   similar. Flag under ANALYTICAL-SIMILARITY FLAGS:.
+   similar. Flag under ANALYTICAL-SIMILARITY FLAGS.
 
 2. RESIDUAL-UNCERTAINTY RESOLUTION (25%) — CRITICAL
    Is the residual uncertainty after analytical/functional data honestly stated
    and resolved by the totality of evidence (PK/PD, clinical, immunogenicity)?
    Penalise understated or unresolved residual uncertainty. Flag under
-   RESIDUAL-UNCERTAINTY FLAGS:.
+   RESIDUAL-UNCERTAINTY FLAGS.
 
 3. BRIDGING & EXTRAPOLATION (20%) — CRITICAL
    Is every bridging step and every extrapolated indication justified by the
    comparability data? Penalise an unjustified bridge or extrapolation. Flag under
-   BRIDGING FLAGS:.
+   BRIDGING FLAGS.
 
 4. TOTALITY-OF-EVIDENCE COHERENCE (15%)
    Is the stepwise evidence integrated into a coherent totality-of-evidence

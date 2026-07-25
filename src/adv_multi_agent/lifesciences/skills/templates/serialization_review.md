@@ -10,17 +10,17 @@ Evaluate this serialization / DSCSA traceability review on five dimensions. Scor
 1. AGGREGATION INTEGRITY (30%) — CRITICAL
    Is every parent-child aggregation link across packaging tiers (item / case /
    pallet) present and correct? Penalise a broken or missing aggregation link.
-   Flag under AGGREGATION FLAGS:.
+   Flag under AGGREGATION FLAGS.
 
 2. EVENT / TRACEABILITY COVERAGE (25%) — CRITICAL
    Is every required EPCIS event and trading-partner data element present, so
    unit-level traceability is unbroken? Penalise a missing event or data element.
-   Flag under TRACEABILITY FLAGS:.
+   Flag under TRACEABILITY FLAGS.
 
 3. SALEABLE-RETURN VERIFICATION (20%) — CRITICAL
    Is every saleable return verified at the product-identifier (unit) level before
    resale? Penalise a saleable return processed without the required verification.
-   Flag under SALEABLE-RETURN FLAGS:.
+   Flag under SALEABLE-RETURN FLAGS.
 
 4. INTEROPERABILITY READINESS (15%)
    Is the system ready for enhanced unit-level traceability and interoperable
@@ -32,7 +32,7 @@ Evaluate this serialization / DSCSA traceability review on five dimensions. Scor
 
 Overall score = weighted average.
 Score >= 7.5 AND zero AGGREGATION FLAGS AND zero TRACEABILITY FLAGS AND zero
-SALEABLE-RETURN FLAGS: ready for Supply-Chain Compliance sign-off. Otherwise:
+SALEABLE-RETURN FLAGS, then ready for Supply-Chain Compliance sign-off. Otherwise:
 requires revision.
 
 End your review with exactly these lines:

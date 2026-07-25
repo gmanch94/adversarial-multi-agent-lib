@@ -76,16 +76,16 @@ Evaluate this assay performance-claim review on five dimensions. Score each 0–
    Does each clinical/analytical sensitivity claim stay within what the study n
    and its confidence interval support? Penalise a point-estimate claim that
    ignores the lower CI bound or an underpowered n. Flag under
-   SENSITIVITY-CLAIM FLAGS:.
+   SENSITIVITY-CLAIM FLAGS.
 
 2. SPECIFICITY-CLAIM SUPPORT (25%) — CRITICAL
    Is the specificity / false-positive-rate claim supported by the data and its
-   CI? Penalise an overstated specificity claim. Flag under SPECIFICITY-CLAIM FLAGS:.
+   CI? Penalise an overstated specificity claim. Flag under SPECIFICITY-CLAIM FLAGS.
 
 3. INTERFERENCE / CROSS-REACTIVITY (20%) — CRITICAL
    Are interferents and cross-reactants tested for every claimed matrix and
    population? Penalise a claimed matrix with untested interferents. Flag under
-   INTERFERENCE FLAGS:.
+   INTERFERENCE FLAGS.
 
 4. STUDY-DESIGN ADEQUACY (15%)
    Is the study design adequate (CLSI EP protocol, appropriate reference method,

@@ -18,7 +18,7 @@ Evaluate the prior authorization review below on five dimensions (score each 0â€
 5. DECISION CLARITY (10%) â€” recommendation specific and actionable (approve /
    pend / deny / route to medical director)?
 
-Flag deviations under: MEDICAL-NECESSITY FLAGS:, COVERAGE FLAGS:, DOCUMENTATION FLAGS:.
+Flag deviations under: MEDICAL-NECESSITY FLAGS, COVERAGE FLAGS, DOCUMENTATION FLAGS.
 
 End your review with:
   Overall score: X/10

@@ -10,17 +10,17 @@ Evaluate this premarket device cybersecurity review on five dimensions. Score ea
 1. THREAT-MODEL COMPLETENESS (30%) — CRITICAL
    Does every attack surface (interfaces, data flows, trust boundaries) have a
    security control addressing its threats? Penalise a threat or attack surface
-   with no addressing control. Flag under THREAT-MODEL FLAGS:.
+   with no addressing control. Flag under THREAT-MODEL FLAGS.
 
 2. SBOM & VULNERABILITY MANAGEMENT (25%) — CRITICAL
    Is the software bill of materials complete, and is every known component
    vulnerability resolved or risk-accepted with justification? Penalise a missing
-   component or an unresolved known vulnerability. Flag under SBOM-GAP FLAGS:.
+   component or an unresolved known vulnerability. Flag under SBOM-GAP FLAGS.
 
 3. PATCHABILITY / LIFECYCLE (20%) — CRITICAL
    Does every component that will need security patches over the device lifecycle
    have a field-update path? Penalise a component with no update mechanism. Flag
-   under PATCHABILITY FLAGS:.
+   under PATCHABILITY FLAGS.
 
 4. SECURITY-CONTROL ADEQUACY (15%)
    Are the security controls (authentication, encryption, integrity) proportionate
@@ -33,7 +33,7 @@ Evaluate this premarket device cybersecurity review on five dimensions. Score ea
 
 Overall score = weighted average.
 Score >= 7.5 AND zero THREAT-MODEL FLAGS AND zero SBOM-GAP FLAGS AND zero
-PATCHABILITY FLAGS: ready for Product Security sign-off. Otherwise: requires revision.
+PATCHABILITY FLAGS, then ready for Product Security sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

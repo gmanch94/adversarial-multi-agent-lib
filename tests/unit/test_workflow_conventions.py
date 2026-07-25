@@ -35,6 +35,17 @@ Guards:
        cut a long request's trailing fields off the executor prompt below
        n_fields x _MAX_FIELD_CHARS, and the reviewer only sees the executor
        draft, so the dropped evidence left the whole adversarial loop (H-1).
+  G9 — no colon-suffixed flag header (`_FLAG_HEADERS` member) may appear in the
+       reviewer-criteria PROSE; it belongs ONLY in the emission block. A header
+       restated in the rubric body (a cross-ref "flag under X FLAGS:." or a
+       "zero X FLAGS: ready" scoring line) is echoed by the reviewer, and once
+       the echo lands line-anchored in the critique `_header_anchor_re` matches
+       it: `extract_flags` unions in the template placeholder and, in a veto
+       module, `extract_veto_directive` returns the literal placeholder so the
+       halt fires with its reason destroyed (M-1, 2026-07-25 CGT ship-audit;
+       same root class as C-1 but fail-CLOSED on the gate). Refer to a section
+       in prose WITHOUT its trailing colon. Covers modules AND the mirrored
+       `skills/templates/*_review.md`.
 
   (G8 is reserved for the L-1 gate-uses-`_flag_classes_unresolved` guard from
   the 2026-07-25 CGT ship-audit, not yet built.)
@@ -86,6 +97,47 @@ def _workflow_files() -> list[Path]:
 
 _WORKFLOW_FILES = _workflow_files()
 _IDS = [f"{p.parent.parent.name}/{p.name}" for p in _WORKFLOW_FILES]
+
+
+def _template_files() -> list[Path]:
+    files: list[Path] = []
+    for domain in _DOMAINS:
+        td = _SRC / domain / "skills" / "templates"
+        if td.is_dir():
+            files.extend(sorted(td.glob("*_review.md")))
+    return files
+
+
+_TEMPLATE_FILES = _template_files()
+_TPL_IDS = [f"{p.parent.parent.parent.name}/{p.name}" for p in _TEMPLATE_FILES]
+
+# G9 does NOT scan only the declared `_FLAG_HEADERS`. The runtime parser's
+# generic terminator `_is_section_header` fires on ANY uppercase LHS ending in
+# FLAGS followed by a colon (`core/_internal.py`), so a *non-tuple* header
+# echoed line-anchored into a real section would truncate it — fail-OPEN, worse
+# than M-1's fail-closed. This case-SENSITIVE, whitespace-flexible pattern
+# matches that terminator shape at ANY line position (a reviewer reformats when
+# it echoes, so a midline rubric mention is as dangerous as a line-anchored
+# one). Case-sensitive on purpose: an all-lowercase "red flags:" in prose is not
+# a parser terminator, so matching it would be a false positive.
+_GENERIC_FLAG_HEADER_RE = re.compile(
+    r"[A-Z][A-Z0-9\-]*(?:[ \t]+[A-Z0-9\-]+)*[ \t]+FLAGS[ \t]*:"
+)
+
+
+def _declared_header_re(header: str) -> re.Pattern[str]:
+    """Case-insensitive, whitespace-flexible matcher for one declared header.
+
+    `_header_anchor_re` (what `extract_flags` runs on the critique) is `(?mi)`
+    with `[ \\t]+` between words, so `moa-linkage flags:` or `MOA-LINKAGE  FLAGS:`
+    is a live parser match that a case-sensitive substring compare would miss.
+    NOT a swap-in for `_header_anchor_re`: this is intentionally position-
+    agnostic (no `^`) so it also catches a MIDLINE echo the reviewer could
+    reflow to line-start; do not "simplify" it to the anchored form.
+    """
+    core = header.rstrip(":").strip()
+    body = r"[ \t]+".join(re.escape(word) for word in core.split())
+    return re.compile(r"(?i)" + body + r"[ \t]*:")
 
 
 def _parse(path: Path) -> ast.Module:
@@ -485,4 +537,93 @@ def test_request_text_routes_through_shared_helper(path: Path) -> None:
         "the request through sanitize_request_text(request) instead — a bespoke "
         "sanitize_for_prompt(..., max_chars=N) cap silently guillotines the "
         "trailing request fields off the executor prompt (H-1 / D-A11-6)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# G9 — no colon-suffixed flag header in reviewer-criteria PROSE  (M-1)
+# ---------------------------------------------------------------------------
+
+
+def _criteria_prose(text: str) -> str:
+    """The rubric body preceding the emission block.
+
+    The colon-headers the reviewer is TOLD to emit live in the emission block;
+    everything before it is prose the reviewer reads and may echo. `blocks[-1]`
+    is deliberate: the veto-criteria sentence ("End your review with a REVIEWER
+    VETO: line ...") is not matched by `_EMISSION_BLOCK_RE` (no trailing colon
+    on "with"), so the last match is the real flag-emission block.
+    """
+    blocks = list(_EMISSION_BLOCK_RE.finditer(text))
+    return text[: blocks[-1].start()] if blocks else text
+
+
+def _prose_header_offenders(prose: str, declared: tuple[str, ...]) -> list[str]:
+    """Every colon-suffixed section header the parser could match in `prose`.
+
+    Two prongs, matching the two runtime matchers:
+      - the generic uppercase `X FLAGS:` shape (`_is_section_header`, the sibling
+        terminator) — catches a header that is NOT in this module's tuple; and
+      - each declared header, case-insensitively and whitespace-flexibly
+        (`_header_anchor_re`, `(?mi)`) — catches a `moa-linkage flags:` variant
+        the generic uppercase prong would skip.
+    """
+    hits = {m.group(0) for m in _GENERIC_FLAG_HEADER_RE.finditer(prose)}
+    for header in declared:
+        if _declared_header_re(header).search(prose):
+            hits.add(header)
+    return sorted(hits)
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_FILES, ids=_IDS)
+def test_no_flag_header_colon_in_module_criteria_prose(path: Path) -> None:
+    """A restated header in the rubric body is a fail-CLOSED finding-integrity
+    hole (M-1). The reviewer echoes it; once the echo is line-anchored in the
+    critique, `_header_anchor_re` matches it and the real findings/veto reason
+    are replaced by the template placeholder. Keep the colon-form in the
+    emission block only; refer to a section in prose without its colon.
+    """
+    tree = _parse(path)
+    declared = _flag_headers(tree)
+    if declared is None:
+        return
+    offenders: list[str] = []
+    for name, value in _module_assignments(tree).items():
+        if not (
+            name.endswith("_CRITERIA")
+            and isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        ):
+            continue
+        prose = _criteria_prose(value.value)
+        offenders += [f"{name}:{tok!r}" for tok in _prose_header_offenders(prose, declared)]
+    assert not offenders, (
+        f"{path.name} restates flag header(s) {offenders} in reviewer-criteria "
+        "prose. A colon-suffixed header belongs ONLY in the emission block: "
+        "restated in the rubric body it is echoed by the reviewer, and once the "
+        "echo lands line-anchored in the critique the parser slices the real "
+        "findings (and, in a veto module, the veto reason) out (M-1). Refer to "
+        "the section without its trailing colon, e.g. 'flag under MOA-LINKAGE "
+        "FLAGS'."
+    )
+
+
+@pytest.mark.parametrize("path", _TEMPLATE_FILES, ids=_TPL_IDS)
+def test_no_flag_header_colon_in_template_prose(path: Path) -> None:
+    """Same invariant on the mirrored skill templates (`*_review.md`).
+
+    No tuple to read here, so the generic uppercase prong carries it (template
+    headers are uppercase). A template with no emission block is scanned whole —
+    that is deliberate, not a silent opt-out: a genuine flag template has an
+    emission block, and a non-flag review template has no `X FLAGS:` token to
+    match, so scanning the whole file only ever flags a malformed one.
+    """
+    text = path.read_text(encoding="utf-8")
+    blocks = list(_EMISSION_BLOCK_RE.finditer(text))
+    prose = text[: blocks[-1].start()] if blocks else text
+    offenders = _prose_header_offenders(prose, ())
+    assert not offenders, (
+        f"{path.name} restates flag header(s) {offenders} in prose above its "
+        "emission block. The reviewer echoes the rubric and the parser then "
+        "slices real findings out (M-1). Drop the trailing colon in prose."
     )

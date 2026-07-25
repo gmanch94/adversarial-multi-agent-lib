@@ -74,17 +74,17 @@ Evaluate this clinical protocol design review on five dimensions. Score each 0�
 1. ENDPOINT VALIDITY (30%) — CRITICAL
    Is the primary endpoint validated and able to support the study objective (no
    misused surrogate)? Penalise an endpoint that cannot support the objective.
-   Flag under ENDPOINT FLAGS:.
+   Flag under ENDPOINT FLAGS.
 
 2. STATISTICAL POWER (25%) — CRITICAL
    Is the sample size and power adequate to detect the effect, with justified
    assumptions? Penalise an underpowered design or unjustified effect-size
-   assumptions. Flag under POWER FLAGS:.
+   assumptions. Flag under POWER FLAGS.
 
 3. SAFETY MONITORING (20%) — CRITICAL
    Are the safety-monitoring plan and stopping rules adequate for the known
    risks (DSMB, pre-specified stopping rules)? Penalise inadequate monitoring for
-   a known serious risk. Flag under SAFETY-MONITORING FLAGS:.
+   a known serious risk. Flag under SAFETY-MONITORING FLAGS.
 
 4. ETHICS / POPULATION-APPROPRIATENESS (15%)
    Is the eligibility appropriate and proportionate to the risk, with safeguards

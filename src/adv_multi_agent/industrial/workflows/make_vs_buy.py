@@ -70,7 +70,7 @@ Evaluate this make-vs-buy recommendation on four dimensions. Score each 0–10.
    capex amortisation + capacity-opportunity)? Is the external bid
    normalised (currency, MOQ, Incoterm, freight, duty, tooling
    amortisation)? Penalise unit-price-only comparisons; flag missing
-   total-cost-of-ownership elements under COST FLAGS:.
+   total-cost-of-ownership elements under COST FLAGS.
 
 2. CAPABILITY HONESTY (30%) — CRITICAL
    Does the internal-capability claim match the actual process maturity
@@ -78,14 +78,14 @@ Evaluate this make-vs-buy recommendation on four dimensions. Score each 0–10.
    bandwidth? Is the external-supplier capability claim backed by
    audit / PPAP / first-article? Penalise capability hand-waving and
    "we can do this" claims with no evidence trail. Flag every gap under
-   CAPABILITY FLAGS:.
+   CAPABILITY FLAGS.
 
 3. IP-LEAK / STRATEGIC RISK (25%) — CRITICAL
    Does the recommendation expose core process know-how or design IP to a
    geography or supplier with elevated leak / counterfeit / forced-tech-
    transfer risk? Are export-control classifications (EAR / ITAR / EU
    dual-use) addressed? Penalise outsourcing of differentiating processes
-   without an IP-protection plan. Flag every issue under IP-LEAK FLAGS:.
+   without an IP-protection plan. Flag every issue under IP-LEAK FLAGS.
 
 4. ACTIONABILITY (15%)
    Are the next steps (contract term, capacity reservation, exit clause,
@@ -94,7 +94,7 @@ Evaluate this make-vs-buy recommendation on four dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero COST FLAGS AND zero CAPABILITY FLAGS AND zero
-IP-LEAK FLAGS: recommendation is ready for sourcing-council review.
+IP-LEAK FLAGS, then recommendation is ready for sourcing-council review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

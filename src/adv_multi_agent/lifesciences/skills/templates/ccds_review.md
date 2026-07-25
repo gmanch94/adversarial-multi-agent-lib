@@ -10,17 +10,17 @@ Evaluate this CCDS safety label-change review on five dimensions. Score each 0�
 1. SIGNAL-TO-LABEL FIDELITY (30%) — CRITICAL
    Does the proposed CCDS wording convey the established safety signal faithfully,
    with no safety implication understated or omitted? Penalise wording that
-   understates the signal. Flag under SAFETY-SIGNAL FLAGS:.
+   understates the signal. Flag under SAFETY-SIGNAL FLAGS.
 
 2. REGIONAL CONSISTENCY (25%) — CRITICAL
    Does every regional/local label reflect the CCDS change, with any divergence
    justified and no market missed? Penalise an unjustified divergence or a missed
-   market. Flag under REGIONAL-DIVERGENCE FLAGS:.
+   market. Flag under REGIONAL-DIVERGENCE FLAGS.
 
 3. TIMELINE COMPLIANCE (20%) — CRITICAL
    Does the plan meet every mandatory regulatory notification/submission clock for
    the safety change? Penalise a timeline the plan will miss. Flag under
-   IMPLEMENTATION-CLOCK FLAGS:.
+   IMPLEMENTATION-CLOCK FLAGS.
 
 4. BENEFIT-RISK COHERENCE (15%)
    Is the wording proportionate to the signal and the population-level

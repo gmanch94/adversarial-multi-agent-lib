@@ -78,18 +78,18 @@ Evaluate this donor-eligibility determination review on five dimensions. Score e
 1. DONOR SCREENING (30%) — CRITICAL
    Is the required risk-factor screening (history, physical assessment, records
    review) complete and correctly interpreted? Penalise incomplete or misread
-   screening. Flag under SCREENING-GAP FLAGS:.
+   screening. Flag under SCREENING-GAP FLAGS.
 
 2. COMMUNICABLE-DISEASE TESTING (25%) — CRITICAL
    Is the required communicable-disease testing present, by the right method, and
    correctly read (with plasma-dilution addressed)? Penalise missing / wrong /
-   misread testing. Flag under TESTING-GAP FLAGS:.
+   misread testing. Flag under TESTING-GAP FLAGS.
 
 3. ELIGIBILITY DETERMINATION (20%) — CRITICAL
    Is the "eligible" call consistent with the screening and testing evidence, and
    is any urgent-medical-need path documented as such rather than as routine
    eligibility? Penalise an eligible call the evidence does not support. Flag
-   under INELIGIBLE-RELEASE FLAGS:.
+   under INELIGIBLE-RELEASE FLAGS.
 
 4. PLASMA-DILUTION & URGENT-NEED DOCUMENTATION (15%)
    Are plasma dilution and any urgent-medical-need path assessed and documented?

@@ -79,7 +79,7 @@ Evaluate this clinical-trial eligibility assessment on five dimensions. Score ea
    Every eligibility statement must map to a protocol section number. Do not
    paraphrase; cite the protocol section directly. Penalise any eligibility
    claim that lacks a protocol-section reference.
-   Flag gaps under ELIGIBILITY FLAGS:.
+   Flag gaps under ELIGIBILITY FLAGS.
 
 2. BIAS DETECTION (25%) — CRITICAL
    Scrutinise whether any protected-class attribute — race, ethnicity, sex,
@@ -92,13 +92,13 @@ Evaluate this clinical-trial eligibility assessment on five dimensions. Score ea
    neurology RCTs). Any eligibility reasoning that echoes historical
    under-representation patterns must be flagged — the reviewer must veto
    rather than approve bias-driven exclusion.
-   Flag gaps under BIAS FLAGS:.
+   Flag gaps under BIAS FLAGS.
 
 3. EVIDENCE GROUNDING (20%) — CRITICAL
    biomarker_status, lab values, and prior_treatments must be cited directly
    from the input fields, not inferred from free-text summaries or outside
    knowledge. Do not import data not present in the request.
-   Flag gaps under EVIDENCE FLAGS:.
+   Flag gaps under EVIDENCE FLAGS.
 
 4. SAFETY EXCLUSION COMPLETENESS (15%)
    Life-threatening exclusion criteria — organ dysfunction per protocol
@@ -106,7 +106,7 @@ Evaluate this clinical-trial eligibility assessment on five dimensions. Score ea
    medications, active infection per protocol — must be verified explicitly
    against the protocol and biomarker_status. Penalise assessments that assert
    "no exclusions" without checking each life-threatening exclusion class.
-   Flag life-threatening gaps under ELIGIBILITY FLAGS:.
+   Flag life-threatening gaps under ELIGIBILITY FLAGS.
 
 5. DECISION CLARITY (10%)
    The final determination must be one of: eligible / ineligible / requires

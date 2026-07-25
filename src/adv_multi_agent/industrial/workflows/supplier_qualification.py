@@ -69,20 +69,20 @@ Score each 0–10.
    customer base? Penalise "we have not heard of any issues" framing
    that hides genuine stress (negative working capital, covenant
    pressure, late payments to sub-tier). Flag every gap under
-   FINANCIAL FLAGS:.
+   FINANCIAL FLAGS.
 
 2. QUALITY SYSTEM (30%) — CRITICAL
    Does the supplier hold the required certifications (IATF 16949 / ISO
    9001 / AS9100 as applicable) with current audit evidence? Is PPAP
    status appropriate for the planned parts? SCAR / 8D history available?
    Penalise self-attested quality claims with no audit evidence. Flag
-   every gap under QUALITY FLAGS:.
+   every gap under QUALITY FLAGS.
 
 3. GEOGRAPHIC / CONCENTRATION (25%) — CRITICAL
    Does this qualification create a single-geography or single-supplier
    dependency for the affected commodity? Are Tier-2 / Tier-3 sub-suppliers
    mapped and resilient? Are sanctions / export-control screens current?
-   Flag every issue under GEO-CONCENTRATION FLAGS:.
+   Flag every issue under GEO-CONCENTRATION FLAGS.
 
 4. ACTIONABILITY (15%)
    Are the next steps (PPAP plan, capacity reservation, BCP/DRP review,
@@ -91,7 +91,7 @@ Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero FINANCIAL FLAGS AND zero QUALITY FLAGS AND zero
-GEO-CONCENTRATION FLAGS: recommendation is ready for procurement-council
+GEO-CONCENTRATION FLAGS, then recommendation is ready for procurement-council
 review. Otherwise: requires revision.
 
 End your review with exactly these lines:

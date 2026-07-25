@@ -57,17 +57,17 @@ Evaluate this UDI labeling review on five dimensions. Score each 0–10.
 1. IDENTIFIER STRUCTURE (30%) — CRITICAL
    Is the DI/PI structure valid for the declared issuing agency (GS1 / HIBCC /
    ICCBBA), with the required production identifiers present? Penalise an invalid
-   or incomplete identifier structure. Flag under IDENTIFIER FLAGS:.
+   or incomplete identifier structure. Flag under IDENTIFIER FLAGS.
 
 2. GUDID/EUDAMED CONSISTENCY (25%) — CRITICAL
    Does every database attribute (GUDID / EUDAMED) match the label and artwork?
    Penalise a database attribute inconsistent with the label. Flag under
-   GUDID-CONSISTENCY FLAGS:.
+   GUDID-CONSISTENCY FLAGS.
 
 3. PACKAGING-TIER COVERAGE (20%) — CRITICAL
    Does every packaging tier that requires a UDI carry one, with the hierarchy DI
    relationships intact? Penalise a packaging tier missing its UDI or a broken
-   hierarchy. Flag under PACKAGING-TIER FLAGS:.
+   hierarchy. Flag under PACKAGING-TIER FLAGS.
 
 4. LABEL-ARTWORK CONSISTENCY (15%)
    Are the human-readable and AIDC (barcode) forms consistent, and are
@@ -79,7 +79,7 @@ Evaluate this UDI labeling review on five dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score >= 7.5 AND zero IDENTIFIER FLAGS AND zero GUDID-CONSISTENCY FLAGS AND zero
-PACKAGING-TIER FLAGS: ready for Regulatory Labeling sign-off. Otherwise: requires revision.
+PACKAGING-TIER FLAGS, then ready for Regulatory Labeling sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

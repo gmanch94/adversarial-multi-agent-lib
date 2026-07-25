@@ -69,20 +69,20 @@ Evaluate this promo plan on five dimensions. Score each 0–10.
    elasticity_estimate input (category benchmark, prior price-test, or
    structured econometric source)? Flag every elasticity claim that
    extrapolates beyond the supplied range, or imports a default elasticity
-   not present in the inputs. Surface under ELASTICITY FLAGS:.
+   not present in the inputs. Surface under ELASTICITY FLAGS.
 
 2. MARGIN INTEGRITY (25%) — CRITICAL
    Does the net contribution margin INCLUDING expected cannibalization on
    the SKUs named in cannibalization_risk stay at or above margin_floor?
    Account for: discount depth, expected substitution rate, free-rider
    redemption, fulfilment cost lift if applicable. Flag every shortfall
-   under MARGIN FLAGS:.
+   under MARGIN FLAGS.
 
 3. TIMING FIT (20%)
    Does the promo_window collide with a concurrent campaign (internal),
    a competitor event (external), or a major demand event in a way that
    would distort the read of the promo's incremental lift? Flag under
-   TIMING FLAGS:.
+   TIMING FLAGS.
 
 4. COMPETITIVE COHERENCE (15%)
    Is the proposed depth coherent given competitor_pricing — neither so
@@ -94,7 +94,7 @@ Evaluate this promo plan on five dimensions. Score each 0–10.
    start/end times, success metric, kill criteria?
 
 Overall score = weighted average.
-Score ≥ 7.5 AND zero ELASTICITY / MARGIN / TIMING flags: promo is ready
+Score ≥ 7.5 AND zero ELASTICITY / MARGIN / TIMING flags, then promo is ready
 for category-manager + finance review. Otherwise: requires revision.
 
 End your review with exactly these lines:

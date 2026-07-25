@@ -80,13 +80,13 @@ Evaluate this recall plan on five dimensions. Score each 0–10.
    stated contamination signal and supplier_lot evidence? Penalise scope
    that is too narrow (missed lots, missed stores, missed dates) OR too
    broad (unjustified scope expansion creates supplier-relations risk and
-   waste). Flag every gap under SCOPE FLAGS:.
+   waste). Flag every gap under SCOPE FLAGS.
 
 2. EVIDENCE GROUNDING (25%) — CRITICAL
    Is the recall scoped against primary evidence (lab confirmation,
    regulatory directive, traceable lot match) — not against a single
    customer complaint or a hand-wavy signal? Flag every unsupported
-   scope decision under EVIDENCE FLAGS:.
+   scope decision under EVIDENCE FLAGS.
 
 3. REGULATORY FIT (20%)
    Does the plan meet the obligations stated in regulatory_context (e.g.

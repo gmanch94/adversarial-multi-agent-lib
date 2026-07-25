@@ -72,14 +72,14 @@ Evaluate this ECO impact assessment on four dimensions. Score each 0–10.
    directions / interchangeable one-way / not interchangeable)? Is the
    effectivity (date-effective vs serial-effective vs lot-effective)
    credible? Penalise wave-of-the-hand "drop-in replacement" claims with
-   no F/F/F evidence. Flag every gap under SUPERSESSION FLAGS:.
+   no F/F/F evidence. Flag every gap under SUPERSESSION FLAGS.
 
 2. FMEA-DELTA COMPLETENESS (30%) — CRITICAL
    Does the assessment update PFMEA / DFMEA rows for new failure modes
    introduced or eliminated? Are severity / occurrence / detection ratings
    re-evaluated with evidence? Is the risk-priority-number delta stated?
    Penalise design changes with no FMEA update. Flag every gap under
-   FMEA-DELTA FLAGS:.
+   FMEA-DELTA FLAGS.
 
 3. REGRESSION RISK (25%) — CRITICAL
    Does the assessment identify deployed-product compatibility risk
@@ -87,7 +87,7 @@ Evaluate this ECO impact assessment on four dimensions. Score each 0–10.
    adjacent-product reuse of the same component)? Is the regression test
    plan adequate (verification + validation + field-trial)? Penalise
    narrowly-scoped regression that ignores field-installed product.
-   Flag every gap under REGRESSION FLAGS:.
+   Flag every gap under REGRESSION FLAGS.
 
 4. ACTIONABILITY (15%)
    Are the next actions (supplier notice, PPAP re-run, service-bulletin,
@@ -96,7 +96,7 @@ Evaluate this ECO impact assessment on four dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero SUPERSESSION FLAGS AND zero FMEA-DELTA FLAGS AND
-zero REGRESSION FLAGS: assessment is ready for change-advisory-board
+zero REGRESSION FLAGS, then assessment is ready for change-advisory-board
 review. Otherwise: requires revision.
 
 End your review with exactly these lines:

@@ -79,18 +79,18 @@ Evaluate this replenishment schedule on five dimensions. Score each 0–10.
    no orders dated such that they would only arrive AFTER an on-hand
    stockout? Does the schedule import any optimistic lead-time
    assumption ("supplier said they could expedite") not present in the
-   inputs? Flag every gap under LEAD-TIME FLAGS:.
+   inputs? Flag every gap under LEAD-TIME FLAGS.
 
 2. STOCKOUT PROTECTION (30%) — CRITICAL
    For every SKU in sku_list, does projected on-hand stay at or above
    safety_stock_policy throughout the planning window, accounting for
    demand_forecast variability AND the stated lead time? Flag every
-   projected breach under STOCKOUT FLAGS:.
+   projected breach under STOCKOUT FLAGS.
 
 3. CAPACITY FIT (20%) — CRITICAL
    Does the order pattern respect dc_capacity (pallet positions,
    receiving windows) AND supplier_constraints (MOQ, case pack, ship-
-   day windows)? Flag every breach under CAPACITY FLAGS:.
+   day windows)? Flag every breach under CAPACITY FLAGS.
 
 4. ECONOMICS (15%)
    Does the order pattern hit a defensible spot on the truck_economics
@@ -103,7 +103,7 @@ Evaluate this replenishment schedule on five dimensions. Score each 0–10.
    applicable?
 
 Overall score = weighted average.
-Score ≥ 7.5 AND zero LEAD-TIME / STOCKOUT / CAPACITY flags: schedule is
+Score ≥ 7.5 AND zero LEAD-TIME / STOCKOUT / CAPACITY flags, then schedule is
 ready for supply-planning review. Otherwise: requires revision.
 
 End your review with exactly these lines:

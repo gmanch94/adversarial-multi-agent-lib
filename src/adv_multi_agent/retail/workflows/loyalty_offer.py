@@ -65,20 +65,20 @@ Evaluate this loyalty offer on five dimensions. Score each 0–10.
    proxies to challenge: ZIP code → race/income; language preference →
    ethnicity/national origin; first-name n-grams → gender/ethnicity;
    household composition inferred from basket → family status; device or
-   payment-method patterns → income. Flag under FAIRNESS FLAGS:.
+   payment-method patterns → income. Flag under FAIRNESS FLAGS.
 
 2. MARGIN (25%)
    Does the projected per-unit contribution margin stay at or above the
    stated margin_floor AFTER accounting for: discount depth, expected
    cannibalization, fulfilment cost lift (if applicable), and free-rider
    redemption by customers who would have purchased anyway? Flag every
-   case where margin math leaves the floor under MARGIN FLAGS:.
+   case where margin math leaves the floor under MARGIN FLAGS.
 
 3. GAMING RISK (20%)
    Is there a structural exploit a material fraction of customers could
    take to redeem disproportionate value (basket-splitting, multi-account,
    threshold-bumping returns, gift-card laundering)? Flag plausible paths
-   under GAMING FLAGS:.
+   under GAMING FLAGS.
 
 4. SEGMENT REACH (15%)
    Is the segment large enough to matter and small enough to be defensible?
@@ -90,7 +90,7 @@ Evaluate this loyalty offer on five dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero FAIRNESS FLAGS AND zero MARGIN FLAGS AND zero
-GAMING FLAGS: offer is ready for legal + finance review.
+GAMING FLAGS, then offer is ready for legal + finance review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

@@ -20,7 +20,7 @@ Evaluate the claims appeal review below on five dimensions (score each 0–10):
 5. DECISION CLARITY (10%) — recommendation specific and actionable (overturn /
    uphold / route to external review)?
 
-Flag deviations under: EVIDENCE FLAGS:, COVERAGE FLAGS:, PROCEDURE FLAGS:.
+Flag deviations under: EVIDENCE FLAGS, COVERAGE FLAGS, PROCEDURE FLAGS.
 
 End your review with:
   Overall score: X/10

@@ -89,21 +89,21 @@ Evaluate this recall scope on four dimensions. Score each 0–10.
    and quantified? Does it support a substantial-product-hazard finding
    under CPSC § 15(b)? Penalise trigger evidence that is anecdotal,
    single-source, or under-quantified.
-   Flag every gap under TRIGGER-EVIDENCE FLAGS:.
+   Flag every gap under TRIGGER-EVIDENCE FLAGS.
 
 2. FLEET-SCOPE COMPLETENESS (30%) — CRITICAL
    Does the scope cover all serial numbers / lots / build dates / option
    configurations exposed to the failure mode? Are adjacent products
    sharing the same component included? Are pre-production / engineering
    builds addressed? Penalise narrow scope that misses adjacent
-   exposure. Flag every gap under FLEET-SCOPE FLAGS:.
+   exposure. Flag every gap under FLEET-SCOPE FLAGS.
 
 3. REGULATORY NOTIFICATION (25%) — CRITICAL
    Are all applicable regulator notifications identified — CPSC § 15(b),
    OSHA, NHTSA-equivalent (if road-going), EU RAPEX / Safety Gate, state
    AG, country-specific where exported? Are the 24-hour / 5-day reporting
    clocks respected? Penalise missing notifications. Flag every gap under
-   REGULATORY-NOTIFY FLAGS:.
+   REGULATORY-NOTIFY FLAGS.
 
 4. ACTIONABILITY (10%)
    Are the next actions (service-bulletin draft, parts availability,

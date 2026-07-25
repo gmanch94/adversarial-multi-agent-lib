@@ -61,24 +61,24 @@ Evaluate this prior authorization request on five dimensions. Score each 0–10.
    Is every necessity claim grounded in the submitted clinical_guidelines
    (e.g., InterQual, MCG, ACC/AHA)? Do not paraphrase from general clinical
    practice or LLM training knowledge not present in the submitted data.
-   Flag unsupported necessity claims under MEDICAL-NECESSITY FLAGS:.
+   Flag unsupported necessity claims under MEDICAL-NECESSITY FLAGS.
 
 2. COVERAGE-POLICY FIT (25%)
    Does the requested service match a specific coverage policy section cited
    in clinical_guidelines? If the service is outside stated policy or
    coverage is ambiguous, recommend medical-director review rather than
-   approval. Flag gaps under COVERAGE FLAGS:.
+   approval. Flag gaps under COVERAGE FLAGS.
 
 3. DOCUMENTATION SUFFICIENCY (20%)
    Are all required documentation elements present (diagnostic confirmation,
    NYHA/functional class, step-therapy evidence, prescriber attestation)?
    Name any missing element specifically — do not approve without it.
-   Flag gaps under DOCUMENTATION FLAGS:.
+   Flag gaps under DOCUMENTATION FLAGS.
 
 4. STEP-THERAPY VERIFICATION (15%)
    Are the alternatives_tried consistent with the payer's step therapy
    requirements for this service? Verify that each required step is
-   documented with duration and outcome. Flag gaps under COVERAGE FLAGS:.
+   documented with duration and outcome. Flag gaps under COVERAGE FLAGS.
 
 5. DECISION CLARITY (10%)
    Is the recommendation (approve / pend for additional information /
@@ -87,7 +87,7 @@ Evaluate this prior authorization request on five dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero MEDICAL-NECESSITY FLAGS AND zero COVERAGE FLAGS AND
-zero DOCUMENTATION FLAGS: ready for nurse reviewer sign-off.
+zero DOCUMENTATION FLAGS, then ready for nurse reviewer sign-off.
 Otherwise: requires revision or escalation.
 
 End your review with exactly these lines:

@@ -10,19 +10,19 @@ Evaluate this adverse-event triage on five dimensions. Score each 0–10.
    Is the event graded against CTCAE / ICH E2A definitions, NOT general
    practice intuition? Are grade assignments consistent with reporter's
    narrative? Penalise severity claims not anchored to CTCAE or ICH E2A.
-   Flag gaps under SEVERITY FLAGS:.
+   Flag gaps under SEVERITY FLAGS.
 
 2. CAUSALITY ASSESSMENT (25%) — CRITICAL
    Is WHO-UMC or Naranjo causality scale applied? Are specific criteria cited
    (temporal relationship, dechallenge/rechallenge, alternative cause ruled
    out)? Penalise causality assertions not grounded in a named scale.
-   Flag gaps under CAUSALITY FLAGS:.
+   Flag gaps under CAUSALITY FLAGS.
 
 3. REGULATORY-OBLIGATION FIT (20%) — CRITICAL
    Is the reporting obligation matched to FDA 21 CFR 312 / EMA EudraVigilance /
    ICH E2A reporting clock? (7-day for fatal/life-threatening unexpected;
    15-day for other serious unexpected.) Does the triage correctly identify
-   whether the ADR is in current labeling? Flag gaps under REGULATORY FLAGS:.
+   whether the ADR is in current labeling? Flag gaps under REGULATORY FLAGS.
 
 4. MedDRA CODING ACCURACY (15%)
    Is the preferred-term / system-organ-class alignment plausible for the

@@ -81,17 +81,17 @@ Evaluate this potency-assay adequacy review on five dimensions. Score each 0–1
 1. MECHANISM-OF-ACTION LINKAGE (30%) — CRITICAL
    Is the assay readout demonstrably linked to the product's mechanism of action
    / clinical activity? Penalise a readout that measures a surrogate not tied to
-   activity. Flag under MOA-LINKAGE FLAGS:.
+   activity. Flag under MOA-LINKAGE FLAGS.
 
 2. LOT-RELEASE CLAIM SUPPORT (25%) — CRITICAL
    Does the assay plus its acceptance criteria actually support the stated
    lot-release claim? Penalise a claim beyond what the assay supports. Flag under
-   LOT-RELEASE-CLAIM FLAGS:.
+   LOT-RELEASE-CLAIM FLAGS.
 
 3. ASSAY VALIDATION (20%) — CRITICAL
    Is the assay validated for a release-critical method (accuracy, precision,
    specificity, range, stability-indicating capability)? Penalise inadequate
-   validation. Flag under ASSAY-VALIDATION FLAGS:.
+   validation. Flag under ASSAY-VALIDATION FLAGS.
 
 4. SURROGATE / MATRIX JUSTIFICATION (15%)
    If a surrogate readout or a matrix substitution is used, is it justified?

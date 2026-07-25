@@ -76,18 +76,18 @@ Evaluate this substantial-equivalence rationale on five dimensions. Score each 0
 1. PREDICATE VALIDITY (30%) — CRITICAL
    Does the candidate predicate share the same intended use and device type,
    making it a valid SE anchor? Penalise a predicate with a different intended
-   use or device type. Flag under PREDICATE-MISMATCH FLAGS:.
+   use or device type. Flag under PREDICATE-MISMATCH FLAGS.
 
 2. INDICATIONS SCOPE (25%) — CRITICAL
    Are the subject device's indications-for-use within the predicate's cleared
    indications? Penalise indications broader than the predicate's. Flag under
-   INDICATION-CREEP FLAGS:.
+   INDICATION-CREEP FLAGS.
 
 3. TECHNOLOGICAL DIFFERENCES (20%) — CRITICAL
    Do new technological characteristics raise new questions of safety or
    effectiveness (the Not-Substantially-Equivalent trigger)? Penalise a
    difference that raises a new question but is argued away. Flag under
-   TECHNOLOGY-DELTA FLAGS:.
+   TECHNOLOGY-DELTA FLAGS.
 
 4. PERFORMANCE-DATA SUFFICIENCY (15%)
    Do the performance data actually address each identified difference?

@@ -70,16 +70,16 @@ Evaluate this batch-release deviation disposition on five dimensions. Score each
 1. DEVIATION CRITICALITY (30%) — CRITICAL
    Is the deviation criticality (minor / major / critical) correct for its impact
    on the CQA and patient safety? Penalise a deviation under-classified relative
-   to its CQA/safety impact. Flag under CRITICALITY FLAGS:.
+   to its CQA/safety impact. Flag under CRITICALITY FLAGS.
 
 2. IMPACT ASSESSMENT (25%) — CRITICAL
    Is the impact on product quality and safety fully assessed, with every
    affected CQA identified? Penalise an incomplete impact assessment or a missed
-   affected CQA. Flag under IMPACT-ASSESSMENT FLAGS:.
+   affected CQA. Flag under IMPACT-ASSESSMENT FLAGS.
 
 3. RELEASE-RISK JUDGMENT (20%) — CRITICAL
    Does the proposed disposition leave unresolved risk to the patient or the CQA?
-   Penalise a release with unresolved risk. Flag under RELEASE-RISK FLAGS:.
+   Penalise a release with unresolved risk. Flag under RELEASE-RISK FLAGS.
 
 4. CAPA-LINKAGE / ROOT-CAUSE (15%)
    Is the root cause established and linked to an adequate CAPA? Penalise a

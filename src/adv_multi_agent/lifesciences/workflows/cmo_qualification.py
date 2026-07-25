@@ -58,17 +58,17 @@ Evaluate this CMO / CDMO qualification review on five dimensions. Score each 0â€
 1. GMP COMPLIANCE (30%) â€” CRITICAL
    Are all GMP deficiencies from audits and inspection history remediated or
    under an adequate, time-bound CAPA? Penalise a GMP deficiency treated as
-   closed without remediation. Flag under GMP-GAP FLAGS:.
+   closed without remediation. Flag under GMP-GAP FLAGS.
 
 2. DATA INTEGRITY (25%) â€” CRITICAL
    Is the CMO's data-integrity posture adequate (audit trails, review, no shared
    logins), with any weakness addressed? Penalise a data-integrity weakness left
-   unaddressed. Flag under DATA-INTEGRITY FLAGS:.
+   unaddressed. Flag under DATA-INTEGRITY FLAGS.
 
 3. CAPACITY & CONTINUITY (20%) â€” CRITICAL
    Is declared capacity (and business-continuity / redundancy) adequate for the
    committed volume and timeline? Penalise a capacity claim the assessment does
-   not support. Flag under CAPACITY FLAGS:.
+   not support. Flag under CAPACITY FLAGS.
 
 4. QUALITY-AGREEMENT COVERAGE (15%)
    Does an executed quality agreement define responsibilities, change control,
@@ -80,7 +80,7 @@ Evaluate this CMO / CDMO qualification review on five dimensions. Score each 0â€
 
 Overall score = weighted average.
 Score >= 7.5 AND zero GMP-GAP FLAGS AND zero DATA-INTEGRITY FLAGS AND zero
-CAPACITY FLAGS: ready for Supplier Quality sign-off. Otherwise: requires revision.
+CAPACITY FLAGS, then ready for Supplier Quality sign-off. Otherwise: requires revision.
 
 End your review with exactly these lines:
   Overall score: X/10

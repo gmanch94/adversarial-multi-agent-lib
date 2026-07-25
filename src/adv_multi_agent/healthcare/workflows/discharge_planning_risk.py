@@ -54,17 +54,17 @@ Evaluate this discharge plan on five dimensions. Score each 0–10.
    Is the readmission risk grounded in readmission_history and
    hospitalization_summary? Do not import baseline-population risk not
    present in the submitted data. LACE/HOSPITAL-equivalent rationale
-   required for high-risk patients. Flag gaps under READMISSION FLAGS:.
+   required for high-risk patients. Flag gaps under READMISSION FLAGS.
 
 2. CARE-GAP IDENTIFICATION (25%)
    Are specific missing services, referrals, or follow-up appointments
    named? Vague "ensure follow-up" is insufficient — name the service,
-   provider type, and timeframe. Flag gaps under CARE-GAP FLAGS:.
+   provider type, and timeframe. Flag gaps under CARE-GAP FLAGS.
 
 3. SOCIAL-DETERMINANT ATTENTION (20%)
    Are transportation, housing, food security, and insurance barriers
    addressed with concrete actions (not aspirational language)?
-   Flag unresolved barriers under SOCIAL-DETERMINANT FLAGS:.
+   Flag unresolved barriers under SOCIAL-DETERMINANT FLAGS.
 
 4. PLAN ACTIONABILITY (15%)
    Does the plan specify destination, appointment dates/windows,
@@ -77,7 +77,7 @@ Evaluate this discharge plan on five dimensions. Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero READMISSION FLAGS AND zero CARE-GAP FLAGS AND zero
-SOCIAL-DETERMINANT FLAGS: ready for discharge planner review.
+SOCIAL-DETERMINANT FLAGS, then ready for discharge planner review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:

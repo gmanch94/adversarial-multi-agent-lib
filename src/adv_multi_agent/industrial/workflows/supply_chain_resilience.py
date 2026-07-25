@@ -72,14 +72,14 @@ Score each 0–10.
    AND verify that Tier-2 sub-suppliers do not create hidden single-source
    exposure (one Tier-2 serving multiple Tier-1s on the same commodity)?
    Penalise "we have multiple suppliers" claims that haven't been mapped
-   to sub-tier. Flag every gap under SINGLE-SOURCE FLAGS:.
+   to sub-tier. Flag every gap under SINGLE-SOURCE FLAGS.
 
 2. GEOGRAPHIC CONCENTRATION (30%) — CRITICAL
    Is the geographic exposure mapped at country + region + cluster level
    (not just country)? Are export-control, sanctions, and political-risk
    overlays current? Are natural-hazard (typhoon-zone, seismic, water-
    stress) overlays applied? Penalise country-level claims that miss
-   regional clustering. Flag every gap under GEO-CONCENTRATION FLAGS:.
+   regional clustering. Flag every gap under GEO-CONCENTRATION FLAGS.
 
 3. LEAD-TIME FRAGILITY (25%) — CRITICAL
    Is logistics-route fragility analysed (common chokepoints, modal
@@ -87,7 +87,7 @@ Score each 0–10.
    given lead-time variability? Are critical-spare and surge-capacity
    strategies stated? Penalise narrow "lead-time = N weeks" claims that
    ignore variance and route risk.
-   Flag every gap under LEAD-TIME-FRAGILITY FLAGS:.
+   Flag every gap under LEAD-TIME-FRAGILITY FLAGS.
 
 4. ACTIONABILITY (15%)
    Are the resilience actions (dual-sourcing plan, sub-tier audit, route
@@ -97,7 +97,7 @@ Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero SINGLE-SOURCE FLAGS AND zero GEO-CONCENTRATION FLAGS
-AND zero LEAD-TIME-FRAGILITY FLAGS: assessment is ready for supply-chain-
+AND zero LEAD-TIME-FRAGILITY FLAGS, then assessment is ready for supply-chain-
 council review. Otherwise: requires revision.
 
 End your review with exactly these lines:

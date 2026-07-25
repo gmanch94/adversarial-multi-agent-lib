@@ -80,7 +80,7 @@ Score each 0–10.
    this crop / region? Common mismatches: rainfall-index where the loss
    driver is heat stress; degree-day where the loss is from late frost;
    NDVI where the loss is from hail. Flag every peril-vs-loss-pathway
-   mismatch under PERIL-MATCH FLAGS:.
+   mismatch under PERIL-MATCH FLAGS.
 
 2. BASIS RISK (30%) — CRITICAL
    For parametric / index covers, basis risk = gap between trigger
@@ -88,7 +88,7 @@ Score each 0–10.
    station-of-record vs farm location distance, gridded-product
    resolution, and historical correlation between trigger and yield
    addressed? For MPCI / indemnity, is the APH-vs-RMA-published-yield
-   gap acknowledged? Flag every basis-risk gap under BASIS FLAGS:.
+   gap acknowledged? Flag every basis-risk gap under BASIS FLAGS.
 
 3. ATTACHMENT & TERM (25%) — CRITICAL
    Is the attachment point (trigger threshold + retention) calibrated
@@ -97,7 +97,7 @@ Score each 0–10.
    (planting → harvest)? Are scaling parameters (payout-per-unit,
    maximum payout) consistent with insurable interest and not
    over-indemnifying? Flag every attachment / term issue under
-   ATTACHMENT FLAGS:.
+   ATTACHMENT FLAGS.
 
 4. ACTIONABILITY (10%)
    Are bind terms, data-source contract, settlement clause, and producer
@@ -106,7 +106,7 @@ Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero PERIL-MATCH FLAGS AND zero BASIS FLAGS AND zero
-ATTACHMENT FLAGS: cover design is ready for senior agricultural
+ATTACHMENT FLAGS, then cover design is ready for senior agricultural
 underwriter review.
 Otherwise: requires revision.
 

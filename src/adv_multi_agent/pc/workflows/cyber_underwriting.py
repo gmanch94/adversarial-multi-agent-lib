@@ -71,7 +71,7 @@ Score each 0–10.
    gaps surfaced? Are missing baseline controls for industry / size
    identified (MFA on privileged accounts, EDR on endpoints, immutable
    backups, vendor-management programme)? Flag every control-attestation
-   gap under CONTROL-GAP FLAGS:.
+   gap under CONTROL-GAP FLAGS.
 
 2. SUB-LIMIT CALIBRATION (30%) — CRITICAL
    Is the ransomware sub-limit aligned with backup-immutability evidence?
@@ -79,13 +79,13 @@ Score each 0–10.
    regulated-data footprint? Are social-engineering / funds-transfer-fraud
    sub-limits calibrated to revenue and transaction volume? Are war /
    cyber-terrorism exclusions current per LMA5564 / Merck post-NotPetya
-   wording? Flag every sub-limit miscalibration under SUB-LIMIT FLAGS:.
+   wording? Flag every sub-limit miscalibration under SUB-LIMIT FLAGS.
 
 3. PORTFOLIO AGGREGATION (25%) — CRITICAL
    Does this bind breach industry-vertical, cloud-provider, or common-
    vendor concentration caps? Is systemic-event exposure (SolarWinds-class,
    MOVEit-class) addressed in the portfolio context? Flag every aggregation
-   issue under AGGREGATION FLAGS:.
+   issue under AGGREGATION FLAGS.
 
 4. ACTIONABILITY (10%)
    Are the bind terms specific enough for the underwriter assistant to
@@ -93,7 +93,7 @@ Score each 0–10.
 
 Overall score = weighted average.
 Score ≥ 7.5 AND zero CONTROL-GAP FLAGS AND zero SUB-LIMIT FLAGS AND zero
-AGGREGATION FLAGS: recommendation is ready for senior-underwriter review.
+AGGREGATION FLAGS, then recommendation is ready for senior-underwriter review.
 Otherwise: requires revision.
 
 End your review with exactly these lines:
