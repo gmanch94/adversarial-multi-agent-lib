@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -42,7 +43,14 @@ class BaseWorkflow(ABC):
         self.config = config
         self.executor = executor or ExecutorAgent(config)
         self.reviewer = reviewer or ReviewerAgent(config)
-        self.ledger = ledger or ClaimLedger(config.ledger_path)
+        # A11-L6: bind the ledger's claim-text cap to the same Config value
+        # `_register_claims` truncates to. Left unwired, the ledger kept its
+        # own 2000-char default; raising `max_claim_text_chars` above it made
+        # every longer claim raise in `ClaimLedger.add` and get dropped from
+        # the audit trail with no warning.
+        self.ledger = ledger or ClaimLedger(
+            config.ledger_path, max_claim_chars=config.max_claim_text_chars
+        )
         # A11-L7: pass the configured bound through. Previously the wiki always
         # used its own 8000 default, so lowering `max_wiki_body_chars` had no
         # effect and raising it made every `add_feedback` exceed the wiki's
@@ -84,10 +92,12 @@ class BaseWorkflow(ABC):
         Extract `## Claims` bullets from `output` and add each to `self.ledger`.
 
         Skips: empty lines, duplicates (against current ledger snapshot),
-        and any claim that fails `ClaimLedger.add` validation (length cap,
-        etc. — `ValueError` is swallowed by design: malformed claims do
-        not halt the workflow). Per-claim text is truncated at
-        `Config.max_claim_text_chars` (default 1000).
+        and any claim that fails `ClaimLedger.add` validation. Per-claim
+        text is truncated at `Config.max_claim_text_chars` (default 1000);
+        the default ledger is built with the same bound (A11-L6), so a
+        claim that clears that truncation is persistable. A residual
+        `ValueError` (e.g. a caller-injected ledger with a smaller bound)
+        does not halt the run, but is warned — never silently dropped.
 
         Shared by retail workflows (demand_forecasting, labor_scheduling,
         recall_scope, loyalty_offer, promo_markdown). Subclasses can
@@ -114,5 +124,14 @@ class BaseWorkflow(ABC):
                 self.ledger.add(line, round_num=round_num)
                 existing.add(line)
                 added += 1
-            except ValueError:
+            except ValueError as exc:
+                # A11-L6: a dropped claim is an audit-trail gap — never
+                # silent. `exc` carries only the length and the bound (no
+                # claim text), so this is PHI-safe to surface.
+                warnings.warn(
+                    f"ClaimLedger rejected a round-{round_num} claim "
+                    f"({exc}); dropped from the audit trail",
+                    UserWarning,
+                    stacklevel=2,
+                )
                 continue
