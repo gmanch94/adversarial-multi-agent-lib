@@ -35,6 +35,19 @@ Guards:
        cut a long request's trailing fields off the executor prompt below
        n_fields x _MAX_FIELD_CHARS, and the reviewer only sees the executor
        draft, so the dropped evidence left the whole adversarial loop (H-1).
+  G8 — the convergence gate of every flag-gated workflow routes through
+       `_flag_classes_unresolved` with LIVE arguments (the header arg is the
+       `_FLAG_HEADERS` tuple, the flags arg reads the flag values), and `run`
+       contains no bare `not any(...)` over the flag values. `extract_flags`
+       returns `[]` both for "None detected" and for "section never emitted"
+       (A11-M1); only the helper distinguishes them, so a gate written
+       `not any(current.values())` — or a hollowed helper call
+       `_flag_classes_unresolved(critique, (), ())` that passes a presence
+       check while doing nothing — reads a dropped section as clean and
+       converges (fail-OPEN, invisible to every `any(substr in f)` test).
+       Non-gated workflows are asserted to have grown no such gate. Same drift
+       class G2 guards for extract_flags' header arg (L-1 / D-A11-1, 2026-07-25
+       CGT ship-audit).
   G9 — no colon-suffixed flag header (`_FLAG_HEADERS` member) may appear in the
        reviewer-criteria PROSE; it belongs ONLY in the emission block. A header
        restated in the rubric body (a cross-ref "flag under X FLAGS:." or a
@@ -46,9 +59,6 @@ Guards:
        same root class as C-1 but fail-CLOSED on the gate). Refer to a section
        in prose WITHOUT its trailing colon. Covers modules AND the mirrored
        `skills/templates/*_review.md`.
-
-  (G8 is reserved for the L-1 gate-uses-`_flag_classes_unresolved` guard from
-  the 2026-07-25 CGT ship-audit, not yet built.)
 """
 from __future__ import annotations
 
@@ -545,6 +555,184 @@ def test_request_text_routes_through_shared_helper(path: Path) -> None:
         "the request through sanitize_request_text(request) instead — a bespoke "
         "sanitize_for_prompt(..., max_chars=N) cap silently guillotines the "
         "trailing request fields off the executor prompt (H-1 / D-A11-6)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# G8 — convergence gate routes through _flag_classes_unresolved with live args,
+#      never a bare `not any(...)` over the flag values  (L-1 / D-A11-1)
+# ---------------------------------------------------------------------------
+#
+# `extract_flags` returns [] both for "reviewer wrote None detected" and for
+# "reviewer never emitted the section" (A11-M1). Only `_flag_classes_unresolved`
+# (via `missing_flag_headers`) tells those apart, so a gate written
+# `not any(current.values())` reads a dropped section as clean and converges —
+# fail-OPEN, invisible to every `any(substr in f)`-shaped test. All 67 flag-
+# gated workflows comply today; G8 keeps a 68th from regressing AND keeps an
+# existing gate from being hollowed to `_flag_classes_unresolved(critique, (),
+# ())`, which passes a presence check while `missing_flag_headers` no-ops and
+# `any(())` is False (same drift class G2 guards for extract_flags' headers).
+
+_FLAG_CONTAINER_NAMES = {"current", "accumulated"}
+
+
+def _is_flag_container(expr: ast.expr) -> bool:
+    """True if `expr` reads the per-round / accumulated flag values.
+
+    Matches the convention dicts `current` / `accumulated` (D-DEPTH-1), any name
+    containing 'flag' (a differently-named flag collection), or a direct
+    `extract_flags(...)` call. Broad on the flag side, silent on everything
+    else, so an unrelated `not any(errors)` is not mistaken for a flag gate
+    (there are none in any `run` today; the heuristic keeps G8b from firing if
+    one is ever added for a non-flag reason).
+    """
+    for node in ast.walk(expr):
+        if isinstance(node, ast.Name) and (
+            node.id in _FLAG_CONTAINER_NAMES or "flag" in node.id.lower()
+        ):
+            return True
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name == "extract_flags":
+                return True
+    return False
+
+
+def _not_any_over_flags(scope: ast.AST) -> list[ast.UnaryOp]:
+    """`not any(<flag container>)` nodes within `scope` — the banned gate shape."""
+    out: list[ast.UnaryOp] = []
+    for node in ast.walk(scope):
+        if (
+            isinstance(node, ast.UnaryOp)
+            and isinstance(node.op, ast.Not)
+            and isinstance(node.operand, ast.Call)
+            and isinstance(node.operand.func, ast.Name)
+            and node.operand.func.id == "any"
+            and node.operand.args
+            and _is_flag_container(node.operand.args[0])
+        ):
+            out.append(node)
+    return out
+
+
+def _run_func(tree: ast.Module) -> ast.AsyncFunctionDef | ast.FunctionDef | None:
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+            and node.name == "run"
+        ):
+            return node
+    return None
+
+
+def _is_flag_gated(tree: ast.Module) -> bool:
+    return "_FLAG_HEADERS" in _module_assignments(tree) or bool(
+        _extract_flags_calls(tree)
+    )
+
+
+def _unresolved_calls(tree: ast.Module) -> list[ast.Call]:
+    out: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name == "_flag_classes_unresolved":
+                out.append(node)
+    return out
+
+
+def _positional_or_kw(call: ast.Call, pos: int, kw: str) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg == kw:
+            return keyword.value
+    if len(call.args) > pos:
+        return call.args[pos]
+    return None
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_FILES, ids=_IDS)
+def test_flag_gated_gate_calls_unresolved_with_live_args(path: Path) -> None:
+    """G8a. Every flag-gated workflow decides convergence through
+    `_flag_classes_unresolved`, and the call's arguments are live.
+
+    A presence check alone is not the invariant: the header arg must be the
+    `_FLAG_HEADERS` tuple and the flags arg must read the flag values.
+    `_flag_classes_unresolved(critique, (), ())` passes a presence check while
+    `missing_flag_headers` checks nothing and `any(())` is False — fail-OPEN in
+    the exact A11-M1 direction the helper exists to close (cf. G2, which guards
+    the same drift for extract_flags' header arg).
+    """
+    tree = _parse(path)
+    if not _is_flag_gated(tree):
+        return
+    calls = _unresolved_calls(tree)
+    assert calls, (
+        f"{path.name} is flag-gated (declares _FLAG_HEADERS / calls extract_flags) "
+        "but never calls _flag_classes_unresolved. The convergence gate must route "
+        "through it so a dropped reviewer section blocks convergence instead of "
+        "reading as clean (D-A11-1 fail-OPEN)."
+    )
+    for call in calls:
+        headers = _positional_or_kw(call, 1, "headers")
+        flags = _positional_or_kw(call, 2, "current_flags")
+        headers_src = ast.unparse(headers) if headers is not None else None
+        flags_src = ast.unparse(flags) if flags is not None else None
+        assert isinstance(headers, ast.Name) and headers.id == "_FLAG_HEADERS", (
+            f"{path.name} calls _flag_classes_unresolved with a headers arg that is "
+            f"not the _FLAG_HEADERS tuple (got {headers_src!r}). missing_flag_headers "
+            "then has nothing to check and the gate is fail-OPEN (D-A11-1)."
+        )
+        assert flags is not None and _is_flag_container(flags), (
+            f"{path.name} calls _flag_classes_unresolved with a flags arg that does "
+            f"not read the flag values (got {flags_src!r}). any(<that>) is then "
+            "trivially False and the gate never sees a finding (D-A11-1)."
+        )
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_FILES, ids=_IDS)
+def test_run_has_no_bare_not_any_flag_gate(path: Path) -> None:
+    """G8b — the literal L-1 finding: no `not any(<flag values>)` inside `run`.
+
+    The one legitimate `not any(current.values())` is the display short-circuit
+    in `_format_flag_section`, a sibling method the run-scoped walk never
+    reaches. A `not any(...)` over flag values in `run` is the D-A11-1 gate that
+    conflates "no findings" with "not assessed" and converges on the latter.
+    """
+    tree = _parse(path)
+    run = _run_func(tree)
+    if run is None:
+        return
+    offenders = sorted(node.lineno for node in _not_any_over_flags(run))
+    assert not offenders, (
+        f"{path.name} run() gates on `not any(<flag values>)` at line(s) {offenders}. "
+        "Route the decision through self._flag_classes_unresolved(critique, "
+        "_FLAG_HEADERS, current.values()) — a bare `not any` reads a reviewer "
+        "section that was never emitted as clean and converges (D-A11-1)."
+    )
+
+
+@pytest.mark.parametrize("path", _WORKFLOW_FILES, ids=_IDS)
+def test_non_gated_workflows_have_no_flag_gate(path: Path) -> None:
+    """G8c — a non-gated workflow must not have quietly grown a flag gate.
+
+    A workflow with no _FLAG_HEADERS and no extract_flags is score-only (the
+    research base loop, generative rebuttal / idea discovery, the assurance
+    composer, and the durable subclass that inherits its parent's gate). Assert
+    POSITIVELY that it holds no `not any(<flag values>)` anywhere — which would
+    slip past G8a/G8b (both scope to gated files) and reintroduce the A11-M1
+    hole under the radar. A11-M6.2: a positive assertion, not a silent skip.
+    """
+    tree = _parse(path)
+    if _is_flag_gated(tree):
+        return
+    offenders = sorted(node.lineno for node in _not_any_over_flags(tree))
+    assert not offenders, (
+        f"{path.name} is not flag-gated yet gates on `not any(<flag values>)` at "
+        f"line(s) {offenders}. If it now uses flag classes, declare _FLAG_HEADERS "
+        "and route through _flag_classes_unresolved (D-A11-1); a bare `not any` is "
+        "fail-OPEN on a dropped reviewer section."
     )
 
 
