@@ -15,7 +15,7 @@ policy IMG-007 effective 2026-01-01 covers the service.
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+import tempfile
 
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.agents import ExecutorAgent, ReviewerAgent
@@ -30,12 +30,13 @@ async def main() -> None:
         anthropic_api_key=__import__("os").environ.get("ANTHROPIC_API_KEY", ""),
         openai_api_key=__import__("os").environ.get("OPENAI_API_KEY", ""),
         reviewer_provider=ReviewerProvider.OPENAI,
-        workspace_dir=str(Path.cwd() / ".healthcare_workspace"),
+        workspace_dir=tempfile.mkdtemp(prefix="claims-appeal-review-example-"),
         max_review_rounds=4,
         score_threshold=7.5,
     )
     executor = ExecutorAgent(config)
     reviewer = ReviewerAgent(config)
+    print(f"Workspace (per-run, isolated): {config.workspace_dir}")
     workflow = ClaimsAppealReviewWorkflow(
         executor=executor, reviewer=reviewer, config=config
     )

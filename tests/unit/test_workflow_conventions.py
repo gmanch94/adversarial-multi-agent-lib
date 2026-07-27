@@ -59,6 +59,18 @@ Guards:
        same root class as C-1 but fail-CLOSED on the gate). Refer to a section
        in prose WITHOUT its trailing colon. Covers modules AND the mirrored
        `skills/templates/*_review.md`.
+  G10 — a determination example must use a per-run workspace, not a fixed
+       persistent one. The base workflow builds `ResearchWiki` UNDER
+       `workspace_dir`, and `context_for_round` is round-scoped, NOT run-scoped,
+       so a shared workspace replays the prior case's FEEDBACK critiques into the
+       next run's executor prompt — cross-case bleed, PHI for the healthcare /
+       parole determinations (M-2); a world-writable `/tmp/<name>` is also a
+       symlink-preplant target (M-3). Two prongs: no `/tmp/` text anywhere (M-3),
+       and no fixed inline `workspace_dir` literal (M-2) — `mkdtemp` / a bare
+       variable / an env override pass; a genuinely-persistent example (durable
+       checkpoint/resume) is allowlisted with a reason. Does NOT cover an example
+       that sets no `workspace_dir` (inherits the `Config` default `"."` — a
+       documented library-default residual). D-A11-9, 2026-07-25 CGT ship-audit.
 """
 from __future__ import annotations
 
@@ -824,4 +836,112 @@ def test_no_flag_header_colon_in_template_prose(path: Path) -> None:
         f"{path.name} restates flag header(s) {offenders} in prose above its "
         "emission block. The reviewer echoes the rubric and the parser then "
         "slices real findings out (M-1). Drop the trailing colon in prose."
+    )
+
+
+# --- G10: determination examples must use a per-run workspace ----------------
+# core/wiki.py context_for_round filters by round_num, NOT run/case; the base
+# workflow builds ResearchWiki(config.wiki_path) UNDER workspace_dir when the
+# example passes no wiki (core/workflow.py). So an example that reuses a FIXED,
+# persistent workspace across runs replays the prior case's FEEDBACK critiques
+# into the next run's executor prompt (M-2, PHI for the healthcare / parole
+# determinations); a world-writable /tmp/<name> is additionally a symlink-
+# preplant target (M-3). Fix is a per-run tempfile.mkdtemp(). Two prongs below
+# match the two findings.
+_EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
+
+
+def _example_files() -> list[Path]:
+    files: list[Path] = []
+    for domain in _DOMAINS:
+        ed = _EXAMPLES / domain
+        if ed.is_dir():
+            files.extend(p for p in sorted(ed.glob("*.py")) if p.name != "__init__.py")
+    assert files, "no example modules discovered — path drift in _EXAMPLES"
+    return files
+
+
+_EXAMPLE_FILES = _example_files()
+_EX_IDS = [f"{p.parent.name}/{p.name}" for p in _EXAMPLE_FILES]
+
+# Examples allowed a fixed, persistent workspace_dir, each with its reason — the
+# repo's `// silent-ok:`-style escape hatch. Only genuinely-persistent examples
+# belong here; a determination example must NOT.
+_FIXED_WORKSPACE_ALLOWLIST: dict[str, str] = {
+    # Durable workflow: checkpoint/resume needs a STABLE dir across process
+    # restarts, so a per-run mkdtemp would defeat the feature. Its default is
+    # env-overridable (DURABLE_WORKSPACE) and it is not a determination example.
+    "healthcare/clinical_trial_durable.py": "checkpoint resume needs a stable dir",
+}
+
+
+def _is_per_run_workspace(value: ast.expr) -> bool:
+    """True if a `workspace_dir` value is per-run or externally driven, not a
+    fixed inline path literal. `tempfile.mkdtemp(...)` is per-run; a bare `Name`
+    is a variable assigned from an env-or-mkdtemp expression elsewhere; an
+    `os.environ` / `getenv` expression is an operator override. A string constant
+    or a `str(Path.cwd() / "...")` expression is a fixed shared path — flagged.
+    """
+    src = ast.unparse(value)
+    if "mkdtemp" in src:
+        return True
+    if isinstance(value, ast.Name):
+        return True
+    if "environ" in src or "getenv" in src:
+        return True
+    return False
+
+
+def _workspace_dir_values(tree: ast.Module) -> list[ast.expr]:
+    return [
+        kw.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for kw in node.keywords
+        if kw.arg == "workspace_dir"
+    ]
+
+
+@pytest.mark.parametrize("path", _EXAMPLE_FILES, ids=_EX_IDS)
+def test_example_workspace_is_per_run(path: Path) -> None:
+    """A determination example must not reuse a fixed, persistent workspace
+    (D-A11-9). Round-only (not run-scoped) `wiki.context_for_round` plus a shared
+    workspace file means run B reads run A's FEEDBACK critiques from the wiki the
+    base workflow built under `workspace_dir` — cross-case bleed, PHI for the
+    healthcare and parole determinations (M-2); a world-writable `/tmp/<name>` is
+    also a symlink-preplant target (M-3). Use `tempfile.mkdtemp()` (per-run,
+    0700) or a `WORKSPACE_DIR`/env override; allowlist a genuinely-persistent
+    example (durable checkpoint/resume) in `_FIXED_WORKSPACE_ALLOWLIST` with a
+    reason. production/** is out of scope (not a `_DOMAINS` dir); an example that
+    sets NO `workspace_dir` inherits the `Config` default `"."` — a documented
+    library-default residual this guard does not cover.
+    """
+    ident = f"{path.parent.name}/{path.name}"
+    text = path.read_text(encoding="utf-8")
+
+    # Prong 1 (M-3): no world-writable /tmp path, however it is spelled. Never
+    # allowlisted — a /tmp workspace is never acceptable.
+    assert "/tmp/" not in text, (
+        f"{ident} hardcodes a '/tmp/' path. Use tempfile.mkdtemp(prefix=...) for "
+        "a per-run 0700 workspace: a fixed world-writable /tmp dir is a symlink-"
+        "preplant target (M-3) and, reused across runs, bleeds one case's wiki "
+        "critiques into the next (M-2)."
+    )
+
+    # Prong 2 (M-2): workspace_dir must be per-run / env-driven, not a fixed
+    # inline path literal that persists across runs.
+    if ident in _FIXED_WORKSPACE_ALLOWLIST:
+        return
+    offenders = [
+        ast.unparse(v)
+        for v in _workspace_dir_values(_parse(path))
+        if not _is_per_run_workspace(v)
+    ]
+    assert not offenders, (
+        f"{ident} sets a fixed workspace_dir {offenders}. The base workflow "
+        "builds ResearchWiki under workspace_dir, so a fixed shared dir replays "
+        "a prior case's reviewer critiques into the next run's executor prompt "
+        "(M-2). Use tempfile.mkdtemp(prefix=...) or a WORKSPACE_DIR env override, "
+        "or allowlist a genuinely-persistent example in "
+        "_FIXED_WORKSPACE_ALLOWLIST with a reason."
     )

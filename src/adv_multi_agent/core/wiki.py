@@ -88,6 +88,16 @@ class WikiEntry:
 class ResearchWiki:
     """
     Shared persistent knowledge store.
+
+    Scope note (D-A11-9): entries are keyed by round number, NOT by run or case.
+    `context_for_round` returns every non-improvement entry with `round_num <=`
+    the argument, so a wiki file reused across independent cases replays the
+    earlier case's FEEDBACK critiques into the later case's executor prompt
+    (cross-case bleed; the wrong case's data, PHI where the case carries it).
+    This is intended for accumulation across the rounds of ONE piece of work
+    (the research loop). A per-case / determination caller must give each run
+    its own store — e.g. a fresh `tempfile.mkdtemp()` workspace — not one shared
+    file. See `examples/` and the CGT ship-audit (2026-07-25) M-2.
     """
 
     def __init__(
@@ -231,6 +241,11 @@ class ResearchWiki:
         character budget is enforced. Improvement proposals are NEVER included
         (an attacker who got an improvement into the wiki must not have it
         replayed into every subsequent executor prompt — HIGH-2).
+
+        Filtering is by `round_num` only — NOT by run or case (see the class
+        docstring, D-A11-9). A wiki shared across cases will surface an earlier
+        case's entries here; callers that must isolate cases give each run its
+        own store.
         """
         eligible = [
             e for e in self._entries.values()

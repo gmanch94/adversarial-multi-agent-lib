@@ -30,6 +30,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import textwrap
 
 from adv_multi_agent.core.config import Config, EffortLevel, ExecutorProvider, ReviewerProvider
@@ -124,7 +125,7 @@ async def main() -> None:
         effort=EffortLevel.HIGH,
         max_review_rounds=4,        # allow up to 4 adversarial rounds
         score_threshold=7.5,        # brief must score ≥ 7.5 to converge
-        workspace_dir="parole_workspace",
+        workspace_dir=tempfile.mkdtemp(prefix="parole-assessment-example-"),
     )
 
     print("=" * 70)
@@ -139,6 +140,7 @@ async def main() -> None:
     print("    See parole.py → PRODUCTION_GAPS for deployment checklist.")
     print()
 
+    print(f"Workspace (per-run, isolated): {config.workspace_dir}")
     workflow = ParoleAssessmentWorkflow(config)
     result = await workflow.run(case=CASE)
 

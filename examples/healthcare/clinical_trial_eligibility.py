@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import tempfile
 
 from adv_multi_agent.core.config import Config, ReviewerProvider
 from adv_multi_agent.core.ledger import ClaimLedger
@@ -53,8 +54,8 @@ def build_agents(config: Config) -> tuple[object, object]:
 
 
 async def main() -> None:
-    workspace = os.environ.get(
-        "WORKSPACE_DIR", "/tmp/clinical_trial_eligibility_example"
+    workspace = os.environ.get("WORKSPACE_DIR") or tempfile.mkdtemp(
+        prefix="clinical_trial_eligibility_example-"
     )
     os.makedirs(workspace, exist_ok=True)
 
@@ -139,10 +140,11 @@ async def main() -> None:
         executor=executor,  # type: ignore[arg-type]
         reviewer=reviewer,  # type: ignore[arg-type]
         config=config,
-        ledger=ClaimLedger(str(workspace + "/ledger.json")),
-        wiki=ResearchWiki(str(workspace + "/wiki.json")),
+        ledger=ClaimLedger(f"{config.workspace_dir}/ledger.json"),
+        wiki=ResearchWiki(f"{config.workspace_dir}/wiki.json"),
     )
 
+    print(f"Workspace (per-run, isolated): {config.workspace_dir}")
     print("Running ClinicalTrialEligibilityWorkflow...")
     print("Trial:   NCT-CARDIO-2026-001 (Phase III SGLT2 inhibitor in HFrEF)")
     print("Patient: 68yo Black woman, NYHA III HFrEF (LVEF 32%), CKD2 (eGFR 48)")

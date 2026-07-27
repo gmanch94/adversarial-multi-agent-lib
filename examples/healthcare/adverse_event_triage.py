@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 
 from adv_multi_agent.core.agents import ExecutorAgent, ReviewerAgent
 from adv_multi_agent.core.config import Config, ReviewerProvider
@@ -38,7 +39,7 @@ async def main() -> None:
         anthropic_api_key=os.environ["ANTHROPIC_API_KEY"],
         openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
         reviewer_provider=ReviewerProvider.OPENAI,
-        workspace_dir="/tmp/adverse-event-triage-example",
+        workspace_dir=tempfile.mkdtemp(prefix="adverse-event-triage-example-"),
         max_review_rounds=3,
         score_threshold=8.0,
     )
@@ -92,6 +93,7 @@ async def main() -> None:
     reviewer = ReviewerAgent(config=config)
     ledger = ClaimLedger(f"{config.workspace_dir}/ledger.json")
     wiki = ResearchWiki(f"{config.workspace_dir}/wiki.json")
+    print(f"Workspace (per-run, isolated): {config.workspace_dir}")
 
     workflow = AdverseEventTriageWorkflow(
         executor=executor,
